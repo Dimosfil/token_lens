@@ -67,3 +67,28 @@ config.json
 
 Цены необязательны. Если цена модели неизвестна, cost будет `0`, а source of
 truth остаются токены.
+## Project Structure
+
+The app is split into small standard-library Python modules and static browser
+modules:
+
+```text
+app/
+  api/              HTTP handler, JSON responses, server bootstrap
+  core/             config, paths, shared types
+  services/         import orchestration, analytics facade, background jobs
+  sources/codex/    read-only Codex source adapter and parsers
+  storage/          SQLite connection, schema, repositories, analytics queries
+  config.py         compatibility shim
+  db.py             compatibility shim
+  importer.py       compatibility shim
+  server.py         compatibility shim used by python -m app.server
+web/
+  app.js            browser entrypoint
+  js/               static ES modules for API, formatting, renderers, status
+  index.html
+  styles.css
+```
+
+The compatibility shims keep existing commands working while the implementation
+lives in the modular packages.

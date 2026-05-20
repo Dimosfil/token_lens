@@ -1,6 +1,7 @@
 param(
     [int]$MaxLines = 80,
-    [switch]$ConfigureGitCommitLanguages
+    [switch]$ConfigureGitCommitLanguages,
+    [switch]$ConfigureSystemLanguage
 )
 
 Set-StrictMode -Version Latest
@@ -157,11 +158,61 @@ function Write-GitCommitPreferenceNotice {
     }
 }
 
+function Write-SystemLanguagePreferenceNotice {
+    $systemPreferencesPath = "tools/project-memory/system-preferences.json"
+    Write-Host ""
+    Write-Host "== Agent System Language =="
+
+    if ($ConfigureSystemLanguage) {
+        $selectorPath = "tools/select-system-language.ps1"
+        if (Test-Path -LiteralPath $selectorPath) {
+            & $selectorPath
+            return
+        }
+
+        Write-Host "Could not find $selectorPath."
+        Write-Host "Copy it from templates/select-system-language.template.ps1."
+        return
+    }
+
+    if (-not (Test-Path -LiteralPath $systemPreferencesPath)) {
+        Write-Host "No agent system language preferences found."
+        Write-Host "[x] 1. Match user"
+        Write-Host "[ ] 2. English"
+        Write-Host "[ ] 3. Russian"
+        Write-Host "[ ] 4. Spanish"
+        Write-Host "[ ] 5. German"
+        Write-Host "[ ] 6. French"
+        Write-Host "Configure with: .\tools\select-system-language.ps1"
+        Write-Host "Or run startup with: .\tools\agent-start.ps1 -ConfigureSystemLanguage"
+        return
+    }
+
+    try {
+        $preferences = Get-Content -LiteralPath $systemPreferencesPath -Raw | ConvertFrom-Json
+        $mode = [string]$preferences.agent_response_language.mode
+        $language = [string]$preferences.agent_response_language.language
+        if ($mode -eq "fixed" -and $language) {
+            Write-Host "Agent working language: $language"
+        }
+        else {
+            Write-Host "Agent working language: match the user's language"
+        }
+        Write-Host "Change with: .\tools\select-system-language.ps1"
+        Write-Host "Or run startup with: .\tools\agent-start.ps1 -ConfigureSystemLanguage"
+    }
+    catch {
+        Write-Host "Could not read $systemPreferencesPath."
+        Write-Host "Reconfigure with: .\tools\select-system-language.ps1"
+    }
+}
+
 Write-InstructionKitUpdateNotice
 
 Write-SmallFile -Path "AGENTS.md" -Title "AGENTS.md"
 Write-SmallFile -Path "tools/AGENT_WORKING_AGREEMENTS.md" -Title "Working Agreements"
 Write-GitCommitPreferenceNotice
+Write-SystemLanguagePreferenceNotice
 
 $summaryDir = "tools/summary"
 if (Test-Path -LiteralPath $summaryDir) {

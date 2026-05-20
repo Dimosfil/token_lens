@@ -1,0 +1,10 @@
+{
+  "enabled": true,
+  "base_url": "http://127.0.0.1:4187",
+  "raw_intake_path": "/agent-intake/raw",
+  "raw_read_path_template": "/agent-intake/raw/{id}",
+  "raw_start_path_template": "/agent-intake/raw/{id}/start",
+  "raw_complete_path_template": "/agent-intake/raw/{id}/complete",
+  "configured_at": "2026-05-20",
+  "notes": "Project-local task manager API endpoint configured from user command: gi manager url=http://127.0.0.1:4187. Raw agent intake accepts POST /agent-intake/raw and lifecycle supports read/start/complete by raw id."
+}
