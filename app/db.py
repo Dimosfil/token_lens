@@ -8,6 +8,7 @@ SCHEMA = """
 create table if not exists turns (
   source_log_id integer primary key,
   response_id text unique,
+  status text not null default 'completed',
   ts integer not null,
   ts_iso text not null,
   day text not null,
@@ -48,3 +49,5 @@ def init_db(db_path: str) -> None:
         if "response_id" not in columns:
             con.execute("alter table turns add column response_id text")
             con.execute("create unique index if not exists idx_turns_response_id on turns(response_id)")
+        if "status" not in columns:
+            con.execute("alter table turns add column status text not null default 'completed'")

@@ -15,6 +15,17 @@ async function getJson(url, options) {
   return res.json();
 }
 
+let dataVersion = null;
+let refreshPromise = null;
+const AUTO_REFRESH_MS = 5000;
+
+function setAutoStatus(message, isError = false) {
+  const el = document.getElementById("autoStatus");
+  if (!el) return;
+  el.textContent = message;
+  el.classList.toggle("is-error", isError);
+}
+
 function renderMetrics(summary) {
   const el = document.getElementById("metrics");
   const cards = [
@@ -58,9 +69,11 @@ function renderTurns(rows) {
       <td>${time(row.ts_iso)}</td>
       <td class="thread" title="${row.thread_id}">${row.thread_name || row.thread_id}</td>
       <td>${row.model}</td>
+      <td>${row.status}</td>
       <td>${number(row.total_tokens)}</td>
       <td>${number(row.input_tokens)}</td>
       <td>${number(row.cached_input_tokens)}</td>
+      <td>${number(row.non_cached_input_tokens)}</td>
       <td>${number(row.output_tokens)}</td>
       <td>${number(row.reasoning_output_tokens)}</td>
     </tr>
@@ -74,10 +87,12 @@ function renderTasks(rows) {
       <td>${time(row.finished_at)}</td>
       <td class="thread" title="${row.turn_id}">${row.thread_name || row.thread_id}</td>
       <td>${row.models}</td>
+      <td>${row.statuses}</td>
       <td>${number(row.model_calls)}</td>
       <td>${number(row.total_tokens)}</td>
       <td>${number(row.input_tokens)}</td>
       <td>${number(row.cached_input_tokens)}</td>
+      <td>${number(row.non_cached_input_tokens)}</td>
       <td>${number(row.output_tokens)}</td>
       <td>${number(row.reasoning_output_tokens)}</td>
     </tr>
@@ -107,23 +122,34 @@ function renderModels(rows) {
 }
 
 async function refresh(importFirst = false) {
-  if (importFirst) {
-    await getJson("/api/import", { method: "POST" });
-  }
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = refreshNow(importFirst).finally(() => {
+    refreshPromise = null;
+  });
+  return refreshPromise;
+}
+
+async function refreshNow(importFirst = false) {
   const model = document.getElementById("modelFilter").value;
-  const [summary, daily, turns, tasks, models] = await Promise.all([
-    getJson("/api/summary"),
-    getJson("/api/daily"),
-    getJson(`/api/turns?limit=150${model ? `&model=${encodeURIComponent(model)}` : ""}`),
-    getJson("/api/tasks?limit=150"),
-    getJson("/api/models"),
-  ]);
-  renderMetrics(summary.summary);
-  renderDaily(daily);
-  renderTurns(turns);
-  renderTasks(tasks);
-  renderTop(summary.top_turns);
-  renderModels(models);
+  const query = model ? `?model=${encodeURIComponent(model)}` : "";
+  const dashboard = await getJson(`/api/refresh${query}`, { method: "POST" });
+  renderMetrics(dashboard.summary.summary);
+  renderDaily(dashboard.daily);
+  renderTurns(dashboard.turns);
+  renderTasks(dashboard.tasks);
+  renderTop(dashboard.summary.top_turns);
+  renderModels(dashboard.models);
+  dataVersion = dashboard.state.version;
+  setAutoStatus(`Updated ${new Date().toLocaleTimeString("ru-RU")}`);
+}
+
+async function pollForUpdates() {
+  setAutoStatus("Checking for updates");
+  refresh(true)
+    .catch(err => {
+      setAutoStatus(`Auto refresh error: ${err.message}`, true);
+    });
 }
 
 document.getElementById("refresh").addEventListener("click", () => refresh(true));
@@ -132,3 +158,4 @@ document.getElementById("modelFilter").addEventListener("change", () => refresh(
 refresh(false).catch(err => {
   document.body.insertAdjacentHTML("beforeend", `<pre>${err.message}</pre>`);
 });
+setInterval(pollForUpdates, AUTO_REFRESH_MS);

@@ -12,13 +12,17 @@ Primary surface: local Python web app served from `app.server` with static UI in
 
 ## Restore Context
 
+If the user only sends a short greeting, thanks, acknowledgement, or
+status-neutral message, do not run startup restore or read project files. Reply
+briefly and ask what they want to do next.
+
 Start here:
 
 ```powershell
 .\tools\agent-start.ps1
 ```
 
-If the startup script is unavailable, read:
+If the startup script is unavailable, read only the smallest useful slices of:
 
 - `AGENTS.md`
 - latest file in `tools/summary/`
@@ -27,7 +31,10 @@ If the startup script is unavailable, read:
 - relevant notes in `tools/project-memory/`
 
 Use the RAG startup flow: retrieve only task-relevant context, search memory by
-specific terms, and query SQLite memory only with small `LIMIT`s.
+specific terms, and query SQLite memory only with small `LIMIT`s. For `gi start`,
+`gi restore`, or title-only first messages, restore only enough orientation for
+the next turn; do not read full summaries, runbooks, memory notes, logs, or diffs
+unless a concrete task needs them.
 
 The copied instruction kit is a token-economy and RAG-startup layer for this
 project. Use it to restore only the needed context from local instructions,
@@ -169,6 +176,9 @@ Inspect logs:
   system UI counters are not agent progress updates.
 - Startup restore must be compact; do not dump large files, full runbooks, full
   SQLite contents, full logs, generated outputs, or full diffs.
+- Treat short greetings, thanks, acknowledgements, and status-neutral messages
+  as no-ops unless they include an explicit task, path, command, error, or
+  project question. Do not run startup restore for those messages.
 - Launch applications in the background so focus does not jump away from the
   user's current window.
 - Follow the copied `general-instructions` instruction kit for the full set of

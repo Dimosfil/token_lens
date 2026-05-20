@@ -12,7 +12,10 @@
       <h1>Token Lens</h1>
       <p>Токены по одному запросу, thread и дням</p>
     </div>
-    <button id="refresh">Обновить</button>
+    <div class="header-actions">
+      <span id="autoStatus" class="auto-status">Auto refresh starting</span>
+      <button id="refresh">Обновить</button>
+    </div>
   </header>
 
   <main>
@@ -36,10 +39,12 @@
               <th>Финиш</th>
               <th>Thread</th>
               <th>Models</th>
+              <th>Status</th>
               <th>Calls</th>
               <th>Total</th>
               <th>Input</th>
               <th>Cached</th>
+              <th>Non-cached</th>
               <th>Output</th>
               <th>Reasoning</th>
             </tr>
@@ -63,9 +68,11 @@
               <th>Время</th>
               <th>Thread</th>
               <th>Model</th>
+              <th>Status</th>
               <th>Total</th>
               <th>Input</th>
               <th>Cached</th>
+              <th>Non-cached</th>
               <th>Output</th>
               <th>Reasoning</th>
             </tr>

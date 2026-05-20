@@ -17,7 +17,7 @@ THREAD_RE = re.compile(r"thread\.id=([^ }]+)")
 TURN_RE = re.compile(r"turn\.id=([^ }]+)")
 SUBMISSION_RE = re.compile(r"submission\.id=\"?([^\" }]+)")
 EFFORT_RE = re.compile(r"codex\.turn\.reasoning_effort=([^ }]+)")
-RESPONSE_COMPLETED = '{"type":"response.completed"'
+RESPONSE_EVENT_RE = re.compile(r'\{"type":"response\.(created|in_progress|completed)"')
 
 
 @dataclass
@@ -85,6 +85,7 @@ def parse_usage_row(source_log_id: int, ts: int, thread_id: str | None, body: st
     row = {
         "source_log_id": source_log_id,
         "response_id": None,
+        "status": "completed",
         "ts": ts,
         "ts_iso": dt.isoformat(),
         "day": dt.date().isoformat(),
@@ -106,10 +107,12 @@ def parse_usage_row(source_log_id: int, ts: int, thread_id: str | None, body: st
     return row
 
 
-def parse_response_completed(source_log_id: int, ts: int, thread_id: str | None, body: str, thread_names: dict[str, str], prices: dict) -> dict | None:
-    idx = body.find(RESPONSE_COMPLETED)
-    if idx < 0:
+def parse_response_event(source_log_id: int, ts: int, thread_id: str | None, body: str, thread_names: dict[str, str], prices: dict) -> dict | None:
+    match = RESPONSE_EVENT_RE.search(body)
+    if not match:
         return None
+    idx = match.start()
+    event_type = match.group(1)
 
     try:
         event, _ = json.JSONDecoder().raw_decode(body[idx:])
@@ -118,8 +121,6 @@ def parse_response_completed(source_log_id: int, ts: int, thread_id: str | None,
 
     response = event.get("response") or {}
     usage = response.get("usage") or {}
-    if not usage:
-        return None
 
     resolved_thread_id = thread_id or first_match(THREAD_RE, body)
     turn_id = first_match(TURN_RE, body) or response.get("id")
@@ -139,6 +140,7 @@ def parse_response_completed(source_log_id: int, ts: int, thread_id: str | None,
     row = {
         "source_log_id": source_log_id,
         "response_id": response.get("id"),
+        "status": response.get("status") or event_type,
         "ts": ts,
         "ts_iso": dt.isoformat(),
         "day": dt.date().isoformat(),
@@ -180,8 +182,11 @@ def import_codex_logs() -> ImportStats:
               feedback_log_body like '%codex.turn.token_usage%'
               and feedback_log_body like '%instrument_name="codex.turn.token_usage"%'
             ) or (
+              feedback_log_body like '%"type":"response.created"%'
+            ) or (
+              feedback_log_body like '%"type":"response.in_progress"%'
+            ) or (
               feedback_log_body like '%"type":"response.completed"%'
-              and feedback_log_body like '%"usage"%'
             )
             order by id
             """
@@ -190,7 +195,7 @@ def import_codex_logs() -> ImportStats:
         for item in rows:
             stats.scanned += 1
             body = item["feedback_log_body"] or ""
-            parsed = parse_response_completed(
+            parsed = parse_response_event(
                 item["id"],
                 item["ts"],
                 item["thread_id"],
@@ -204,18 +209,19 @@ def import_codex_logs() -> ImportStats:
             target.execute(
                 """
                 insert or replace into turns (
-                  source_log_id, response_id, ts, ts_iso, day, thread_id, thread_name, turn_id,
+                  source_log_id, response_id, status, ts, ts_iso, day, thread_id, thread_name, turn_id,
                   submission_id, model, reasoning_effort, input_tokens,
                   cached_input_tokens, non_cached_input_tokens, output_tokens,
                   reasoning_output_tokens, total_tokens, estimated_cost, imported_at
                 ) values (
-                  :source_log_id, :response_id, :ts, :ts_iso, :day, :thread_id, :thread_name, :turn_id,
+                  :source_log_id, :response_id, :status, :ts, :ts_iso, :day, :thread_id, :thread_name, :turn_id,
                   :submission_id, :model, :reasoning_effort, :input_tokens,
                   :cached_input_tokens, :non_cached_input_tokens, :output_tokens,
                   :reasoning_output_tokens, :total_tokens, :estimated_cost, :imported_at
                 )
                 on conflict(response_id) do update set
                   source_log_id = excluded.source_log_id,
+                  status = excluded.status,
                   ts = excluded.ts,
                   ts_iso = excluded.ts_iso,
                   day = excluded.day,

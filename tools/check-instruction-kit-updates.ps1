@@ -111,13 +111,13 @@ if (-not (Test-Path -LiteralPath $migrationsPath)) {
     exit 0
 }
 
-$pending = Get-ChildItem -LiteralPath $migrationsPath -Filter "*.md" |
+$pending = @(Get-ChildItem -LiteralPath $migrationsPath -Filter "*.md" |
     Where-Object { $_.Name -ne "README.md" } |
     Sort-Object Name |
     Where-Object {
         $migrationId = [System.IO.Path]::GetFileNameWithoutExtension($_.Name)
         $applied -notcontains $migrationId
-    }
+    })
 
 if (-not $pending) {
     Write-Host "No pending instruction migrations."

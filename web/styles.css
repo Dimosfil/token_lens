@@ -69,6 +69,23 @@ button {
   cursor: pointer;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.auto-status {
+  color: var(--muted);
+  font-size: 12px;
+  min-width: 170px;
+  text-align: right;
+}
+
+.auto-status.is-error {
+  color: var(--accent-2);
+}
+
 main {
   max-width: 1280px;
   margin: 0 auto;

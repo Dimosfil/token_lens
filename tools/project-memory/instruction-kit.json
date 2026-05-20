@@ -1,5 +1,5 @@
 {
-  "instruction_kit_version": "2026.05.19.8",
+  "instruction_kit_version": "2026.05.19.9",
   "source": "D:\\AI\\general-instructions",
   "installed_at": "2026-05-19T23:11:04+03:00",
   "update_check": {
@@ -41,7 +41,8 @@
     "2026.05.19.5__keep_progress_updates_phase_level",
     "2026.05.19.6__tighten_project_study_and_nested_scope",
     "2026.05.19.7__protect_private_local_app_data",
-    "2026.05.19.8__optimize_total_live_context"
+    "2026.05.19.8__optimize_total_live_context",
+    "2026.05.19.9__skip_startup_for_greetings"
   ],
   "copied_files": [
     "AGENTS.md",
@@ -55,5 +56,6 @@
     "tools/select-git-commit-languages.ps1",
     "tools/check-instruction-kit-updates.ps1",
     ".gitignore"
-  ]
+  ],
+  "last_update_check_at": "2026-05-20T07:54:55+03:00"
 }

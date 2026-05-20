@@ -1,5 +1,5 @@
 param(
-    [int]$MaxLines = 160,
+    [int]$MaxLines = 80,
     [switch]$ConfigureGitCommitLanguages
 )
 
@@ -169,7 +169,7 @@ if (Test-Path -LiteralPath $summaryDir) {
         Sort-Object LastWriteTime -Descending |
         Select-Object -First 1
     if ($latestSummary) {
-        Write-SmallFile -Path $latestSummary.FullName -Title "Latest Summary" -Limit $MaxLines
+        Write-SmallFile -Path $latestSummary.FullName -Title "Latest Summary" -Limit ([Math]::Min($MaxLines, 80))
     }
 }
 
@@ -185,7 +185,7 @@ if (Test-Path -LiteralPath "tools/AGENT_RUNBOOK.md") {
     Write-Host ""
     Write-Host "== Runbook Command Hints =="
     Select-String -Path "tools/AGENT_RUNBOOK.md" -Pattern "```|Install|Run|Test|Build|Smoke|Logs|powershell|npm|pnpm|yarn|dotnet|pytest|cargo|go test" -CaseSensitive:$false |
-        Select-Object -First 80 |
+        Select-Object -First 60 |
         ForEach-Object { $_.Line }
 }
 

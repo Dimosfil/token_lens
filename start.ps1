@@ -1,3 +1,7 @@
+param(
+  [switch]$Restart
+)
+
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -7,10 +11,18 @@ New-Item -ItemType Directory -Force -Path (Join-Path $root "data") | Out-Null
 
 if (Test-Path $pidFile) {
   $existingPid = Get-Content $pidFile -ErrorAction SilentlyContinue
-  if ($existingPid -and (Get-Process -Id $existingPid -ErrorAction SilentlyContinue)) {
-    Write-Host "Token Lens already running. PID: $existingPid"
-    Write-Host "URL: http://127.0.0.1:8765"
-    exit 0
+  $existingProcess = if ($existingPid) { Get-Process -Id $existingPid -ErrorAction SilentlyContinue } else { $null }
+  if ($existingProcess) {
+    $serverFile = Join-Path $root "app\server.py"
+    $serverChanged = (Get-Item $serverFile).LastWriteTime -gt $existingProcess.StartTime
+    if (-not $Restart -and -not $serverChanged) {
+      Write-Host "Token Lens already running. PID: $existingPid"
+      Write-Host "URL: http://127.0.0.1:8765"
+      exit 0
+    }
+
+    Stop-Process -Id $existingPid
+    [void]$existingProcess.WaitForExit(5000)
   }
 }
 
