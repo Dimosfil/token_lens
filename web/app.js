@@ -89,6 +89,7 @@ function renderTasks(rows) {
       <td>${row.models}</td>
       <td>${row.statuses}</td>
       <td>${number(row.model_calls)}</td>
+      <td>${number(row.total_tokens_per_call)}</td>
       <td>${number(row.total_tokens)}</td>
       <td>${number(row.input_tokens)}</td>
       <td>${number(row.cached_input_tokens)}</td>
@@ -121,6 +122,26 @@ function renderModels(rows) {
   select.value = current;
 }
 
+function renderModelAverages(rows) {
+  const el = document.getElementById("modelAverages");
+  el.innerHTML = rows.map(row => `
+    <tr>
+      <td>${time(row.finished_at)}</td>
+      <td class="thread" title="${row.model}">${row.model}</td>
+      <td>${row.model}</td>
+      <td>${row.statuses}</td>
+      <td>1</td>
+      <td>${number(row.total_tokens_per_call)}</td>
+      <td>${number(row.avg_total_tokens)}</td>
+      <td>${number(row.avg_input_tokens)}</td>
+      <td>${number(row.avg_cached_input_tokens)}</td>
+      <td>${number(row.avg_non_cached_input_tokens)}</td>
+      <td>${number(row.avg_output_tokens)}</td>
+      <td>${number(row.avg_reasoning_output_tokens)}</td>
+    </tr>
+  `).join("");
+}
+
 async function refresh(importFirst = false) {
   if (refreshPromise) return refreshPromise;
 
@@ -140,6 +161,7 @@ async function refreshNow(importFirst = false) {
   renderTasks(dashboard.tasks);
   renderTop(dashboard.summary.top_turns);
   renderModels(dashboard.models);
+  renderModelAverages(dashboard.models);
   dataVersion = dashboard.state.version;
   setAutoStatus(`Updated ${new Date().toLocaleTimeString("ru-RU")}`);
 }

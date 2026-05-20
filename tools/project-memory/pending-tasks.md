@@ -14,6 +14,27 @@ generated outputs, secrets, credentials, or private production data.
 
 ## Tasks
 
+### Average Model Usage Table
+
+Goal: add a separate UI table with average token usage per model.
+
+Planned changes:
+
+- [x] Inspect the existing models API and dashboard rendering.
+- [x] Add average usage fields to the model summary data.
+- [x] Render a dedicated average-by-model table in the web UI.
+- [x] Verify Python and JavaScript syntax.
+
+Risks or dependencies:
+
+- [x] Keep the existing model filter behavior intact.
+- [x] Avoid changing the analytics database schema for a derived summary.
+
+Verification:
+
+- [x] `python -m compileall app`
+- [x] `node --check web\app.js`
+
 ### Auto Refresh Web Data
 
 Goal: refresh the web UI automatically when imported analytics data changes.

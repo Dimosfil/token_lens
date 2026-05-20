@@ -167,6 +167,7 @@ class AnalyticsHandler(BaseHTTPRequestHandler):
                    sum(output_tokens) as output_tokens,
                    sum(reasoning_output_tokens) as reasoning_output_tokens,
                    sum(total_tokens) as total_tokens,
+                   cast(round(sum(total_tokens) * 1.0 / count(*), 0) as integer) as total_tokens_per_call,
                    sum(estimated_cost) as estimated_cost
             from turns
             group by thread_id, turn_id
@@ -179,7 +180,18 @@ class AnalyticsHandler(BaseHTTPRequestHandler):
     def models(self, con):
         return rows_to_dicts(con.execute(
             """
-            select model, count(*) as turns, sum(total_tokens) as total_tokens
+            select model,
+                   max(ts_iso) as finished_at,
+                   count(*) as turns,
+                   group_concat(distinct status) as statuses,
+                   sum(total_tokens) as total_tokens,
+                   cast(round(avg(total_tokens), 0) as integer) as avg_total_tokens,
+                   cast(round(avg(total_tokens), 0) as integer) as total_tokens_per_call,
+                   cast(round(avg(input_tokens), 0) as integer) as avg_input_tokens,
+                   cast(round(avg(cached_input_tokens), 0) as integer) as avg_cached_input_tokens,
+                   cast(round(avg(non_cached_input_tokens), 0) as integer) as avg_non_cached_input_tokens,
+                   cast(round(avg(output_tokens), 0) as integer) as avg_output_tokens,
+                   cast(round(avg(reasoning_output_tokens), 0) as integer) as avg_reasoning_output_tokens
             from turns
             group by model
             order by total_tokens desc
