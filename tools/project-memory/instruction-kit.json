@@ -1,5 +1,5 @@
 ﻿{
-    "instruction_kit_version":  "2026.05.20.5",
+    "instruction_kit_version":  "2026.05.20.6",
     "source":  "D:\\AI\\general-instructions",
     "installed_at":  "2026-05-19T23:11:04+03:00",
     "update_check":  {
@@ -64,7 +64,8 @@
                                "2026.05.20.2__add_task_manager_lifecycle_test_command",
                                "2026.05.20.3__analyze_bug_evidence_before_fixing",
                                "2026.05.20.4__require_executable_sprint_plan_contract",
-                               "2026.05.20.5__add_project_system_language_preferences"
+                               "2026.05.20.5__add_project_system_language_preferences",
+                               "2026.05.20.6__add_gi_pull_command"
                            ],
-    "last_update_check_at":  "2026-05-20T12:45:48+03:00"
+    "last_update_check_at":  "2026-05-20T18:06:59+03:00"
 }

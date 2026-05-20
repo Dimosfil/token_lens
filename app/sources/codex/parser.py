@@ -32,6 +32,56 @@ def estimate_cost(row: dict, prices: dict) -> float:
     ) / 1_000_000
 
 
+def build_turn_row(
+    *,
+    source_log_id: int,
+    response_id: str | None,
+    status: str,
+    ts: int,
+    thread_id: str,
+    thread_names: dict[str, str],
+    turn_id: str,
+    submission_id: str | None,
+    model: str,
+    reasoning_effort: str | None,
+    input_tokens: int,
+    cached_input_tokens: int,
+    output_tokens: int,
+    reasoning_output_tokens: int,
+    total_tokens: int,
+    prices: dict,
+    non_cached_input_tokens: int | None = None,
+) -> dict:
+    dt = datetime.fromtimestamp(ts, timezone.utc)
+    row = {
+        "source_log_id": source_log_id,
+        "response_id": response_id,
+        "status": status,
+        "ts": ts,
+        "ts_iso": dt.isoformat(),
+        "day": dt.date().isoformat(),
+        "thread_id": thread_id,
+        "thread_name": thread_names.get(thread_id),
+        "turn_id": turn_id,
+        "submission_id": submission_id,
+        "model": model,
+        "reasoning_effort": reasoning_effort,
+        "input_tokens": input_tokens,
+        "cached_input_tokens": cached_input_tokens,
+        "non_cached_input_tokens": (
+            non_cached_input_tokens
+            if non_cached_input_tokens is not None
+            else max(input_tokens - cached_input_tokens, 0)
+        ),
+        "output_tokens": output_tokens,
+        "reasoning_output_tokens": reasoning_output_tokens,
+        "total_tokens": total_tokens,
+    }
+    row["estimated_cost"] = estimate_cost(row, prices)
+    row["imported_at"] = datetime.now(timezone.utc).isoformat()
+    return row
+
+
 def parse_usage_row(
     source_log_id: int,
     ts: int,
@@ -53,30 +103,31 @@ def parse_usage_row(
     if not resolved_thread_id or not turn_id or not model:
         return None
 
-    dt = datetime.fromtimestamp(ts, timezone.utc)
-    row = {
-        "source_log_id": source_log_id,
-        "response_id": None,
-        "status": "completed",
-        "ts": ts,
-        "ts_iso": dt.isoformat(),
-        "day": dt.date().isoformat(),
-        "thread_id": resolved_thread_id,
-        "thread_name": thread_names.get(resolved_thread_id),
-        "turn_id": turn_id,
-        "submission_id": first_match(SUBMISSION_RE, body),
-        "model": model,
-        "reasoning_effort": first_match(EFFORT_RE, body),
-        "input_tokens": token_pairs.get("input_tokens", 0),
-        "cached_input_tokens": token_pairs.get("cached_input_tokens", 0),
-        "non_cached_input_tokens": token_pairs.get("non_cached_input_tokens", 0),
-        "output_tokens": token_pairs.get("output_tokens", 0),
-        "reasoning_output_tokens": token_pairs.get("reasoning_output_tokens", 0),
-        "total_tokens": token_pairs.get("total_tokens", 0),
-    }
-    row["estimated_cost"] = estimate_cost(row, prices)
-    row["imported_at"] = datetime.now(timezone.utc).isoformat()
-    return row
+    input_tokens = token_pairs.get("input_tokens", 0)
+    cached_input_tokens = token_pairs.get("cached_input_tokens", 0)
+    non_cached_input_tokens = token_pairs.get("non_cached_input_tokens")
+    if non_cached_input_tokens is not None:
+        cached_input_tokens = max(input_tokens - non_cached_input_tokens, 0)
+
+    return build_turn_row(
+        source_log_id=source_log_id,
+        response_id=None,
+        status="completed",
+        ts=ts,
+        thread_id=resolved_thread_id,
+        thread_names=thread_names,
+        turn_id=turn_id,
+        submission_id=first_match(SUBMISSION_RE, body),
+        model=model,
+        reasoning_effort=first_match(EFFORT_RE, body),
+        input_tokens=input_tokens,
+        cached_input_tokens=cached_input_tokens,
+        non_cached_input_tokens=non_cached_input_tokens,
+        output_tokens=token_pairs.get("output_tokens", 0),
+        reasoning_output_tokens=token_pairs.get("reasoning_output_tokens", 0),
+        total_tokens=token_pairs.get("total_tokens", 0),
+        prices=prices,
+    )
 
 
 def parse_response_event(
@@ -115,27 +166,22 @@ def parse_response_event(
     reasoning_tokens = int(output_details.get("reasoning_tokens") or 0)
     total_tokens = int(usage.get("total_tokens") or (input_tokens + output_tokens))
 
-    dt = datetime.fromtimestamp(ts, timezone.utc)
-    row = {
-        "source_log_id": source_log_id,
-        "response_id": response.get("id"),
-        "status": response.get("status") or event_type,
-        "ts": ts,
-        "ts_iso": dt.isoformat(),
-        "day": dt.date().isoformat(),
-        "thread_id": resolved_thread_id,
-        "thread_name": thread_names.get(resolved_thread_id),
-        "turn_id": turn_id,
-        "submission_id": first_match(SUBMISSION_RE, body),
-        "model": model,
-        "reasoning_effort": first_match(EFFORT_RE, body),
-        "input_tokens": input_tokens,
-        "cached_input_tokens": cached_tokens,
-        "non_cached_input_tokens": max(input_tokens - cached_tokens, 0),
-        "output_tokens": output_tokens,
-        "reasoning_output_tokens": reasoning_tokens,
-        "total_tokens": total_tokens,
-    }
-    row["estimated_cost"] = estimate_cost(row, prices)
-    row["imported_at"] = datetime.now(timezone.utc).isoformat()
-    return row
+    return build_turn_row(
+        source_log_id=source_log_id,
+        response_id=response.get("id"),
+        status=response.get("status") or event_type,
+        ts=ts,
+        thread_id=resolved_thread_id,
+        thread_names=thread_names,
+        turn_id=turn_id,
+        submission_id=first_match(SUBMISSION_RE, body),
+        model=model,
+        reasoning_effort=first_match(EFFORT_RE, body),
+        input_tokens=input_tokens,
+        cached_input_tokens=cached_tokens,
+        non_cached_input_tokens=None,
+        output_tokens=output_tokens,
+        reasoning_output_tokens=reasoning_tokens,
+        total_tokens=total_tokens,
+        prices=prices,
+    )

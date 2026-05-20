@@ -167,6 +167,15 @@ or:
   git commit in the current project in chat. Include commit metadata, changed
   files, compact stats, inferred purpose, and notable risks or checks. Do not
   print a full diff, create a summary file, commit, or push for this command.
+- Treat `gi пул`, `gi pull`, and `ги пул` as explicit requests to fetch and pull
+  the current branch from its configured upstream. Before pulling, inspect
+  `git status --short`, the current branch, and upstream configuration. Pull
+  only the current branch; do not switch branches, rewrite history, rebase, or
+  pull from another remote unless the user explicitly asks. If local changes
+  make the pull unsafe, unresolved conflicts already exist, the project is not a
+  git repository, or no upstream is configured, stop and explain the blocker.
+  If conflicts appear during pull, resolve only obvious, low-risk conflicts
+  where intent is clear and user changes are preserved; otherwise stop and ask.
 - Treat `gi тест-план` and `gi test plan` as requests to inspect local project
   test commands and produce a compact verification plan for the current feature,
   bug fix, or release check. Plan first; run checks only when the user asks or

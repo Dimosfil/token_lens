@@ -14,6 +14,30 @@ generated outputs, secrets, credentials, or private production data.
 
 ## Tasks
 
+### Dashboard Time Range And Chart Modes
+
+Goal: add global time-window controls and a chart mode switch for token dynamics.
+
+Planned changes:
+
+- [x] Add task plan and inspect current dashboard query/render flow.
+- [x] Add backend time range and bucket filtering for dashboard summaries,
+      charts, task/model tables, and top lists.
+- [x] Add a second chart mode for average total tokens per model call.
+- [x] Add UI controls for time range and grouping granularity.
+- [x] Verify Python and JavaScript syntax.
+
+Risks or dependencies:
+
+- [x] Preserve existing response shapes where possible for current renderers.
+- [x] Keep model filtering behavior compatible with the existing calls table.
+
+Verification:
+
+- [x] `python -m compileall app`
+- [x] JavaScript syntax checks for changed web modules.
+- [x] API smoke checks for dashboard, state, and bad-limit fallback.
+
 ### Modular Refactor Sprint
 
 Goal: move Token Lens from prototype layout to a clearer modular backend and
@@ -40,6 +64,38 @@ Verification:
 - [x] `python -m compileall app`
 - [x] JavaScript syntax checks for changed web modules.
 - [x] `git diff --check`
+
+### Refactor Follow-Up: Stability And Extensibility
+
+Goal: make the new modular boundaries safer to change and cheaper to extend.
+
+Planned changes:
+
+- [x] Rework browser auto-refresh to poll `GET /api/state` and reload dashboard
+      data only when the state version changes.
+- [x] Add API contract or smoke tests around current response shapes using
+      project-owned sample data.
+- [x] Harden API query parsing, especially invalid or out-of-range `limit`
+      values.
+- [x] Add background import observability for last run time, stats, status, and
+      captured error summaries.
+- [x] Reduce parser row-building duplication after parser fixtures are in
+      place.
+- [x] Introduce a source adapter interface when a second source or importer
+      cleanup makes that abstraction useful.
+
+Risks or dependencies:
+
+- [x] Preserve existing API response contracts for the current web UI.
+- [ ] Keep verification on sample or project-owned data unless the user gives a
+      concrete external path/action.
+
+Verification:
+
+- [x] `python -m compileall app`
+- [x] JavaScript syntax checks for changed web modules.
+- [x] API smoke checks for changed endpoints.
+- [x] `python -m unittest tests.test_api_contracts`
 
 ### Average Model Usage Table
 

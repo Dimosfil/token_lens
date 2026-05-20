@@ -10,6 +10,18 @@ from app.static_server import serve_static
 from app.storage import queries
 
 
+def first(query: dict, key: str, default: str = "") -> str:
+    return query.get(key, [default])[0]
+
+
+def parse_limit(query: dict, default: int = 100, maximum: int = 500) -> int:
+    try:
+        limit = int(first(query, "limit", str(default)))
+    except ValueError:
+        limit = default
+    return min(max(limit, 1), maximum)
+
+
 class AnalyticsHandler(BaseHTTPRequestHandler):
     server_version = "TokenLens/0.1"
 
@@ -29,33 +41,52 @@ class AnalyticsHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/refresh":
             stats = run_import()
-            payload = analytics_service.dashboard(query.get("model", [""])[0])
+            payload = analytics_service.dashboard(
+                first(query, "model"),
+                first(query, "range"),
+                first(query, "bucket", "day"),
+            )
             payload["import_stats"] = stats.__dict__
             send_json(self, payload)
             return
         self.send_error(404)
 
     def handle_api(self, path: str, query: dict):
-        if path == "/api/summary":
-            send_json(self, analytics_service.summary())
+        range_key = first(query, "range")
+        bucket = first(query, "bucket", "day")
+        if path == "/api/dashboard":
+            send_json(self, analytics_service.dashboard(
+                first(query, "model"),
+                range_key,
+                bucket,
+            ))
+        elif path == "/api/summary":
+            send_json(self, analytics_service.summary(range_key))
         elif path == "/api/state":
             send_json(self, analytics_service.data_state())
+        elif path == "/api/import-status":
+            send_json(self, analytics_service.background_import_status())
         elif path == "/api/daily":
-            send_json(self, analytics_service.daily())
+            send_json(self, analytics_service.daily(range_key, bucket))
         elif path == "/api/turns":
-            limit = min(int(query.get("limit", ["100"])[0]), 500)
-            model = query.get("model", [""])[0]
-            send_json(self, analytics_service.turns(limit, model))
+            limit = parse_limit(query)
+            model = first(query, "model")
+            send_json(self, analytics_service.turns(limit, model, range_key))
         elif path == "/api/tasks":
-            limit = min(int(query.get("limit", ["100"])[0]), 500)
-            send_json(self, analytics_service.tasks(limit))
+            limit = parse_limit(query)
+            send_json(self, analytics_service.tasks(limit, range_key))
         elif path == "/api/models":
-            send_json(self, analytics_service.models())
+            send_json(self, analytics_service.models(range_key))
         else:
             self.send_error(404)
 
     def dashboard(self, con, query: dict):
-        return queries.dashboard(con, query.get("model", [""])[0])
+        return queries.dashboard(
+            con,
+            first(query, "model"),
+            first(query, "range"),
+            first(query, "bucket", "day"),
+        )
 
     def summary(self, con):
         return queries.summary(con)

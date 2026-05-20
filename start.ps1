@@ -13,9 +13,9 @@ if (Test-Path $pidFile) {
   $existingPid = Get-Content $pidFile -ErrorAction SilentlyContinue
   $existingProcess = if ($existingPid) { Get-Process -Id $existingPid -ErrorAction SilentlyContinue } else { $null }
   if ($existingProcess) {
-    $serverFile = Join-Path $root "app\server.py"
-    $serverChanged = (Get-Item $serverFile).LastWriteTime -gt $existingProcess.StartTime
-    if (-not $Restart -and -not $serverChanged) {
+    $appFiles = Get-ChildItem -Path (Join-Path $root "app") -Recurse -Filter "*.py"
+    $appChanged = @($appFiles | Where-Object { $_.LastWriteTime -gt $existingProcess.StartTime }).Count -gt 0
+    if (-not $Restart -and -not $appChanged) {
       Write-Host "Token Lens already running. PID: $existingPid"
       Write-Host "URL: http://127.0.0.1:8765"
       exit 0

@@ -35,7 +35,8 @@ create index if not exists idx_turns_thread on turns(thread_id);
 
 
 def init_db(db_path: str) -> None:
-    with connect(db_path) as con:
+    con = connect(db_path)
+    try:
         con.executescript(SCHEMA)
         columns = {row["name"] for row in con.execute("pragma table_info(turns)").fetchall()}
         if "response_id" not in columns:
@@ -43,3 +44,6 @@ def init_db(db_path: str) -> None:
             con.execute("create unique index if not exists idx_turns_response_id on turns(response_id)")
         if "status" not in columns:
             con.execute("alter table turns add column status text not null default 'completed'")
+        con.commit()
+    finally:
+        con.close()

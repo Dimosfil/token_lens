@@ -39,6 +39,15 @@ Status: active in WorkNest manager
       `GET /agent-intake/raw/{id}`,
       `POST /agent-intake/raw/{id}/start`, and
       `POST /agent-intake/raw/{id}/complete`.
+- [x] `gi manager test` re-run on 2026-05-20 created disposable no-op task
+      `2026-05-20T15-07-58-962Z_unknown-agent_89da78c9-4709-44d3-aa7f-ca1055410951`,
+      then verified read, start, complete, and final `done` readback.
+- [!] After changing manager URL to `http://127.0.0.1:5173/`, `gi manager test`
+      on disposable task
+      `2026-05-20T15-10-04-390Z_unknown-agent_3c3b71eb-34ac-407d-8492-37700d1383d8`
+      confirmed `/health` and raw create, but lifecycle `start` and `complete`
+      returned `404 Not Found`; final readback did not expose expected lifecycle
+      status.
 - [x] `gi start sprint` created and started the refactor sprint intake with id
       `2026-05-20T08-26-23-898Z_unknown-agent_e640e5ac-96d3-49ef-8338-d1fcfcc6925b`.
 
@@ -92,3 +101,24 @@ API response contracts.
 - [x] JavaScript syntax check for changed web modules.
 - [x] Analytics service smoke checks for dashboard and data-state payload shapes.
 - [x] `git diff --check`
+
+## Next Refactor Steps
+
+The prototype-to-modular migration is complete. The next useful refactor layer is
+stability and extensibility around the new module boundaries.
+
+- [x] Rework auto-refresh so browser polling uses `GET /api/state` first and
+      only reloads dashboard data when the state version changes. Keep manual
+      refresh/import behavior explicit through `POST /api/refresh`.
+- [x] Add API contract or smoke tests using project-owned sample data for
+      `/api/summary`, `/api/state`, `/api/daily`, `/api/turns`, `/api/tasks`,
+      `/api/models`, and refresh payload shapes.
+- [x] Harden API query parsing, especially `limit` handling, with safe fallback,
+      positive integer validation, and the existing max-limit clamp.
+- [x] Add import observability for background imports: last run time, stats,
+      status, and captured error summary instead of silently swallowing failures.
+- [x] Reduce parser row-building duplication between legacy token usage rows and
+      response events after parser fixtures are in place.
+- [x] Introduce a source adapter interface only when the next non-Codex source
+      or importer cleanup needs it, keeping the current Codex adapter behavior
+      unchanged.

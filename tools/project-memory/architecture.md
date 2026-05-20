@@ -5,6 +5,7 @@ token-lens/
     api/              # HTTP handler, response helpers, server bootstrap
     core/             # configuration, paths, shared types
     services/         # import orchestration, analytics facade, background work
+    sources/base.py   # source adapter protocol
     sources/codex/    # read-only Codex source adapter, parser, thread names
     storage/          # SQLite connection, schema, repositories, analytics queries
     config.py         # compatibility shim for app.core.config
@@ -50,6 +51,8 @@ for summaries, daily trends, model calls, and grouped tasks.
 - `app/storage/schema.py`: analytics schema and lightweight schema updates.
 - `app/storage/repositories.py`: write operations for imported rows.
 - `app/storage/queries.py`: summary, daily, turn, task, model, and state queries.
+- `app/sources/base.py`: protocol for usage sources.
+- `app/sources/codex/adapter.py`: Codex usage source implementation.
 - `app/sources/codex/parser.py`: parses Codex token usage and response events.
 - `app/sources/codex/reader.py`: reads configured Codex log SQLite rows read-only.
 - `app/sources/codex/thread_names.py`: loads thread display names.
@@ -77,6 +80,7 @@ They import from the modular packages so existing commands such as
 
 - `GET /api/summary`
 - `GET /api/state`
+- `GET /api/import-status`
 - `GET /api/daily`
 - `GET /api/turns?limit=100&model=...`
 - `GET /api/tasks?limit=100`
@@ -87,15 +91,17 @@ They import from the modular packages so existing commands such as
 ## Data Flow
 
 1. `app.services.import_service` reads configured Codex log sources read-only
-   through `app.sources.codex.reader`.
+   through the `UsageSource` protocol and current `CodexUsageSource`.
 2. `app.sources.codex.parser` extracts response and token-usage metadata, not
    prompt or response bodies.
 3. `app.storage.repositories` writes parsed usage rows into the `turns` table in
    `data/analytics.sqlite`.
-4. `app.services.analytics_service` exposes query results from
+4. `app.services.background` records import status, timing, stats, and error
+   summaries for API observability.
+5. `app.services.analytics_service` exposes query results from
    `app.storage.queries`.
-5. `app.api.handlers` serves JSON API responses and static web files.
-6. `web/app.js` and `web/js/*` render the returned JSON in the browser.
+6. `app.api.handlers` serves JSON API responses and static web files.
+7. `web/app.js` and `web/js/*` render the returned JSON in the browser.
 
 ## Boundaries
 

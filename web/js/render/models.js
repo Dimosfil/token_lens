@@ -3,8 +3,8 @@ import { number, time } from "../format.js";
 export function renderModels(rows) {
   const select = document.getElementById("modelFilter");
   const current = select.value;
-  select.innerHTML = `<option value="">Р’СЃРµ РјРѕРґРµР»Рё</option>` + rows.map(row => (
-    `<option value="${row.model}">${row.model} В· ${number(row.total_tokens)}</option>`
+  select.innerHTML = `<option value="">Все модели</option>` + rows.map(row => (
+    `<option value="${row.model}">${row.model} · ${number(row.total_tokens)}</option>`
   )).join("");
   select.value = current;
 }

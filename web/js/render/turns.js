@@ -24,7 +24,7 @@ export function renderTop(rows) {
     <div class="top-item">
       <div>
         <strong>${row.thread_name || row.thread_id}</strong><br>
-        <small>${time(row.ts_iso)} В· ${row.model} В· ${row.response_id || row.turn_id}</small>
+        <small>${time(row.ts_iso)} · ${row.model} · ${row.response_id || row.turn_id}</small>
       </div>
       <strong>${number(row.total_tokens)}</strong>
     </div>

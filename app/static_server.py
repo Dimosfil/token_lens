@@ -8,6 +8,12 @@ from app.core.config import ROOT
 
 
 STATIC_DIR = ROOT / "web"
+CONTENT_TYPES = {
+    ".js": "text/javascript; charset=utf-8",
+    ".mjs": "text/javascript; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".html": "text/html; charset=utf-8",
+}
 
 
 def serve_static(handler: BaseHTTPRequestHandler, path: str) -> None:
@@ -17,7 +23,10 @@ def serve_static(handler: BaseHTTPRequestHandler, path: str) -> None:
     if not str(candidate).startswith(str(STATIC_DIR.resolve())) or not candidate.exists():
         handler.send_error(404)
         return
-    content_type = mimetypes.guess_type(str(candidate))[0] or "application/octet-stream"
+    content_type = CONTENT_TYPES.get(
+        candidate.suffix.lower(),
+        mimetypes.guess_type(str(candidate))[0] or "application/octet-stream",
+    )
     data = candidate.read_bytes()
     handler.send_response(200)
     handler.send_header("Content-Type", content_type)

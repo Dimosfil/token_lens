@@ -77,6 +77,7 @@ app/
   api/              HTTP handler, JSON responses, server bootstrap
   core/             config, paths, shared types
   services/         import orchestration, analytics facade, background jobs
+  sources/base.py   source adapter protocol
   sources/codex/    read-only Codex source adapter and parsers
   storage/          SQLite connection, schema, repositories, analytics queries
   config.py         compatibility shim
@@ -88,6 +89,8 @@ web/
   js/               static ES modules for API, formatting, renderers, status
   index.html
   styles.css
+tests/
+  test_api_contracts.py  API/query shape and parser smoke tests
 ```
 
 The compatibility shims keep existing commands working while the implementation
