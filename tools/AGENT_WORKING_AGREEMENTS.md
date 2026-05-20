@@ -208,6 +208,14 @@ or:
   rejection, or explicit intake-only documentation. Do not create replacement
   one-task plans to work around raw task receipts that cannot be advanced
   through lifecycle endpoints.
+- Treat `gi manager test`, `gi tm test`, `gi манагер тест`,
+  `gi менеджер тест`, and equivalent wording as requests to test the currently
+  configured task manager end to end. Verify create/load task, next-task or task
+  lookup, status update or start, completion, and final readback before doing
+  real sprint work. Use a clearly labeled disposable no-op task that requires no
+  repository edits, secret access, destructive action, or cross-project
+  filesystem access. Stop at the first contract gap, leave the task in the
+  safest available state, and report the missing lifecycle operation.
 
 ## Verification
 

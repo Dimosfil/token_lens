@@ -160,6 +160,13 @@ Inspect logs:
   PowerShell.
 - For verification, count or query HTML elements programmatically instead of
   printing the whole HTML document.
+- After implementing a frontend, backend, API, or full-stack feature, restart
+  the affected dev server or backend process when local run instructions provide
+  a restart command or hot reload is uncertain. Refresh the browser, client, or
+  API caller before verification. Probe changed API endpoints or route contracts
+  after restart when they feed the UI. Do not assume updated HTML or JavaScript
+  means the backend process has loaded matching code. Mention any restart or
+  refresh that was skipped and why.
 - Do not produce broad artifacts, such as zip archives, or run full check
   matrices unless the user explicitly asks for that scope.
 - Final responses should summarize only the changes, checks, and current status;
