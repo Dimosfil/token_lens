@@ -1,12 +1,47 @@
 import { number, time } from "../format.js";
 
+function value(value) {
+  return value || "";
+}
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, char => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "\"": "&quot;",
+    "'": "&#39;",
+  }[char]));
+}
+
+function looksLikeId(value) {
+  return /^[a-z0-9_-]{12,}$/i.test(String(value || ""));
+}
+
+function taskName(row) {
+  const name = value(row.thread_name).trim();
+  if (name && !looksLikeId(name)) return name;
+  return `Задача ${time(row.ts_iso)}`;
+}
+
+function taskDetails(row) {
+  return [
+    `Thread ID: ${value(row.thread_id)}`,
+    `Turn ID: ${value(row.turn_id)}`,
+    `Response ID: ${value(row.response_id)}`,
+    `Submission ID: ${value(row.submission_id)}`,
+    `Source log: ${value(row.source_log_id)}`,
+  ].filter(line => !line.endsWith(": ")).join("\n");
+}
+
 export function renderTurns(rows) {
   const el = document.getElementById("turns");
   el.innerHTML = rows.map(row => `
     <tr>
       <td>${time(row.ts_iso)}</td>
-      <td class="thread" title="${row.thread_id}">${row.thread_name || row.thread_id}</td>
+      <td class="task-cell" title="${escapeHtml(taskDetails(row))}">${escapeHtml(taskName(row))}</td>
       <td>${row.model}</td>
+      <td>${value(row.reasoning_effort)}</td>
       <td>${row.status}</td>
       <td>${number(row.total_tokens)}</td>
       <td>${number(row.input_tokens)}</td>

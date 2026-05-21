@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
 import json
+from pathlib import Path
 import threading
 import time
 import tkinter as tk
@@ -11,9 +13,13 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 
+ROOT = Path(__file__).resolve().parents[1]
+LOGO_PATH = ROOT / "Logo.png"
+ICON_PATH = ROOT / "Logo.ico"
 DEFAULT_BASE_URL = "http://127.0.0.1:8765"
 DEFAULT_LIMIT = 4
 DEFAULT_REFRESH_MS = 5000
+APP_USER_MODEL_ID = "TokenLens.Mini"
 
 
 def parse_args() -> argparse.Namespace:
@@ -83,6 +89,7 @@ class MiniClientApp:
 
     def _build_ui(self):
         self.root.title("Token Lens Mini")
+        self._set_window_icon()
         self.root.minsize(520, 220)
         self.root.geometry("640x260")
 
@@ -119,6 +126,21 @@ class MiniClientApp:
         self.table.column("per_call", width=110, minwidth=95, anchor=tk.E, stretch=False)
         self.table.column("total", width=110, minwidth=90, anchor=tk.E, stretch=False)
         self.table.pack(fill=tk.BOTH, expand=True)
+
+    def _set_window_icon(self):
+        if ICON_PATH.exists():
+            try:
+                self.root.iconbitmap(default=str(ICON_PATH))
+                return
+            except tk.TclError:
+                pass
+        if not LOGO_PATH.exists():
+            return
+        try:
+            self.logo_icon = tk.PhotoImage(file=str(LOGO_PATH))
+            self.root.iconphoto(True, self.logo_icon)
+        except tk.TclError:
+            self.logo_icon = None
 
     def close(self):
         self.closed = True
@@ -234,6 +256,10 @@ class MiniClientApp:
 
 def main():
     args = parse_args()
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_USER_MODEL_ID)
+    except (AttributeError, OSError):
+        pass
     root = tk.Tk()
     app = MiniClientApp(
         root,

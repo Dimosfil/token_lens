@@ -14,13 +14,13 @@
 Token Lens читает Codex logs read-only из:
 
 ```text
-C:\Users\Fil-Dom\.codex\logs_2.sqlite
+.codex\logs_2.sqlite
 ```
 
 и импортирует только usage metadata в свою БД:
 
 ```text
-token-lens\data\analytics.sqlite
+data\analytics.sqlite
 ```
 
 ## Запуск

@@ -4,13 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Token Lens</title>
+  <link rel="icon" type="image/png" href="/Logo.png">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
   <header>
-    <div>
-      <h1>Token Lens</h1>
-      <p>Токены по одному запросу, thread и дням</p>
+    <div class="brand">
+      <img class="brand-logo" src="/Logo.png" alt="" width="48" height="48">
+      <div>
+        <h1>Token Lens</h1>
+        <p>Токены по одному запросу, thread и дням</p>
+      </div>
     </div>
     <div class="header-actions">
       <select id="rangeFilter" title="Период данных">
@@ -49,21 +53,22 @@
         <h2>Средний расход по моделям</h2>
       </div>
       <div class="table-wrap">
-        <table>
+        <table data-resizable data-table-id="model-averages">
           <thead>
             <tr>
               <th>Финиш</th>
-              <th>Thread</th>
-              <th>Models</th>
+              <th>Model</th>
               <th>Status</th>
               <th>Calls</th>
               <th>Total / call</th>
-              <th>Total</th>
-              <th>Input</th>
-              <th>Cached</th>
-              <th>Non-cached</th>
-              <th>Output</th>
-              <th>Reasoning</th>
+              <th>Avg total</th>
+              <th>Avg input</th>
+              <th>Avg cached</th>
+              <th>Avg non-cached</th>
+              <th>Avg output</th>
+              <th>Avg reasoning</th>
+              <th>Total tokens</th>
+              <th>Cost</th>
             </tr>
           </thead>
           <tbody id="modelAverages"></tbody>
@@ -76,11 +81,12 @@
         <h2>Задачи целиком</h2>
       </div>
       <div class="table-wrap">
-        <table>
+        <table data-resizable data-table-id="tasks">
           <thead>
             <tr>
               <th>Финиш</th>
-              <th>Thread</th>
+              <th>Start</th>
+              <th>Проект / задача</th>
               <th>Models</th>
               <th>Status</th>
               <th>Calls</th>
@@ -106,12 +112,13 @@
         </select>
       </div>
       <div class="table-wrap">
-        <table>
+        <table data-resizable data-table-id="turns">
           <thead>
             <tr>
               <th>Время</th>
-              <th>Thread</th>
+              <th>Проект / задача</th>
               <th>Model</th>
+              <th>Effort</th>
               <th>Status</th>
               <th>Total</th>
               <th>Input</th>
@@ -132,6 +139,6 @@
     </section>
   </main>
 
-  <script type="module" src="/app.js?v=20260521-1"></script>
+  <script type="module" src="/app.js?v=20260521-2"></script>
 </body>
 </html>

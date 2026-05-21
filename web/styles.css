@@ -46,6 +46,20 @@ h2 {
   font-size: 18px;
 }
 
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.brand-logo {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  object-fit: contain;
+}
+
 p {
   color: var(--muted);
   margin-top: 4px;
@@ -192,6 +206,11 @@ main {
   outline: 0;
 }
 
+.chart[data-bucket="hour"] .bar {
+  flex-basis: 64px;
+  min-width: 64px;
+}
+
 .bar-fill {
   width: 100%;
   min-height: 2px;
@@ -283,13 +302,35 @@ main {
 }
 
 .table-wrap {
+  width: 100%;
+  max-width: 100%;
   overflow-x: auto;
+  scrollbar-gutter: stable;
+}
+
+.table-scroll-top {
+  width: 100%;
+  max-width: 100%;
+  margin-bottom: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-gutter: stable;
+}
+
+.table-scroll-spacer {
+  height: 1px;
 }
 
 table {
   width: 100%;
   border-collapse: collapse;
   font-size: 14px;
+}
+
+table[data-resizable] {
+  table-layout: fixed;
+  width: max-content;
+  min-width: 100%;
 }
 
 th,
@@ -310,14 +351,60 @@ td:nth-child(3) {
 }
 
 th {
+  position: relative;
   color: var(--muted);
   font-weight: 600;
+  user-select: none;
 }
 
 .thread {
   max-width: 320px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.task-cell {
+  max-width: 420px;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mono {
+  font-family: Consolas, "SFMono-Regular", Menlo, monospace;
+  font-size: 12px;
+}
+
+.col-resizer {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  z-index: 2;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.col-resizer::after {
+  content: "";
+  position: absolute;
+  top: 20%;
+  right: 3px;
+  width: 1px;
+  height: 60%;
+  background: transparent;
+}
+
+.col-resizer:hover::after,
+.is-resizing-table .col-resizer::after {
+  background: var(--accent);
+}
+
+.is-resizing-table {
+  cursor: col-resize;
+  user-select: none;
 }
 
 .top-list {
@@ -362,6 +449,16 @@ th {
 @media (max-width: 560px) {
   main {
     padding: 12px;
+  }
+
+  header {
+    padding: 18px 16px;
+  }
+
+  .brand-logo {
+    width: 40px;
+    height: 40px;
+    flex-basis: 40px;
   }
 
   .metrics {

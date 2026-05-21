@@ -15,9 +15,8 @@ export function renderModelAverages(rows) {
     <tr>
       <td>${time(row.finished_at)}</td>
       <td class="thread" title="${row.model}">${row.model}</td>
-      <td>${row.model}</td>
       <td>${row.statuses}</td>
-      <td>1</td>
+      <td>${number(row.turns)}</td>
       <td>${number(row.total_tokens_per_call)}</td>
       <td>${number(row.avg_total_tokens)}</td>
       <td>${number(row.avg_input_tokens)}</td>
@@ -25,6 +24,8 @@ export function renderModelAverages(rows) {
       <td>${number(row.avg_non_cached_input_tokens)}</td>
       <td>${number(row.avg_output_tokens)}</td>
       <td>${number(row.avg_reasoning_output_tokens)}</td>
+      <td>${number(row.total_tokens)}</td>
+      <td>${Number(row.estimated_cost || 0).toFixed(4)}</td>
     </tr>
   `).join("");
 }

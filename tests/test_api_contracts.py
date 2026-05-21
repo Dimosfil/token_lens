@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -14,13 +15,14 @@ from app.storage.schema import init_db
 
 
 def sample_turn(**overrides):
+    ts = int(time.time()) - 60
     row = {
         "source_log_id": 1,
         "response_id": "resp-1",
         "status": "completed",
-        "ts": 1_700_000_000,
-        "ts_iso": "2023-11-14T22:13:20+00:00",
-        "day": "2023-11-14",
+        "ts": ts,
+        "ts_iso": "2026-05-21T00:00:00+00:00",
+        "day": "2026-05-21",
         "thread_id": "thread-1",
         "thread_name": "Sample thread",
         "turn_id": "turn-1",
@@ -51,9 +53,9 @@ class ApiContractTests(unittest.TestCase):
             upsert_turn(con, sample_turn(
                 source_log_id=2,
                 response_id="resp-2",
-                ts=1_700_086_400,
-                ts_iso="2023-11-15T22:13:20+00:00",
-                day="2023-11-15",
+                ts=int(time.time()) - 30,
+                ts_iso="2026-05-21T00:00:30+00:00",
+                day="2026-05-21",
                 thread_id="thread-2",
                 thread_name="Second thread",
                 turn_id="turn-2",
@@ -100,14 +102,15 @@ class ApiContractTests(unittest.TestCase):
             "total_tokens_per_call", "estimated_cost",
         }, set(daily[0]))
         self.assertLessEqual({
-            "ts_iso", "day", "thread_id", "thread_name", "turn_id",
-            "response_id", "status", "model", "reasoning_effort",
+            "source_log_id", "ts_iso", "day", "thread_id", "thread_name",
+            "turn_id", "response_id", "submission_id", "status", "model", "reasoning_effort",
             "input_tokens", "cached_input_tokens", "non_cached_input_tokens",
             "output_tokens", "reasoning_output_tokens", "total_tokens",
             "estimated_cost",
         }, set(turns[0]))
         self.assertLessEqual({
-            "started_at", "finished_at", "thread_id", "thread_name", "turn_id",
+            "started_at", "finished_at", "first_source_log_id", "last_source_log_id",
+            "thread_id", "thread_name", "turn_id", "submission_ids", "response_ids",
             "models", "statuses", "model_calls", "input_tokens",
             "cached_input_tokens", "non_cached_input_tokens", "output_tokens",
             "reasoning_output_tokens", "total_tokens", "total_tokens_per_call",
@@ -117,7 +120,7 @@ class ApiContractTests(unittest.TestCase):
             "model", "finished_at", "turns", "statuses", "total_tokens",
             "avg_total_tokens", "total_tokens_per_call", "avg_input_tokens",
             "avg_cached_input_tokens", "avg_non_cached_input_tokens",
-            "avg_output_tokens", "avg_reasoning_output_tokens",
+            "avg_output_tokens", "avg_reasoning_output_tokens", "estimated_cost",
         }, set(models[0]))
         self.assertEqual(set(dashboard), {"state", "summary", "daily", "turns", "tasks", "models"})
 

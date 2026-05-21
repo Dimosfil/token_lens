@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 import sqlite3
 import time
 
@@ -78,6 +79,64 @@ def _trim_bucket_rows(rows: list[dict], range_key: str, bucket: str) -> list[dic
     return rows[-max_buckets:]
 
 
+def _shift_month(dt: datetime, months: int) -> datetime:
+    year = dt.year + (dt.month - 1 + months) // 12
+    month = (dt.month - 1 + months) % 12 + 1
+    return dt.replace(year=year, month=month)
+
+
+def _expected_periods(range_key: str, bucket: str) -> list[str]:
+    count = MAX_BUCKETS.get((normalize_range(range_key), bucket))
+    if not count:
+        return []
+
+    now = time.time()
+    if bucket == "hour":
+        end = datetime.fromtimestamp(now).replace(minute=0, second=0, microsecond=0)
+        return [
+            (end - timedelta(hours=offset)).strftime("%Y-%m-%d %H:00")
+            for offset in range(count - 1, -1, -1)
+        ]
+    if bucket == "day":
+        end = datetime.fromtimestamp(now, timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        return [
+            (end - timedelta(days=offset)).date().isoformat()
+            for offset in range(count - 1, -1, -1)
+        ]
+    if bucket == "month":
+        end = datetime.fromtimestamp(now, timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        return [
+            _shift_month(end, -offset).strftime("%Y-%m")
+            for offset in range(count - 1, -1, -1)
+        ]
+    return []
+
+
+def _empty_bucket_row(period: str, bucket: str) -> dict:
+    day = f"{period}-01" if bucket == "month" else period[:10]
+    return {
+        "period": period,
+        "day": day,
+        "turns": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cached_input_tokens": 0,
+        "reasoning_output_tokens": 0,
+        "total_tokens": 0,
+        "total_tokens_per_call": 0,
+        "estimated_cost": 0,
+    }
+
+
+def _fill_bucket_rows(rows: list[dict], range_key: str, bucket: str) -> list[dict]:
+    periods = _expected_periods(range_key, bucket)
+    if not periods:
+        return _trim_bucket_rows(rows, range_key, bucket)
+
+    by_period = {row["period"]: row for row in rows}
+    return [by_period.get(period, _empty_bucket_row(period, bucket)) for period in periods]
+
+
 def summary(con: sqlite3.Connection, range_key: str = ""):
     where, params = _range_clause(range_key)
     row = con.execute(
@@ -133,7 +192,7 @@ def daily(con: sqlite3.Connection, range_key: str = "", bucket: str = "day"):
         """,
         params,
     ).fetchall())
-    return _trim_bucket_rows(rows, range_key, normalized_bucket)
+    return _fill_bucket_rows(rows, range_key, normalized_bucket)
 
 
 def turns(con: sqlite3.Connection, limit: int, model: str = "", range_key: str = ""):
@@ -145,7 +204,8 @@ def turns(con: sqlite3.Connection, limit: int, model: str = "", range_key: str =
     params.append(limit)
     return rows_to_dicts(con.execute(
         f"""
-        select ts_iso, day, thread_id, thread_name, turn_id, response_id, status, model,
+        select source_log_id, ts_iso, day, thread_id, thread_name, turn_id, response_id,
+               submission_id, status, model,
                reasoning_effort, input_tokens, cached_input_tokens,
                non_cached_input_tokens, output_tokens,
                reasoning_output_tokens, total_tokens, estimated_cost
@@ -165,9 +225,13 @@ def tasks(con: sqlite3.Connection, limit: int, range_key: str = ""):
         f"""
         select min(ts_iso) as started_at,
                max(ts_iso) as finished_at,
+               min(source_log_id) as first_source_log_id,
+               max(source_log_id) as last_source_log_id,
                thread_id,
                max(thread_name) as thread_name,
                turn_id,
+               group_concat(distinct submission_id) as submission_ids,
+               group_concat(distinct response_id) as response_ids,
                group_concat(distinct model) as models,
                group_concat(distinct status) as statuses,
                count(*) as model_calls,
@@ -204,7 +268,8 @@ def models(con: sqlite3.Connection, range_key: str = ""):
                cast(round(avg(cached_input_tokens), 0) as integer) as avg_cached_input_tokens,
                cast(round(avg(non_cached_input_tokens), 0) as integer) as avg_non_cached_input_tokens,
                cast(round(avg(output_tokens), 0) as integer) as avg_output_tokens,
-               cast(round(avg(reasoning_output_tokens), 0) as integer) as avg_reasoning_output_tokens
+               cast(round(avg(reasoning_output_tokens), 0) as integer) as avg_reasoning_output_tokens,
+               sum(estimated_cost) as estimated_cost
         from turns
         {where}
         group by model

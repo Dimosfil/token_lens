@@ -5,6 +5,7 @@ import { renderModelAverages, renderModels } from "./js/render/models.js";
 import { renderTasks } from "./js/render/tasks.js";
 import { renderTop, renderTurns } from "./js/render/turns.js";
 import { setAutoStatus } from "./js/status.js";
+import { initResizableTables } from "./js/table-resize.js";
 
 
 let dataVersion = null;
@@ -67,6 +68,7 @@ function renderDashboard(dashboard) {
   renderTop(dashboard.summary.top_turns);
   renderModels(dashboard.models);
   renderModelAverages(dashboard.models);
+  initResizableTables();
 }
 
 
@@ -129,6 +131,7 @@ document.getElementById("chartMode").addEventListener("click", event => {
 });
 
 syncBucketOptions();
+initResizableTables();
 refresh(false).catch(err => {
   setAutoStatus(`Refresh error: ${err.message}`, true);
   document.body.insertAdjacentHTML("beforeend", `<pre>${err.message}</pre>`);

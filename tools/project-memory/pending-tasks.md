@@ -14,6 +14,131 @@ generated outputs, secrets, credentials, or private production data.
 
 ## Tasks
 
+### Dashboard Human Task Labels
+
+Goal: reduce visible hash/id noise in dashboard tables and keep one useful project/task identifier.
+
+Planned changes:
+
+- [x] Replace visible technical id columns with one human task/project column.
+- [x] Keep full ids available in hover details for troubleshooting.
+- [x] Verify JavaScript syntax.
+
+Risks or dependencies:
+
+- [x] Use only data already imported into the analytics database.
+- [x] Preserve API compatibility by changing renderers only.
+
+Verification:
+
+- [x] JavaScript syntax checks for changed render modules.
+
+### Dashboard Horizontal Table Scroll
+
+Goal: keep wide dashboard tables usable when source/id fields exceed the viewport.
+
+Planned changes:
+
+- [x] Make resizable tables expose a real horizontal overflow width.
+- [x] Add a synchronized top horizontal scrollbar.
+- [x] Verify JavaScript syntax.
+
+Risks or dependencies:
+
+- [x] Preserve current column resize behavior and stored widths.
+- [x] Keep top and bottom scroll positions synchronized.
+
+Verification:
+
+- [x] JavaScript syntax checks for changed table resize module.
+
+### Dashboard Resizable Source Fields
+
+Goal: make dashboard tables easier to inspect by resizing columns and exposing
+additional source identifiers already stored in the analytics database.
+
+Planned changes:
+
+- [x] Add table column resize handles to the web UI.
+- [x] Add extra source/id fields to task and call tables.
+- [x] Verify Python and JavaScript syntax.
+
+Risks or dependencies:
+
+- [x] Preserve current API compatibility by adding fields instead of removing
+  existing ones.
+- [x] Do not inspect external Codex logs for this UI-only pass.
+
+Verification:
+
+- [x] `python -m compileall app`
+- [x] JavaScript syntax checks for changed modules.
+- [x] `python -m unittest discover tests`
+
+### Desktop Mini Taskbar Icon
+
+Goal: make the desktop mini client show the project logo in the Windows title
+bar and taskbar.
+
+Planned changes:
+
+- [x] Add a Windows-friendly `.ico` asset derived from `Logo.png`.
+- [x] Configure Tk to use the `.ico` before falling back to `Logo.png`.
+- [x] Restart the mini client and verify the app still launches.
+
+Risks or dependencies:
+
+- [x] Preserve the existing PNG logo path for the web UI.
+- [x] Keep the launcher behavior unchanged.
+
+Verification:
+
+- [x] `python -m py_compile desktop\mini_client.py`
+- [x] Relaunch `desktop-mini.ps1`.
+
+### Attach Logo Asset
+
+Goal: use the root `Logo.png` in the web dashboard and desktop mini client.
+
+Planned changes:
+
+- [x] Expose the root logo through the local static server.
+- [x] Add the logo to the web page chrome and favicon.
+- [x] Use the logo as the desktop mini client window icon.
+- [x] Verify Python syntax and static asset serving.
+
+Risks or dependencies:
+
+- [x] Reuse the existing root asset instead of duplicating it.
+- [x] Preserve current UI behavior and existing user changes.
+
+Verification:
+
+- [x] `python -m compileall app desktop`
+- [x] Smoke-check `GET /Logo.png`.
+
+### Dashboard Full Empty Buckets
+
+Goal: make hourly/week chart data include empty periods so week + hour renders
+168 bars instead of only non-empty hours.
+
+Planned changes:
+
+- [x] Inspect current bucket aggregation and trimming behavior.
+- [x] Fill missing chart buckets with zero-valued rows.
+- [x] Keep hourly chart labels readable with horizontal scrolling.
+- [x] Verify backend syntax and API output count.
+
+Risks or dependencies:
+
+- [x] Preserve existing dashboard response fields.
+- [x] Keep analytics database reads read-only.
+
+Verification:
+
+- [x] `python -m compileall app`
+- [x] Smoke-check `/api/dashboard?range=7d&bucket=hour` returns 168 daily rows.
+
 ### Desktop Mini Client
 
 Goal: add a minimal desktop window that shows recent token usage rows without

@@ -40,6 +40,7 @@ function tooltipRows(row, value, unit) {
 
 export function renderDaily(rows, mode = "total", bucket = "day") {
   const el = document.getElementById("dailyChart");
+  el.dataset.bucket = bucket;
   const max = Math.max(...rows.map(row => chartValue(row, mode)), 1);
   if (!rows.length) {
     el.innerHTML = `<div class="empty-chart">Нет данных</div>`;
