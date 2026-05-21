@@ -14,6 +14,32 @@ generated outputs, secrets, credentials, or private production data.
 
 ## Tasks
 
+### Desktop Mini Client
+
+Goal: add a minimal desktop window that shows recent token usage rows without
+opening the browser.
+
+Planned changes:
+
+- [x] Inspect existing API fields for the mini table.
+- [x] Add a dependency-free Tkinter mini client.
+- [x] Add a PowerShell launcher that starts the backend if needed.
+- [x] Verify Python syntax and basic launcher behavior.
+
+Risks or dependencies:
+
+- [x] Preserve the existing web UI and API contracts.
+- [x] Keep the client read-only except for using the existing backend startup.
+
+Verification:
+
+- [x] `python -m py_compile desktop\mini_client.py`
+- [x] Smoke-check `GET /api/tasks?limit=4`.
+
+Follow-up:
+
+- [x] Launch the mini client without leaving a PowerShell window open.
+
 ### Dashboard Date Range Defaults And Bucket Guard
 
 Goal: make the dashboard use a global date range by default and keep chart
