@@ -64,6 +64,9 @@ def compact_event_payload(value):
 DEFAULT_RANGE = "7d"
 DEFAULT_BUCKET = "day"
 CUSTOM_RANGE = "custom"
+TASK_MODE_AGGREGATE = "aggregate"
+TASK_MODE_SEPARATE = "separate"
+SEPARATE_TASK_RANGES = {"1h", "24h"}
 
 RANGE_SECONDS = {
     "1h": 60 * 60,
@@ -114,6 +117,12 @@ def normalize_bucket(bucket: str = DEFAULT_BUCKET, range_key: str = DEFAULT_RANG
     if bucket_seconds and bucket_seconds <= range_seconds:
         return bucket
     return DEFAULT_BUCKET if BUCKET_SECONDS[DEFAULT_BUCKET] <= range_seconds else "hour"
+
+
+def normalize_task_mode(task_mode: str = "", range_key: str = DEFAULT_RANGE) -> str:
+    if task_mode == TASK_MODE_SEPARATE and normalize_range(range_key) in SEPARATE_TASK_RANGES:
+        return TASK_MODE_SEPARATE
+    return TASK_MODE_AGGREGATE
 
 
 def _range_clause(range_key: str = "", start_ts: int | None = None, end_ts: int | None = None):
@@ -272,7 +281,7 @@ def turns(con: sqlite3.Connection, limit: int, model: str = "", range_key: str =
     params.append(limit)
     return rows_to_dicts(con.execute(
         f"""
-        select source_log_id, ts_iso, day, thread_id, thread_name, turn_id, response_id,
+        select source_log_id, ts, ts_iso, day, thread_id, thread_name, turn_id, response_id,
                submission_id, status, model,
                reasoning_effort, input_tokens, cached_input_tokens,
                non_cached_input_tokens, output_tokens,
@@ -296,6 +305,7 @@ def tasks(con: sqlite3.Connection, limit: int | None, range_key: str = "", start
         f"""
         select min(ts_iso) as started_at,
                max(ts_iso) as finished_at,
+               max(ts) - min(ts) as elapsed_seconds,
                min(source_log_id) as first_source_log_id,
                max(source_log_id) as last_source_log_id,
                thread_id,
@@ -339,6 +349,7 @@ def task_buckets(
         select {period_expr} as period,
                min(ts_iso) as started_at,
                max(ts_iso) as finished_at,
+               max(ts) - min(ts) as elapsed_seconds,
                min(ts) as bucket_start_ts,
                max(ts) as bucket_end_ts,
                count(distinct thread_id || ':' || turn_id) as tasks,
@@ -381,6 +392,7 @@ def bucket_tasks(
         f"""
         select min(ts_iso) as started_at,
                max(ts_iso) as finished_at,
+               max(ts) - min(ts) as elapsed_seconds,
                min(source_log_id) as first_source_log_id,
                max(source_log_id) as last_source_log_id,
                thread_id,
@@ -412,7 +424,7 @@ def bucket_tasks(
 def task_detail(con: sqlite3.Connection, thread_id: str, turn_id: str):
     rows = rows_to_dicts(con.execute(
         """
-        select source_log_id, ts_iso, day, thread_id, thread_name, turn_id, response_id,
+        select source_log_id, ts, ts_iso, day, thread_id, thread_name, turn_id, response_id,
                submission_id, status, model, reasoning_effort, input_tokens,
                cached_input_tokens, non_cached_input_tokens, output_tokens,
                reasoning_output_tokens, total_tokens, estimated_cost,
@@ -435,6 +447,7 @@ def task_detail(con: sqlite3.Connection, thread_id: str, turn_id: str):
     task = {
         "started_at": rows[0]["ts_iso"],
         "finished_at": rows[-1]["ts_iso"],
+        "elapsed_seconds": rows[-1]["ts"] - rows[0]["ts"],
         "thread_id": rows[0]["thread_id"],
         "thread_name": rows[0]["thread_name"],
         "turn_id": rows[0]["turn_id"],
@@ -517,14 +530,26 @@ def dashboard(
     model: str = "",
     range_key: str = "",
     bucket: str = "day",
+    task_mode: str = TASK_MODE_AGGREGATE,
     start_ts: int | None = None,
     end_ts: int | None = None,
 ):
+    normalized_task_mode = normalize_task_mode(task_mode, range_key)
     return {
         "state": data_state(con),
         "summary": summary(con, range_key, start_ts, end_ts),
         "daily": daily(con, range_key, bucket, start_ts, end_ts),
         "turns": turns(con, 150, model, range_key, start_ts, end_ts),
-        "tasks": task_buckets(con, range_key, bucket, start_ts, end_ts),
+        "task_mode": normalized_task_mode,
+        "task_modes": {
+            "requested": task_mode or TASK_MODE_AGGREGATE,
+            "active": normalized_task_mode,
+            "separate_available": normalize_range(range_key) in SEPARATE_TASK_RANGES,
+        },
+        "tasks": (
+            tasks(con, None, range_key, start_ts, end_ts)
+            if normalized_task_mode == TASK_MODE_SEPARATE
+            else task_buckets(con, range_key, bucket, start_ts, end_ts)
+        ),
         "models": models(con, range_key, start_ts, end_ts),
     }

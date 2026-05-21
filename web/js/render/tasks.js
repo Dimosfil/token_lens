@@ -1,5 +1,5 @@
 import { getJson } from "../api.js";
-import { number, time } from "../format.js";
+import { duration, number, time } from "../format.js";
 
 function value(value) {
   return value || "";
@@ -35,13 +35,14 @@ function taskDetails(row) {
   ].filter(line => !line.endsWith(": ")).join("\n");
 }
 
-export function renderTasks(rows) {
-  const el = document.getElementById("tasks");
+function renderAggregateTasks(rows) {
+  const el = document.getElementById("taskBuckets");
   el.innerHTML = rows.map(row => `
     <tr class="bucket-row" data-period="${escapeHtml(row.period)}" tabindex="0">
       <td>${escapeHtml(row.period)}</td>
       <td>${time(row.started_at)}</td>
       <td>${time(row.finished_at)}</td>
+      <td>${duration(row.elapsed_seconds)}</td>
       <td>${number(row.tasks)}</td>
       <td>${row.models}</td>
       <td>${number(row.model_calls)}</td>
@@ -58,12 +59,13 @@ export function renderTasks(rows) {
   `).join("");
 }
 
-function renderBucketTasks(rows) {
-  const el = document.getElementById("bucketTasks");
+function renderTaskRows(rows, targetId) {
+  const el = document.getElementById(targetId);
   el.innerHTML = rows.map(row => `
     <tr class="detail-row" data-thread-id="${escapeHtml(row.thread_id)}" data-turn-id="${escapeHtml(row.turn_id)}" tabindex="0">
       <td>${time(row.finished_at)}</td>
       <td>${time(row.started_at)}</td>
+      <td>${duration(row.elapsed_seconds)}</td>
       <td class="task-cell" title="${escapeHtml(taskDetails(row))}">${escapeHtml(taskName(row))}</td>
       <td>${row.models}</td>
       <td>${number(row.model_calls)}</td>
@@ -80,6 +82,21 @@ function renderBucketTasks(rows) {
   `).join("");
 }
 
+export function renderTasks(rows, mode = "aggregate") {
+  const aggregateTable = document.getElementById("taskAggregateTable");
+  const separateTable = document.getElementById("taskSeparateTable");
+  const separate = mode === "separate";
+  aggregateTable.hidden = separate;
+  separateTable.hidden = !separate;
+  if (separate) {
+    document.getElementById("taskBuckets").innerHTML = "";
+    renderTaskRows(rows, "taskRows");
+    return;
+  }
+  document.getElementById("taskRows").innerHTML = "";
+  renderAggregateTasks(rows);
+}
+
 export async function openBucketDetail(period, query) {
   const dialog = document.getElementById("bucketDialog");
   const error = document.getElementById("bucketError");
@@ -91,7 +108,7 @@ export async function openBucketDetail(period, query) {
   try {
     const separator = query ? "&" : "?";
     const rows = await getJson(`/api/bucket-tasks${query}${separator}period=${encodeURIComponent(period)}`);
-    renderBucketTasks(rows);
+    renderTaskRows(rows, "bucketTasks");
   } catch (err) {
     error.textContent = err.message;
   }

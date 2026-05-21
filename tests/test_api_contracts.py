@@ -113,7 +113,7 @@ class ApiContractTests(unittest.TestCase):
         }, set(turns[0]))
         self.assertLessEqual({
             "period", "started_at", "finished_at", "bucket_start_ts", "bucket_end_ts",
-            "tasks", "models", "statuses", "efforts", "model_calls", "input_tokens",
+            "elapsed_seconds", "tasks", "models", "statuses", "efforts", "model_calls", "input_tokens",
             "cached_input_tokens", "non_cached_input_tokens", "output_tokens",
             "reasoning_output_tokens", "total_tokens", "total_tokens_per_call",
             "estimated_cost",
@@ -124,7 +124,9 @@ class ApiContractTests(unittest.TestCase):
             "avg_cached_input_tokens", "avg_non_cached_input_tokens",
             "avg_output_tokens", "avg_reasoning_output_tokens", "estimated_cost",
         }, set(models[0]))
-        self.assertEqual(set(dashboard), {"state", "summary", "daily", "turns", "tasks", "models"})
+        self.assertEqual(set(dashboard), {"state", "summary", "daily", "turns", "task_mode", "task_modes", "tasks", "models"})
+        self.assertEqual(dashboard["task_mode"], "aggregate")
+        self.assertLessEqual({"requested", "active", "separate_available"}, set(dashboard["task_modes"]))
 
     def test_task_detail_returns_calls_and_payloads(self):
         con = connect(self.db_path)
@@ -135,7 +137,7 @@ class ApiContractTests(unittest.TestCase):
 
         self.assertLessEqual({
             "started_at", "finished_at", "thread_id", "thread_name", "turn_id",
-            "submission_ids", "response_ids", "models", "statuses", "model_calls",
+            "elapsed_seconds", "submission_ids", "response_ids", "models", "statuses", "model_calls",
             "raw_event_calls", "raw_event_captured",
             "input_tokens", "cached_input_tokens", "non_cached_input_tokens",
             "output_tokens", "reasoning_output_tokens", "total_tokens",
@@ -221,6 +223,35 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(sum(row["tasks"] for row in dashboard["tasks"]), 2)
         self.assertNotIn("thread-old", {row["thread_id"] for row in dashboard["turns"]})
 
+    def test_dashboard_separate_task_mode_is_limited_to_short_ranges(self):
+        old_ts = int(time.time()) - (10 * 24 * 60 * 60)
+        con = connect(self.db_path)
+        try:
+            upsert_turn(con, sample_turn(
+                source_log_id=3,
+                response_id="resp-old",
+                ts=old_ts,
+                ts_iso="2026-05-11T00:00:00+00:00",
+                day="2026-05-11",
+                thread_id="thread-old",
+                thread_name="Old thread",
+                turn_id="turn-old",
+                total_tokens=77,
+            ))
+            con.commit()
+
+            separate = queries.dashboard(con, range_key="24h", task_mode="separate")
+            forced_aggregate = queries.dashboard(con, range_key="7d", task_mode="separate")
+        finally:
+            con.close()
+
+        self.assertEqual(separate["task_mode"], "separate")
+        self.assertTrue(separate["task_modes"]["separate_available"])
+        self.assertEqual({row["thread_id"] for row in separate["tasks"]}, {"thread-1", "thread-2"})
+        self.assertEqual(forced_aggregate["task_mode"], "aggregate")
+        self.assertFalse(forced_aggregate["task_modes"]["separate_available"])
+        self.assertIn("period", forced_aggregate["tasks"][0])
+
     def test_bucket_tasks_returns_tasks_for_selected_period(self):
         con = connect(self.db_path)
         try:
@@ -230,7 +261,7 @@ class ApiContractTests(unittest.TestCase):
 
         self.assertEqual({row["thread_id"] for row in rows}, {"thread-1", "thread-2"})
         self.assertLessEqual({
-            "thread_id", "turn_id", "models", "statuses", "efforts", "model_calls",
+            "thread_id", "turn_id", "elapsed_seconds", "models", "statuses", "efforts", "model_calls",
             "total_tokens", "total_tokens_per_call",
         }, set(rows[0]))
 

@@ -14,6 +14,31 @@ generated outputs, secrets, credentials, or private production data.
 
 ## Tasks
 
+### Desktop Dotnet Merge And Task Time
+
+Goal: merge two desktop .NET projects into one .NET Core desktop app, use the
+root logo asset, and add task time to the task table.
+
+Planned changes:
+
+- [!] Locate the two .NET desktop project paths. No `.sln` or `.csproj` files
+      currently exist inside this project root.
+- [x] Add elapsed task time to the existing Token Lens task tables.
+- [x] Add elapsed task time to the Python mini desktop client.
+- [x] Verify backend contracts, frontend syntax, and restart/smoke-check the app.
+
+### Dashboard Task Display Mode
+
+Goal: add a dashboard switch between bucket-aggregated task rows and individual
+task rows, with individual rows available only for the one-hour and one-day
+ranges.
+
+Planned changes:
+
+- [x] Add dashboard API support for a safe `task_mode` parameter.
+- [x] Add UI controls and table rendering for aggregate vs individual task rows.
+- [x] Verify backend contracts, frontend syntax, and restart/smoke-check the app.
+
 ### Auto Refresh Fetch Errors Under Load
 
 Goal: prevent transient `Failed to fetch` errors when auto refresh overlaps

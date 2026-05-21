@@ -12,6 +12,7 @@ import { initResizableTables } from "./js/table-resize.js";
 let dataVersion = null;
 let refreshPromise = null;
 let chartMode = "total";
+let taskMode = "aggregate";
 let lastDashboard = null;
 const AUTO_REFRESH_MS = 5000;
 const RANGE_SECONDS = {
@@ -27,6 +28,7 @@ const BUCKET_SECONDS = {
   month: 30 * 24 * 60 * 60,
 };
 const DEFAULT_BUCKET = "day";
+const SEPARATE_TASK_RANGES = new Set(["1h", "24h"]);
 
 
 function bucketAllowed(range, bucket) {
@@ -76,14 +78,30 @@ function syncBucketOptions() {
   }
 }
 
+function syncTaskModeOptions() {
+  const range = document.getElementById("rangeFilter").value;
+  const separateAllowed = SEPARATE_TASK_RANGES.has(range);
+  const separateButton = document.querySelector("[data-task-mode='separate']");
+  separateButton.disabled = !separateAllowed;
+  separateButton.title = separateAllowed
+    ? "Показать задачи отдельными строками"
+    : "Отдельные задачи доступны только для часа и дня";
+  if (!separateAllowed && taskMode === "separate") taskMode = "aggregate";
+  document.querySelectorAll("[data-task-mode]").forEach(item => {
+    item.classList.toggle("is-active", item.dataset.taskMode === taskMode);
+  });
+}
+
 
 function dashboardQuery() {
   syncBucketOptions();
+  syncTaskModeOptions();
   const params = new URLSearchParams();
   const range = document.getElementById("rangeFilter").value;
   const bucket = document.getElementById("bucketFilter").value;
   if (range) params.set("range", range);
   if (bucket) params.set("bucket", bucket);
+  if (taskMode) params.set("task_mode", taskMode);
   if (range === "custom") {
     const start = document.getElementById("customStart").value;
     const end = document.getElementById("customEnd").value;
@@ -99,9 +117,11 @@ function dashboardQuery() {
 
 function renderDashboard(dashboard) {
   const bucket = document.getElementById("bucketFilter").value;
+  taskMode = dashboard.task_modes?.active || dashboard.task_mode || taskMode;
+  syncTaskModeOptions();
   renderMetrics(dashboard.summary.summary);
   renderDaily(dashboard.daily, chartMode, bucket);
-  renderTasks(dashboard.tasks);
+  renderTasks(dashboard.tasks, taskMode);
   renderTop(dashboard.summary.top_turns);
   renderModels(dashboard.models);
   renderModelAverages(dashboard.models);
@@ -158,6 +178,7 @@ async function pollForUpdates() {
 document.getElementById("refresh").addEventListener("click", () => refresh(true));
 document.getElementById("rangeFilter").addEventListener("change", () => {
   syncBucketOptions();
+  syncTaskModeOptions();
   refresh(false);
 });
 document.getElementById("bucketFilter").addEventListener("change", () => refresh(false));
@@ -176,6 +197,13 @@ document.getElementById("chartMode").addEventListener("click", event => {
     item.classList.toggle("is-active", item === button);
   });
   if (lastDashboard) renderDashboard(lastDashboard);
+});
+document.getElementById("taskMode").addEventListener("click", event => {
+  const button = event.target.closest("[data-task-mode]");
+  if (!button || button.disabled) return;
+  taskMode = button.dataset.taskMode;
+  syncTaskModeOptions();
+  refresh(false);
 });
 document.addEventListener("click", event => {
   const bucketRow = event.target.closest(".bucket-row");
@@ -202,6 +230,7 @@ document.addEventListener("keydown", event => {
 });
 
 syncBucketOptions();
+syncTaskModeOptions();
 initDetailModal();
 initBucketModal();
 initResizableTables();

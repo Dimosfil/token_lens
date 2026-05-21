@@ -57,6 +57,7 @@ class AnalyticsHandler(BaseHTTPRequestHandler):
                 first(query, "model"),
                 first(query, "range"),
                 first(query, "bucket", "day"),
+                first(query, "task_mode"),
                 start_ts,
                 end_ts,
             )
@@ -75,6 +76,7 @@ class AnalyticsHandler(BaseHTTPRequestHandler):
                 first(query, "model"),
                 range_key,
                 bucket,
+                first(query, "task_mode"),
                 start_ts,
                 end_ts,
             ))
@@ -117,6 +119,7 @@ class AnalyticsHandler(BaseHTTPRequestHandler):
             first(query, "model"),
             first(query, "range"),
             first(query, "bucket", "day"),
+            first(query, "task_mode"),
             parse_ts(query, "start_ts"),
             parse_ts(query, "end_ts"),
         )

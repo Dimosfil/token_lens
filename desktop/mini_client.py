@@ -19,7 +19,7 @@ ICON_PATH = ROOT / "Logo.ico"
 DEFAULT_BASE_URL = "http://127.0.0.1:8765"
 DEFAULT_LIMIT = 4
 DEFAULT_REFRESH_MS = 5000
-APP_USER_MODEL_ID = "TokenLens.Mini"
+APP_USER_MODEL_ID = "TokenLens.Mini.CleanLogo"
 
 
 def parse_args() -> argparse.Namespace:
@@ -41,6 +41,18 @@ def format_number(value) -> str:
     except (TypeError, ValueError):
         return "0"
     return f"{number:,}".replace(",", " ")
+
+
+def format_duration(seconds) -> str:
+    try:
+        total_seconds = max(0, int(seconds or 0))
+    except (TypeError, ValueError):
+        total_seconds = 0
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, remaining_seconds = divmod(remainder, 60)
+    if hours:
+        return f"{hours}:{minutes:02d}:{remaining_seconds:02d}"
+    return f"{minutes}:{remaining_seconds:02d}"
 
 
 class ApiClient:
@@ -115,13 +127,15 @@ class MiniClientApp:
         ttk.Button(toolbar, text="Refresh", command=lambda: self.refresh(import_first=True)).pack(side=tk.LEFT)
         ttk.Label(toolbar, textvariable=self.status_var, anchor=tk.E).pack(side=tk.RIGHT, fill=tk.X, expand=True)
 
-        columns = ("model", "calls", "per_call", "total")
+        columns = ("model", "time", "calls", "per_call", "total")
         self.table = ttk.Treeview(outer, columns=columns, show="headings", height=self.limit_var.get())
         self.table.heading("model", text="Model")
+        self.table.heading("time", text="Time")
         self.table.heading("calls", text="Calls")
         self.table.heading("per_call", text="Total / Call")
         self.table.heading("total", text="Total")
-        self.table.column("model", width=260, minwidth=160, stretch=True)
+        self.table.column("model", width=220, minwidth=150, stretch=True)
+        self.table.column("time", width=80, minwidth=70, anchor=tk.E, stretch=False)
         self.table.column("calls", width=70, minwidth=60, anchor=tk.E, stretch=False)
         self.table.column("per_call", width=110, minwidth=95, anchor=tk.E, stretch=False)
         self.table.column("total", width=110, minwidth=90, anchor=tk.E, stretch=False)
@@ -240,6 +254,7 @@ class MiniClientApp:
                 tk.END,
                 values=(
                     row.get("models") or "",
+                    format_duration(row.get("elapsed_seconds")),
                     format_number(row.get("model_calls")),
                     format_number(row.get("total_tokens_per_call")),
                     format_number(row.get("total_tokens")),

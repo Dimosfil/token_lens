@@ -85,14 +85,19 @@
     <section class="panel">
       <div class="panel-head">
         <h2>Задачи целиком</h2>
+        <div class="segmented" id="taskMode">
+          <button type="button" data-task-mode="aggregate" class="is-active">Агрегация</button>
+          <button type="button" data-task-mode="separate">Отдельно</button>
+        </div>
       </div>
       <div class="table-wrap">
-        <table data-resizable data-reorderable data-table-id="task-buckets">
+        <table id="taskAggregateTable" data-resizable data-reorderable data-table-id="task-buckets">
           <thead>
             <tr>
               <th>Период</th>
               <th>Start</th>
               <th>Финиш</th>
+              <th>Время</th>
               <th>Tasks</th>
               <th>Models</th>
               <th>Calls</th>
@@ -107,7 +112,29 @@
               <th>Status</th>
             </tr>
           </thead>
-          <tbody id="tasks"></tbody>
+          <tbody id="taskBuckets"></tbody>
+        </table>
+        <table id="taskSeparateTable" data-resizable data-reorderable data-table-id="task-rows" hidden>
+          <thead>
+            <tr>
+              <th>Финиш</th>
+              <th>Start</th>
+              <th>Время</th>
+              <th>Проект / задача</th>
+              <th>Models</th>
+              <th>Calls</th>
+              <th>Total / call</th>
+              <th>Total</th>
+              <th>Input</th>
+              <th>Cached</th>
+              <th>Non-cached</th>
+              <th>Output</th>
+              <th>Reasoning</th>
+              <th>Effort</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="taskRows"></tbody>
         </table>
       </div>
     </section>
@@ -180,6 +207,7 @@
             <tr>
               <th>Финиш</th>
               <th>Start</th>
+              <th>Время</th>
               <th>Проект / задача</th>
               <th>Models</th>
               <th>Calls</th>
@@ -200,6 +228,6 @@
     </div>
   </dialog>
 
-  <script type="module" src="/app.js?v=20260521-6"></script>
+  <script type="module" src="/app.js?v=20260521-7"></script>
 </body>
 </html>

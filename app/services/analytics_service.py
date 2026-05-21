@@ -53,8 +53,15 @@ def models(range_key: str = "", start_ts: int | None = None, end_ts: int | None 
     return with_analytics_db(lambda con: queries.models(con, range_key, start_ts, end_ts))
 
 
-def dashboard(model: str = "", range_key: str = "", bucket: str = "day", start_ts: int | None = None, end_ts: int | None = None):
-    payload = with_analytics_db(lambda con: queries.dashboard(con, model, range_key, bucket, start_ts, end_ts))
+def dashboard(
+    model: str = "",
+    range_key: str = "",
+    bucket: str = "day",
+    task_mode: str = "",
+    start_ts: int | None = None,
+    end_ts: int | None = None,
+):
+    payload = with_analytics_db(lambda con: queries.dashboard(con, model, range_key, bucket, task_mode, start_ts, end_ts))
     payload["state"]["import_status"] = import_status()
     payload["import_status"] = payload["state"]["import_status"]
     return payload
