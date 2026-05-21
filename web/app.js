@@ -1,4 +1,5 @@
 import { getJson } from "./js/api.js";
+import { initDetailModal, openTaskDetail } from "./js/detail-modal.js";
 import { renderDaily } from "./js/render/daily.js";
 import { renderMetrics } from "./js/render/metrics.js";
 import { renderModelAverages, renderModels } from "./js/render/models.js";
@@ -129,8 +130,21 @@ document.getElementById("chartMode").addEventListener("click", event => {
   });
   if (lastDashboard) renderDashboard(lastDashboard);
 });
+document.addEventListener("click", event => {
+  const row = event.target.closest(".detail-row");
+  if (!row) return;
+  openTaskDetail(row.dataset.threadId, row.dataset.turnId);
+});
+document.addEventListener("keydown", event => {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  const row = event.target.closest(".detail-row");
+  if (!row) return;
+  event.preventDefault();
+  openTaskDetail(row.dataset.threadId, row.dataset.turnId);
+});
 
 syncBucketOptions();
+initDetailModal();
 initResizableTables();
 refresh(false).catch(err => {
   setAutoStatus(`Refresh error: ${err.message}`, true);

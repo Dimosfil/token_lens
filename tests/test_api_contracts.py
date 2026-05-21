@@ -124,6 +124,23 @@ class ApiContractTests(unittest.TestCase):
         }, set(models[0]))
         self.assertEqual(set(dashboard), {"state", "summary", "daily", "turns", "tasks", "models"})
 
+    def test_task_detail_returns_calls_and_payloads(self):
+        con = connect(self.db_path)
+        try:
+            detail = queries.task_detail(con, "thread-1", "turn-1")
+        finally:
+            con.close()
+
+        self.assertLessEqual({
+            "started_at", "finished_at", "thread_id", "thread_name", "turn_id",
+            "submission_ids", "response_ids", "models", "statuses", "model_calls",
+            "input_tokens", "cached_input_tokens", "non_cached_input_tokens",
+            "output_tokens", "reasoning_output_tokens", "total_tokens",
+            "total_tokens_per_call", "estimated_cost",
+        }, set(detail["task"]))
+        self.assertEqual(len(detail["calls"]), 1)
+        self.assertLessEqual({"request", "response", "event"}, set(detail["calls"][0]))
+
     def test_service_state_includes_import_observability(self):
         original_load_config = analytics_service.load_config
         try:
@@ -165,7 +182,8 @@ class ParserContractTests(unittest.TestCase):
             'thread.id=thread-1 turn.id=turn-1 submission.id="sub-1" '
             "codex.turn.reasoning_effort=high "
             '{"type":"response.completed","response":{"id":"resp-1",'
-            '"status":"completed","model":"gpt-5","usage":{'
+            '"status":"completed","model":"gpt-5","input":[{"role":"user","content":"hi"}],'
+            '"output":[{"type":"message","content":[{"type":"output_text","text":"hello"}]}],"usage":{'
             '"input_tokens":100,"input_tokens_details":{"cached_tokens":30},'
             '"output_tokens":50,"output_tokens_details":{"reasoning_tokens":10},'
             '"total_tokens":150}}}'
@@ -183,6 +201,8 @@ class ParserContractTests(unittest.TestCase):
             "reasoning_output_tokens", "total_tokens", "estimated_cost",
         ):
             self.assertEqual(usage_row[key], response_row[key])
+        self.assertIn("hi", response_row["request_json"])
+        self.assertIn("hello", response_row["response_json"])
 
 
 if __name__ == "__main__":

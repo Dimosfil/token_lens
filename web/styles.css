@@ -371,6 +371,19 @@ th {
   white-space: nowrap;
 }
 
+.detail-row {
+  cursor: pointer;
+}
+
+.detail-row:hover,
+.detail-row:focus-visible,
+#detailCalls tr:hover,
+#detailCalls tr:focus-visible,
+#detailCalls tr.is-selected {
+  background: #eef6f6;
+  outline: 0;
+}
+
 .mono {
   font-family: Consolas, "SFMono-Regular", Menlo, monospace;
   font-size: 12px;
@@ -426,6 +439,113 @@ th {
   color: var(--muted);
 }
 
+.detail-dialog {
+  width: min(1180px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+}
+
+.detail-dialog::backdrop {
+  background: rgba(24, 32, 42, 0.42);
+}
+
+.detail-shell {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+}
+
+.detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+#detailClose {
+  width: 36px;
+  padding: 0;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.detail-error {
+  color: var(--accent-2);
+}
+
+.detail-meta {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.detail-metric {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.detail-metric span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.detail-metric strong {
+  display: block;
+  margin-top: 4px;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail-table {
+  max-height: 220px;
+  border: 1px solid var(--line);
+}
+
+#detailPayloadTitle {
+  margin: 0;
+  font-size: 15px;
+}
+
+.payload-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.payload-grid section {
+  min-width: 0;
+}
+
+.payload-grid h4 {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.payload-grid pre {
+  min-height: 260px;
+  max-height: 420px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #111827;
+  color: #eef6f6;
+  font: 12px/1.45 Consolas, "SFMono-Regular", Menlo, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 @media (max-width: 860px) {
   header {
     align-items: flex-start;
@@ -443,6 +563,11 @@ th {
   .panel-head {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .detail-meta,
+  .payload-grid {
+    grid-template-columns: 1fr;
   }
 }
 

@@ -75,6 +75,13 @@ class AnalyticsHandler(BaseHTTPRequestHandler):
         elif path == "/api/tasks":
             limit = parse_limit(query)
             send_json(self, analytics_service.tasks(limit, range_key))
+        elif path == "/api/task-detail":
+            thread_id = first(query, "thread_id")
+            turn_id = first(query, "turn_id")
+            if not thread_id or not turn_id:
+                self.send_error(400, "thread_id and turn_id are required")
+                return
+            send_json(self, analytics_service.task_detail(thread_id, turn_id))
         elif path == "/api/models":
             send_json(self, analytics_service.models(range_key))
         else:

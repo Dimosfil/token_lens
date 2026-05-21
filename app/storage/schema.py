@@ -24,6 +24,9 @@ create table if not exists turns (
   reasoning_output_tokens integer not null default 0,
   total_tokens integer not null default 0,
   estimated_cost real not null default 0,
+  request_json text,
+  response_json text,
+  event_json text,
   imported_at text not null
 );
 
@@ -44,6 +47,9 @@ def init_db(db_path: str) -> None:
             con.execute("create unique index if not exists idx_turns_response_id on turns(response_id)")
         if "status" not in columns:
             con.execute("alter table turns add column status text not null default 'completed'")
+        for detail_column in ("request_json", "response_json", "event_json"):
+            if detail_column not in columns:
+                con.execute(f"alter table turns add column {detail_column} text")
         con.commit()
     finally:
         con.close()

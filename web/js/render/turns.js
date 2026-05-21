@@ -37,7 +37,7 @@ function taskDetails(row) {
 export function renderTurns(rows) {
   const el = document.getElementById("turns");
   el.innerHTML = rows.map(row => `
-    <tr>
+    <tr class="detail-row" data-thread-id="${escapeHtml(row.thread_id)}" data-turn-id="${escapeHtml(row.turn_id)}" tabindex="0">
       <td>${time(row.ts_iso)}</td>
       <td class="task-cell" title="${escapeHtml(taskDetails(row))}">${escapeHtml(taskName(row))}</td>
       <td>${row.model}</td>

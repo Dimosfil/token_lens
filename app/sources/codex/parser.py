@@ -14,6 +14,22 @@ EFFORT_RE = re.compile(r"codex\.turn\.reasoning_effort=([^ }]+)")
 RESPONSE_EVENT_RE = re.compile(r'\{"type":"response\.(created|in_progress|completed)"')
 
 
+def compact_json(value) -> str | None:
+    if value in (None, "", [], {}):
+        return None
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def response_output_payload(response: dict):
+    output = response.get("output")
+    if output not in (None, "", [], {}):
+        return output
+    for key in ("output_text", "content"):
+        if response.get(key):
+            return response.get(key)
+    return None
+
+
 def first_match(pattern: re.Pattern[str], text: str, default: str | None = None) -> str | None:
     match = pattern.search(text)
     return match.group(1) if match else default
@@ -76,6 +92,9 @@ def build_turn_row(
         "output_tokens": output_tokens,
         "reasoning_output_tokens": reasoning_output_tokens,
         "total_tokens": total_tokens,
+        "request_json": None,
+        "response_json": None,
+        "event_json": None,
     }
     row["estimated_cost"] = estimate_cost(row, prices)
     row["imported_at"] = datetime.now(timezone.utc).isoformat()
@@ -151,6 +170,8 @@ def parse_response_event(
 
     response = event.get("response") or {}
     usage = response.get("usage") or {}
+    request_payload = response.get("input") or event.get("input") or event.get("request")
+    response_payload = response_output_payload(response) or response
 
     resolved_thread_id = thread_id or first_match(THREAD_RE, body)
     turn_id = first_match(TURN_RE, body) or response.get("id")
@@ -166,7 +187,7 @@ def parse_response_event(
     reasoning_tokens = int(output_details.get("reasoning_tokens") or 0)
     total_tokens = int(usage.get("total_tokens") or (input_tokens + output_tokens))
 
-    return build_turn_row(
+    row = build_turn_row(
         source_log_id=source_log_id,
         response_id=response.get("id"),
         status=response.get("status") or event_type,
@@ -185,3 +206,7 @@ def parse_response_event(
         total_tokens=total_tokens,
         prices=prices,
     )
+    row["request_json"] = compact_json(request_payload)
+    row["response_json"] = compact_json(response_payload)
+    row["event_json"] = compact_json(event)
+    return row

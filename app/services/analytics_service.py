@@ -41,6 +41,10 @@ def tasks(limit: int, range_key: str = ""):
     return with_analytics_db(lambda con: queries.tasks(con, limit, range_key))
 
 
+def task_detail(thread_id: str, turn_id: str):
+    return with_analytics_db(lambda con: queries.task_detail(con, thread_id, turn_id))
+
+
 def models(range_key: str = ""):
     return with_analytics_db(lambda con: queries.models(con, range_key))
 

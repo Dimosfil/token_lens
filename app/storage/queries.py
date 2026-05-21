@@ -1,12 +1,22 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import json
 import sqlite3
 import time
 
 
 def rows_to_dicts(rows):
     return [dict(row) for row in rows]
+
+
+def decode_json(value):
+    if not value:
+        return None
+    try:
+        return json.loads(value)
+    except (TypeError, json.JSONDecodeError):
+        return value
 
 
 DEFAULT_RANGE = "7d"
@@ -251,6 +261,51 @@ def tasks(con: sqlite3.Connection, limit: int, range_key: str = ""):
         """,
         params,
     ).fetchall())
+
+
+def task_detail(con: sqlite3.Connection, thread_id: str, turn_id: str):
+    rows = rows_to_dicts(con.execute(
+        """
+        select source_log_id, ts_iso, day, thread_id, thread_name, turn_id, response_id,
+               submission_id, status, model, reasoning_effort, input_tokens,
+               cached_input_tokens, non_cached_input_tokens, output_tokens,
+               reasoning_output_tokens, total_tokens, estimated_cost,
+               request_json, response_json, event_json
+        from turns
+        where thread_id = ? and turn_id = ?
+        order by ts, source_log_id
+        """,
+        [thread_id, turn_id],
+    ).fetchall())
+    if not rows:
+        return {"task": None, "calls": []}
+
+    for row in rows:
+        row["request"] = decode_json(row.pop("request_json"))
+        row["response"] = decode_json(row.pop("response_json"))
+        row["event"] = decode_json(row.pop("event_json"))
+
+    task = {
+        "started_at": rows[0]["ts_iso"],
+        "finished_at": rows[-1]["ts_iso"],
+        "thread_id": rows[0]["thread_id"],
+        "thread_name": rows[0]["thread_name"],
+        "turn_id": rows[0]["turn_id"],
+        "submission_ids": sorted({row["submission_id"] for row in rows if row["submission_id"]}),
+        "response_ids": [row["response_id"] for row in rows if row["response_id"]],
+        "models": sorted({row["model"] for row in rows if row["model"]}),
+        "statuses": sorted({row["status"] for row in rows if row["status"]}),
+        "model_calls": len(rows),
+        "input_tokens": sum(row["input_tokens"] for row in rows),
+        "cached_input_tokens": sum(row["cached_input_tokens"] for row in rows),
+        "non_cached_input_tokens": sum(row["non_cached_input_tokens"] for row in rows),
+        "output_tokens": sum(row["output_tokens"] for row in rows),
+        "reasoning_output_tokens": sum(row["reasoning_output_tokens"] for row in rows),
+        "total_tokens": sum(row["total_tokens"] for row in rows),
+        "estimated_cost": sum(row["estimated_cost"] for row in rows),
+    }
+    task["total_tokens_per_call"] = round(task["total_tokens"] / task["model_calls"]) if task["model_calls"] else 0
+    return {"task": task, "calls": rows}
 
 
 def models(con: sqlite3.Connection, range_key: str = ""):
