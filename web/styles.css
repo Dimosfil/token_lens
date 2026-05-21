@@ -169,7 +169,8 @@ main {
   min-height: 220px;
   padding-top: 12px;
   border-top: 1px solid var(--line);
-  overflow: visible;
+  overflow-x: auto;
+  overflow-y: visible;
 }
 
 .empty-chart {
@@ -181,7 +182,7 @@ main {
 
 .bar {
   position: relative;
-  flex: 1;
+  flex: 1 0 28px;
   min-width: 28px;
   display: flex;
   flex-direction: column;

@@ -40,13 +40,12 @@ function tooltipRows(row, value, unit) {
 
 export function renderDaily(rows, mode = "total", bucket = "day") {
   const el = document.getElementById("dailyChart");
-  const recent = rows.slice(-24);
-  const max = Math.max(...recent.map(row => chartValue(row, mode)), 1);
-  if (!recent.length) {
+  const max = Math.max(...rows.map(row => chartValue(row, mode)), 1);
+  if (!rows.length) {
     el.innerHTML = `<div class="empty-chart">Нет данных</div>`;
     return;
   }
-  el.innerHTML = recent.map(row => {
+  el.innerHTML = rows.map(row => {
     const value = chartValue(row, mode);
     const h = Math.max(2, Math.round(value / max * 190));
     const period = row.period || row.day;

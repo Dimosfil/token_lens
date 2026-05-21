@@ -8,25 +8,58 @@ def rows_to_dicts(rows):
     return [dict(row) for row in rows]
 
 
+DEFAULT_RANGE = "7d"
+DEFAULT_BUCKET = "day"
+
 RANGE_SECONDS = {
+    "1h": 60 * 60,
     "24h": 24 * 60 * 60,
     "7d": 7 * 24 * 60 * 60,
     "30d": 30 * 24 * 60 * 60,
     "365d": 365 * 24 * 60 * 60,
 }
 
+BUCKET_SECONDS = {
+    "hour": 60 * 60,
+    "day": 24 * 60 * 60,
+    "month": 30 * 24 * 60 * 60,
+}
+
 BUCKETS = {
     "hour": "strftime('%Y-%m-%d %H:00', ts, 'unixepoch', 'localtime')",
     "day": "day",
     "month": "substr(day, 1, 7)",
-    "year": "substr(day, 1, 4)",
+}
+
+MAX_BUCKETS = {
+    ("1h", "hour"): 1,
+    ("24h", "hour"): 24,
+    ("24h", "day"): 1,
+    ("7d", "hour"): 7 * 24,
+    ("7d", "day"): 7,
+    ("30d", "hour"): 30 * 24,
+    ("30d", "day"): 30,
+    ("30d", "month"): 1,
+    ("365d", "hour"): 365 * 24,
+    ("365d", "day"): 365,
+    ("365d", "month"): 12,
 }
 
 
+def normalize_range(range_key: str = "") -> str:
+    return range_key if range_key in RANGE_SECONDS else DEFAULT_RANGE
+
+
+def normalize_bucket(bucket: str = DEFAULT_BUCKET, range_key: str = DEFAULT_RANGE) -> str:
+    range_seconds = RANGE_SECONDS[normalize_range(range_key)]
+    bucket_seconds = BUCKET_SECONDS.get(bucket)
+    if bucket_seconds and bucket_seconds <= range_seconds:
+        return bucket
+    return DEFAULT_BUCKET if BUCKET_SECONDS[DEFAULT_BUCKET] <= range_seconds else "hour"
+
+
 def _range_clause(range_key: str = ""):
-    seconds = RANGE_SECONDS.get(range_key)
-    if not seconds:
-        return "", []
+    seconds = RANGE_SECONDS[normalize_range(range_key)]
     return "where ts >= ?", [int(time.time()) - seconds]
 
 
@@ -36,6 +69,13 @@ def _and_clause(where: str, clause: str) -> str:
 
 def _bucket_expr(bucket: str = "day") -> str:
     return BUCKETS.get(bucket, BUCKETS["day"])
+
+
+def _trim_bucket_rows(rows: list[dict], range_key: str, bucket: str) -> list[dict]:
+    max_buckets = MAX_BUCKETS.get((normalize_range(range_key), bucket))
+    if not max_buckets or len(rows) <= max_buckets:
+        return rows
+    return rows[-max_buckets:]
 
 
 def summary(con: sqlite3.Connection, range_key: str = ""):
@@ -72,8 +112,9 @@ def summary(con: sqlite3.Connection, range_key: str = ""):
 
 def daily(con: sqlite3.Connection, range_key: str = "", bucket: str = "day"):
     where, params = _range_clause(range_key)
-    period_expr = _bucket_expr(bucket)
-    return rows_to_dicts(con.execute(
+    normalized_bucket = normalize_bucket(bucket, range_key)
+    period_expr = _bucket_expr(normalized_bucket)
+    rows = rows_to_dicts(con.execute(
         f"""
         select {period_expr} as period,
                min(day) as day,
@@ -92,6 +133,7 @@ def daily(con: sqlite3.Connection, range_key: str = "", bucket: str = "day"):
         """,
         params,
     ).fetchall())
+    return _trim_bucket_rows(rows, range_key, normalized_bucket)
 
 
 def turns(con: sqlite3.Connection, limit: int, model: str = "", range_key: str = ""):

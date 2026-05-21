@@ -14,6 +14,31 @@ generated outputs, secrets, credentials, or private production data.
 
 ## Tasks
 
+### Dashboard Date Range Defaults And Bucket Guard
+
+Goal: make the dashboard use a global date range by default and keep chart
+bucket choices compatible with the selected range.
+
+Planned changes:
+
+- [x] Inspect current range and bucket implementation.
+- [x] Add a one-hour range and make week/day the default API and UI selection.
+- [x] Prevent chart bucket selections that are larger than the selected range.
+- [x] Render all buckets for the selected range instead of only the last 24.
+- [x] Verify Python and JavaScript syntax.
+
+Risks or dependencies:
+
+- [x] Preserve existing dashboard response shapes.
+- [x] Keep all filtering read-only against the analytics database.
+
+Verification:
+
+- [x] `python -m compileall app`
+- [x] JavaScript syntax checks for changed web modules.
+- [x] Restart local server and smoke-check default, `1h/month`, and
+      `365d/month` dashboard queries.
+
 ### Dashboard Time Range And Chart Modes
 
 Goal: add global time-window controls and a chart mode switch for token dynamics.

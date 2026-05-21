@@ -14,17 +14,16 @@
     </div>
     <div class="header-actions">
       <select id="rangeFilter" title="Период данных">
-        <option value="">Все время</option>
-        <option value="24h">24 часа</option>
-        <option value="7d">7 дней</option>
-        <option value="30d" selected>30 дней</option>
+        <option value="1h">Час</option>
+        <option value="24h">День</option>
+        <option value="7d" selected>Неделя</option>
+        <option value="30d">Месяц</option>
         <option value="365d">Год</option>
       </select>
       <select id="bucketFilter" title="Группировка графика">
         <option value="hour">Час</option>
         <option value="day" selected>День</option>
         <option value="month">Месяц</option>
-        <option value="year">Год</option>
       </select>
       <span id="autoStatus" class="auto-status">Auto refresh starting</span>
       <button id="refresh">Обновить</button>
@@ -133,6 +132,6 @@
     </section>
   </main>
 
-  <script type="module" src="/app.js?v=20260520-3"></script>
+  <script type="module" src="/app.js?v=20260521-1"></script>
 </body>
 </html>

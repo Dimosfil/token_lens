@@ -12,9 +12,40 @@ let refreshPromise = null;
 let chartMode = "total";
 let lastDashboard = null;
 const AUTO_REFRESH_MS = 5000;
+const RANGE_SECONDS = {
+  "1h": 60 * 60,
+  "24h": 24 * 60 * 60,
+  "7d": 7 * 24 * 60 * 60,
+  "30d": 30 * 24 * 60 * 60,
+  "365d": 365 * 24 * 60 * 60,
+};
+const BUCKET_SECONDS = {
+  hour: 60 * 60,
+  day: 24 * 60 * 60,
+  month: 30 * 24 * 60 * 60,
+};
+const DEFAULT_BUCKET = "day";
+
+
+function bucketAllowed(range, bucket) {
+  return BUCKET_SECONDS[bucket] <= RANGE_SECONDS[range];
+}
+
+
+function syncBucketOptions() {
+  const range = document.getElementById("rangeFilter").value;
+  const bucketSelect = document.getElementById("bucketFilter");
+  bucketSelect.querySelectorAll("option").forEach(option => {
+    option.disabled = !bucketAllowed(range, option.value);
+  });
+  if (!bucketAllowed(range, bucketSelect.value)) {
+    bucketSelect.value = bucketAllowed(range, DEFAULT_BUCKET) ? DEFAULT_BUCKET : "hour";
+  }
+}
 
 
 function dashboardQuery() {
+  syncBucketOptions();
   const params = new URLSearchParams();
   const model = document.getElementById("modelFilter").value;
   const range = document.getElementById("rangeFilter").value;
@@ -82,7 +113,10 @@ async function pollForUpdates() {
 
 document.getElementById("refresh").addEventListener("click", () => refresh(true));
 document.getElementById("modelFilter").addEventListener("change", () => refresh(false));
-document.getElementById("rangeFilter").addEventListener("change", () => refresh(false));
+document.getElementById("rangeFilter").addEventListener("change", () => {
+  syncBucketOptions();
+  refresh(false);
+});
 document.getElementById("bucketFilter").addEventListener("change", () => refresh(false));
 document.getElementById("chartMode").addEventListener("click", event => {
   const button = event.target.closest("[data-chart-mode]");
@@ -94,6 +128,7 @@ document.getElementById("chartMode").addEventListener("click", event => {
   if (lastDashboard) renderDashboard(lastDashboard);
 });
 
+syncBucketOptions();
 refresh(false).catch(err => {
   setAutoStatus(`Refresh error: ${err.message}`, true);
   document.body.insertAdjacentHTML("beforeend", `<pre>${err.message}</pre>`);
