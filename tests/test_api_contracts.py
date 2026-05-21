@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import time
 import unittest
@@ -143,6 +144,41 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(len(detail["calls"]), 1)
         self.assertLessEqual({"request", "response", "event", "raw_event_captured"}, set(detail["calls"][0]))
         self.assertFalse(detail["calls"][0]["raw_event_captured"])
+
+    def test_task_detail_compacts_large_raw_event_response_metadata(self):
+        raw_event = {
+            "type": "response.completed",
+            "sequence_number": 1,
+            "response": {
+                "id": "resp-large",
+                "status": "completed",
+                "model": "gpt-5",
+                "instructions": "large instructions" * 100,
+                "tools": [{"name": "large-tool", "schema": "x" * 1000}],
+                "input": [{"role": "user", "content": "hello"}],
+                "output": [{"type": "message", "content": "done"}],
+                "usage": {"total_tokens": 140},
+            },
+        }
+        con = connect(self.db_path)
+        try:
+            upsert_turn(con, sample_turn(
+                source_log_id=3,
+                response_id="resp-large",
+                event_json=json.dumps(raw_event),
+            ))
+            con.commit()
+            detail = queries.task_detail(con, "thread-1", "turn-1")
+        finally:
+            con.close()
+
+        event = next(call["event"] for call in detail["calls"] if call["response_id"] == "resp-large")
+        self.assertTrue(event["compacted"])
+        self.assertEqual(event["response"]["id"], "resp-large")
+        self.assertEqual(event["response"]["usage"], {"total_tokens": 140})
+        self.assertNotIn("instructions", event["response"])
+        self.assertNotIn("tools", event["response"])
+        self.assertIn("instructions", event["omitted_response_fields"])
 
     def test_service_state_includes_import_observability(self):
         original_load_config = analytics_service.load_config

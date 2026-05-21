@@ -14,6 +14,17 @@ generated outputs, secrets, credentials, or private production data.
 
 ## Tasks
 
+### Call Detail Payload Size
+
+Goal: make the call detail modal open reliably for rows whose captured raw
+response event contains very large instructions/tools metadata.
+
+Planned changes:
+
+- [x] Compact task-detail raw event payloads before returning them to the UI.
+- [x] Add a regression test for oversized event metadata.
+- [x] Verify backend tests and restart/smoke-check the local server.
+
 ### Auto Refresh Missing Model Filter
 
 Goal: stop dashboard auto refresh from failing when the model filter control is

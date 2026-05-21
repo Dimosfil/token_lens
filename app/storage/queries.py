@@ -19,6 +19,48 @@ def decode_json(value):
         return value
 
 
+COMPACT_RESPONSE_EVENT_KEYS = {
+    "id",
+    "object",
+    "created_at",
+    "status",
+    "completed_at",
+    "error",
+    "incomplete_details",
+    "model",
+    "parallel_tool_calls",
+    "previous_response_id",
+    "reasoning",
+    "service_tier",
+    "usage",
+}
+
+
+def compact_event_payload(value):
+    if not isinstance(value, dict):
+        return value
+    response = value.get("response")
+    if not isinstance(response, dict):
+        return value
+
+    compacted = {
+        key: response[key]
+        for key in COMPACT_RESPONSE_EVENT_KEYS
+        if key in response
+    }
+    omitted = sorted(
+        key for key in response
+        if key not in COMPACT_RESPONSE_EVENT_KEYS
+    )
+
+    event = dict(value)
+    event["response"] = compacted
+    if omitted:
+        event["compacted"] = True
+        event["omitted_response_fields"] = omitted
+    return event
+
+
 DEFAULT_RANGE = "7d"
 DEFAULT_BUCKET = "day"
 CUSTOM_RANGE = "custom"
@@ -387,7 +429,7 @@ def task_detail(con: sqlite3.Connection, thread_id: str, turn_id: str):
     for row in rows:
         row["request"] = decode_json(row.pop("request_json"))
         row["response"] = decode_json(row.pop("response_json"))
-        row["event"] = decode_json(row.pop("event_json"))
+        row["event"] = compact_event_payload(decode_json(row.pop("event_json")))
         row["raw_event_captured"] = row["event"] is not None
 
     task = {
