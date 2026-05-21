@@ -169,6 +169,7 @@ main {
   min-height: 220px;
   padding-top: 12px;
   border-top: 1px solid var(--line);
+  overflow: visible;
 }
 
 .empty-chart {
@@ -179,6 +180,7 @@ main {
 }
 
 .bar {
+  position: relative;
   flex: 1;
   min-width: 28px;
   display: flex;
@@ -186,6 +188,7 @@ main {
   align-items: center;
   justify-content: end;
   gap: 6px;
+  outline: 0;
 }
 
 .bar-fill {
@@ -193,12 +196,89 @@ main {
   min-height: 2px;
   background: linear-gradient(180deg, var(--accent), var(--accent-3));
   border-radius: 4px 4px 0 0;
+  transition: filter 120ms ease, transform 120ms ease;
+}
+
+.bar:hover .bar-fill,
+.bar:focus-visible .bar-fill {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
 }
 
 .bar label {
   color: var(--muted);
   font-size: 11px;
   white-space: nowrap;
+}
+
+.bar-tooltip {
+  position: absolute;
+  left: 50%;
+  bottom: 28px;
+  z-index: 5;
+  width: max-content;
+  min-width: 180px;
+  max-width: 240px;
+  padding: 10px 12px;
+  color: #fff;
+  background: rgba(24, 32, 42, 0.96);
+  border-radius: 6px;
+  box-shadow: 0 10px 28px rgba(24, 32, 42, 0.22);
+  font-size: 12px;
+  line-height: 1.35;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -6px);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.bar-tooltip b {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+
+.bar-tooltip div {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.bar-tooltip span {
+  color: #c8d1dc;
+}
+
+.bar-tooltip strong {
+  font-weight: 600;
+  text-align: right;
+}
+
+.bar:hover .bar-tooltip,
+.bar:focus-visible .bar-tooltip {
+  opacity: 1;
+  transform: translate(-50%, -12px);
+}
+
+.bar:first-child .bar-tooltip {
+  left: 0;
+  transform: translate(0, -6px);
+}
+
+.bar:first-child:hover .bar-tooltip,
+.bar:first-child:focus-visible .bar-tooltip {
+  transform: translate(0, -12px);
+}
+
+.bar:last-child .bar-tooltip {
+  right: 0;
+  left: auto;
+  transform: translate(0, -6px);
+}
+
+.bar:last-child:hover .bar-tooltip,
+.bar:last-child:focus-visible .bar-tooltip {
+  transform: translate(0, -12px);
 }
 
 .table-wrap {

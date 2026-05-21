@@ -171,3 +171,23 @@ Verification:
 - [x] `python .\tools\project-memory\index_project.py rebuild`
 - [x] `python .\tools\project-memory\index_project.py stats`
 - [x] `python .\tools\project-memory\index_project.py search "SQLite"`
+### Daily Bar Tooltips
+
+Goal: show detailed bucket data when hovering chart bars.
+
+Planned changes:
+
+- [x] Inspect daily chart rendering and available aggregate fields.
+- [x] Add hover/focus tooltip markup for each daily bar.
+- [x] Style tooltip without shifting the chart layout.
+- [x] Verify JavaScript syntax and whitespace.
+
+Risks or dependencies:
+
+- [x] Preserve the existing chart mode toggle and compact chart layout.
+- [x] Keep tooltip data derived from existing dashboard payload fields.
+
+Verification:
+
+- [x] `node --check web\js\render\daily.js`
+- [x] `git diff --check`
