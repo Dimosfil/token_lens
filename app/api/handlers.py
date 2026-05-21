@@ -22,6 +22,16 @@ def parse_limit(query: dict, default: int = 100, maximum: int = 500) -> int:
     return min(max(limit, 1), maximum)
 
 
+def parse_ts(query: dict, key: str) -> int | None:
+    value = first(query, key)
+    if not value:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
+
 class AnalyticsHandler(BaseHTTPRequestHandler):
     server_version = "TokenLens/0.1"
 
@@ -35,6 +45,8 @@ class AnalyticsHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         parsed = urlparse(self.path)
         query = parse_qs(parsed.query)
+        start_ts = parse_ts(query, "start_ts")
+        end_ts = parse_ts(query, "end_ts")
         if parsed.path == "/api/import":
             stats = run_import()
             send_json(self, stats.__dict__)
@@ -45,6 +57,8 @@ class AnalyticsHandler(BaseHTTPRequestHandler):
                 first(query, "model"),
                 first(query, "range"),
                 first(query, "bucket", "day"),
+                start_ts,
+                end_ts,
             )
             payload["import_stats"] = stats.__dict__
             send_json(self, payload)
@@ -54,27 +68,37 @@ class AnalyticsHandler(BaseHTTPRequestHandler):
     def handle_api(self, path: str, query: dict):
         range_key = first(query, "range")
         bucket = first(query, "bucket", "day")
+        start_ts = parse_ts(query, "start_ts")
+        end_ts = parse_ts(query, "end_ts")
         if path == "/api/dashboard":
             send_json(self, analytics_service.dashboard(
                 first(query, "model"),
                 range_key,
                 bucket,
+                start_ts,
+                end_ts,
             ))
         elif path == "/api/summary":
-            send_json(self, analytics_service.summary(range_key))
+            send_json(self, analytics_service.summary(range_key, start_ts, end_ts))
         elif path == "/api/state":
             send_json(self, analytics_service.data_state())
         elif path == "/api/import-status":
             send_json(self, analytics_service.background_import_status())
         elif path == "/api/daily":
-            send_json(self, analytics_service.daily(range_key, bucket))
+            send_json(self, analytics_service.daily(range_key, bucket, start_ts, end_ts))
         elif path == "/api/turns":
             limit = parse_limit(query)
             model = first(query, "model")
-            send_json(self, analytics_service.turns(limit, model, range_key))
+            send_json(self, analytics_service.turns(limit, model, range_key, start_ts, end_ts))
         elif path == "/api/tasks":
             limit = parse_limit(query)
-            send_json(self, analytics_service.tasks(limit, range_key))
+            send_json(self, analytics_service.tasks(limit, range_key, start_ts, end_ts))
+        elif path == "/api/bucket-tasks":
+            period = first(query, "period")
+            if not period:
+                self.send_error(400, "period is required")
+                return
+            send_json(self, analytics_service.bucket_tasks(period, bucket, range_key, start_ts, end_ts))
         elif path == "/api/task-detail":
             thread_id = first(query, "thread_id")
             turn_id = first(query, "turn_id")
@@ -83,7 +107,7 @@ class AnalyticsHandler(BaseHTTPRequestHandler):
                 return
             send_json(self, analytics_service.task_detail(thread_id, turn_id))
         elif path == "/api/models":
-            send_json(self, analytics_service.models(range_key))
+            send_json(self, analytics_service.models(range_key, start_ts, end_ts))
         else:
             self.send_error(404)
 
@@ -93,6 +117,8 @@ class AnalyticsHandler(BaseHTTPRequestHandler):
             first(query, "model"),
             first(query, "range"),
             first(query, "bucket", "day"),
+            parse_ts(query, "start_ts"),
+            parse_ts(query, "end_ts"),
         )
 
     def summary(self, con):

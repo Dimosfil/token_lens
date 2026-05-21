@@ -66,7 +66,8 @@ p {
 }
 
 button,
-select {
+select,
+input[type="date"] {
   height: 36px;
   border: 1px solid var(--line);
   background: var(--surface);
@@ -81,6 +82,12 @@ button {
   border-color: var(--accent);
   color: #fff;
   cursor: pointer;
+}
+
+.secondary-button {
+  background: var(--surface);
+  border-color: var(--line);
+  color: var(--ink);
 }
 
 .segmented {
@@ -114,6 +121,11 @@ button {
   gap: 12px;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.custom-range {
+  display: inline-flex;
+  gap: 8px;
 }
 
 .auto-status {
@@ -371,12 +383,15 @@ th {
   white-space: nowrap;
 }
 
-.detail-row {
+.detail-row,
+.bucket-row {
   cursor: pointer;
 }
 
 .detail-row:hover,
 .detail-row:focus-visible,
+.bucket-row:hover,
+.bucket-row:focus-visible,
 #detailCalls tr:hover,
 #detailCalls tr:focus-visible,
 #detailCalls tr.is-selected {
@@ -508,6 +523,10 @@ th {
 .detail-table {
   max-height: 220px;
   border: 1px solid var(--line);
+}
+
+.bucket-table {
+  max-height: min(60vh, 620px);
 }
 
 .raw-event {

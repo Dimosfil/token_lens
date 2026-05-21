@@ -14,6 +14,23 @@ generated outputs, secrets, credentials, or private production data.
 
 ## Tasks
 
+### All-Time Dashboard Tasks Table
+
+Goal: make the dashboard's "Задачи целиком" table show tasks from every imported
+day while keeping charts, summary cards, model calls, and model averages tied to
+the selected time range.
+
+Planned changes:
+
+- [x] Let task queries opt into an all-time range.
+- [x] Use the all-time task query in the dashboard payload.
+- [x] Add a regression test for older tasks outside the selected range.
+
+Verification:
+
+- [x] `python -m compileall app`
+- [x] `python -m unittest discover -s tests`
+
 ### Raw Event Capture And Token Suspects
 
 Goal: make raw Codex response events a reliable source of truth for call details
@@ -405,3 +422,31 @@ Verification:
 
 - [x] `node --check web\js\render\daily.js`
 - [x] `git diff --check`
+
+### Bucketed Dashboard Tasks
+
+Goal: keep dashboard loading fast by showing task records only for the selected
+range, grouped by the selected candle size, with a detail list per bucket.
+
+Planned changes:
+
+- [x] Add custom dashboard date range parameters.
+- [x] Replace all-time dashboard tasks with bucketed task aggregates.
+- [x] Move effort into the main task table and remove the duplicate model-calls UI.
+- [x] Add a bucket detail modal listing tasks inside the selected candle.
+- [x] Verify API contract tests and syntax checks.
+
+Risks or dependencies:
+
+- [x] Preserve existing task-detail behavior for individual task rows.
+- [x] Avoid reading external Codex logs for verification.
+
+Verification:
+
+- [x] `python -m compileall app`
+- [x] `node --check web\app.js`
+- [x] `node --check web\js\render\tasks.js`
+- [x] `python -m unittest discover -s tests`
+- [x] Restarted with `.\start.ps1 -Restart`
+- [x] HTTP smoke: `/api/state`, `/api/dashboard?range=1h&bucket=hour`,
+      `/api/bucket-tasks?...`, and custom date dashboard query

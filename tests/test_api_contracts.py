@@ -111,13 +111,12 @@ class ApiContractTests(unittest.TestCase):
             "estimated_cost",
         }, set(turns[0]))
         self.assertLessEqual({
-            "started_at", "finished_at", "first_source_log_id", "last_source_log_id",
-            "thread_id", "thread_name", "turn_id", "submission_ids", "response_ids",
-            "models", "statuses", "model_calls", "input_tokens",
+            "period", "started_at", "finished_at", "bucket_start_ts", "bucket_end_ts",
+            "tasks", "models", "statuses", "efforts", "model_calls", "input_tokens",
             "cached_input_tokens", "non_cached_input_tokens", "output_tokens",
             "reasoning_output_tokens", "total_tokens", "total_tokens_per_call",
             "estimated_cost",
-        }, set(tasks[0]))
+        }, set(dashboard["tasks"][0]))
         self.assertLessEqual({
             "model", "finished_at", "turns", "statuses", "total_tokens",
             "avg_total_tokens", "total_tokens_per_call", "avg_input_tokens",
@@ -160,6 +159,44 @@ class ApiContractTests(unittest.TestCase):
         self.assertLessEqual({
             "status", "started_at", "completed_at", "duration_seconds", "stats", "error",
         }, set(state["import_status"]))
+
+    def test_dashboard_tasks_follow_selected_range(self):
+        old_ts = int(time.time()) - (10 * 24 * 60 * 60)
+        con = connect(self.db_path)
+        try:
+            upsert_turn(con, sample_turn(
+                source_log_id=3,
+                response_id="resp-old",
+                ts=old_ts,
+                ts_iso="2026-05-11T00:00:00+00:00",
+                day="2026-05-11",
+                thread_id="thread-old",
+                thread_name="Old thread",
+                turn_id="turn-old",
+                total_tokens=77,
+            ))
+            con.commit()
+
+            dashboard = queries.dashboard(con, range_key="1h")
+        finally:
+            con.close()
+
+        self.assertEqual(dashboard["summary"]["summary"]["turns"], 2)
+        self.assertEqual(sum(row["tasks"] for row in dashboard["tasks"]), 2)
+        self.assertNotIn("thread-old", {row["thread_id"] for row in dashboard["turns"]})
+
+    def test_bucket_tasks_returns_tasks_for_selected_period(self):
+        con = connect(self.db_path)
+        try:
+            rows = queries.bucket_tasks(con, "2026-05-21", "day")
+        finally:
+            con.close()
+
+        self.assertEqual({row["thread_id"] for row in rows}, {"thread-1", "thread-2"})
+        self.assertLessEqual({
+            "thread_id", "turn_id", "models", "statuses", "efforts", "model_calls",
+            "total_tokens", "total_tokens_per_call",
+        }, set(rows[0]))
 
     def test_limit_parsing_falls_back_and_clamps(self):
         self.assertEqual(parse_limit({"limit": ["bad"]}, default=25, maximum=50), 25)
