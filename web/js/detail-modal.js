@@ -130,6 +130,15 @@ export async function openTaskDetail(threadId, turnId) {
 export function initDetailModal() {
   const dialog = document.getElementById("detailDialog");
   document.getElementById("detailClose").addEventListener("click", () => dialog.close());
+  dialog.addEventListener("close", () => {
+    detail = null;
+    selectedCall = 0;
+    document.getElementById("detailMeta").innerHTML = "";
+    document.getElementById("detailCalls").innerHTML = "";
+    document.getElementById("detailRequest").textContent = "";
+    document.getElementById("detailResponse").textContent = "";
+    document.getElementById("detailEvent").textContent = "";
+  });
   document.getElementById("detailCalls").addEventListener("click", event => {
     const row = event.target.closest("[data-call-index]");
     if (row) selectCall(Number(row.dataset.callIndex));

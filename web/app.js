@@ -1,4 +1,4 @@
-import { getJson } from "./js/api.js";
+import { getJson, hasActiveRequests } from "./js/api.js";
 import { initDetailModal, openTaskDetail } from "./js/detail-modal.js";
 import { renderDaily } from "./js/render/daily.js";
 import { renderMetrics } from "./js/render/metrics.js";
@@ -133,8 +133,12 @@ async function refreshNow(importFirst = false) {
 
 
 async function pollForUpdates() {
+  if (refreshPromise || hasActiveRequests()) {
+    setAutoStatus("Waiting for current request");
+    return;
+  }
+
   setAutoStatus("Checking for updates");
-  if (refreshPromise) return;
 
   getJson("/api/state")
     .then(state => {
@@ -145,7 +149,8 @@ async function pollForUpdates() {
       return null;
     })
     .catch(err => {
-      setAutoStatus(`Auto refresh error: ${err.message}`, true);
+      const transient = err.message === "Failed to fetch" || err.message.startsWith("Request timed out");
+      setAutoStatus(transient ? `Will retry auto refresh` : `Auto refresh error: ${err.message}`, !transient);
     });
 }
 

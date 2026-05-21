@@ -1,6 +1,13 @@
+let activeRequests = 0;
+
+export function hasActiveRequests() {
+  return activeRequests > 0;
+}
+
 export async function getJson(url, options = {}, timeoutMs = 30000) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  activeRequests += 1;
 
   try {
     const res = await fetch(url, {
@@ -16,6 +23,7 @@ export async function getJson(url, options = {}, timeoutMs = 30000) {
     }
     throw err;
   } finally {
+    activeRequests = Math.max(0, activeRequests - 1);
     clearTimeout(timeout);
   }
 }

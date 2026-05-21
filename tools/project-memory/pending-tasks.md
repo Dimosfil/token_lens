@@ -14,6 +14,18 @@ generated outputs, secrets, credentials, or private production data.
 
 ## Tasks
 
+### Auto Refresh Fetch Errors Under Load
+
+Goal: prevent transient `Failed to fetch` errors when auto refresh overlaps
+with heavier dashboard or bucket/detail queries.
+
+Planned changes:
+
+- [x] Add UI request tracking so `/api/state` polling skips while the app is
+      already loading user-requested data.
+- [x] Tune SQLite connections for friendlier concurrent reads/writes.
+- [x] Verify syntax, tests, restart, and smoke-check the affected endpoints.
+
 ### Call Detail Payload Size
 
 Goal: make the call detail modal open reliably for rows whose captured raw
