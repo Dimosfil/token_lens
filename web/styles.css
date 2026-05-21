@@ -347,9 +347,13 @@ table[data-resizable] {
 
 th,
 td {
+  box-sizing: border-box;
+  max-width: 260px;
+  overflow: hidden;
   padding: 10px 8px;
   border-bottom: 1px solid var(--line);
   text-align: right;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -365,8 +369,21 @@ td:nth-child(3) {
 th {
   position: relative;
   color: var(--muted);
+  cursor: grab;
   font-weight: 600;
   user-select: none;
+}
+
+th:active {
+  cursor: grabbing;
+}
+
+table[data-reorderable] th.is-dragging-column {
+  opacity: 0.55;
+}
+
+table[data-reorderable] th.is-drag-over {
+  background: #e6f0f0;
 }
 
 .thread {

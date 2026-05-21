@@ -44,7 +44,6 @@ export function renderTasks(rows) {
       <td>${time(row.finished_at)}</td>
       <td>${number(row.tasks)}</td>
       <td>${row.models}</td>
-      <td>${row.statuses}</td>
       <td>${number(row.model_calls)}</td>
       <td>${number(row.total_tokens_per_call)}</td>
       <td>${number(row.total_tokens)}</td>
@@ -54,6 +53,7 @@ export function renderTasks(rows) {
       <td>${number(row.output_tokens)}</td>
       <td>${number(row.reasoning_output_tokens)}</td>
       <td>${value(row.efforts)}</td>
+      <td>${row.statuses}</td>
     </tr>
   `).join("");
 }
@@ -66,7 +66,6 @@ function renderBucketTasks(rows) {
       <td>${time(row.started_at)}</td>
       <td class="task-cell" title="${escapeHtml(taskDetails(row))}">${escapeHtml(taskName(row))}</td>
       <td>${row.models}</td>
-      <td>${row.statuses}</td>
       <td>${number(row.model_calls)}</td>
       <td>${number(row.total_tokens_per_call)}</td>
       <td>${number(row.total_tokens)}</td>
@@ -76,6 +75,7 @@ function renderBucketTasks(rows) {
       <td>${number(row.output_tokens)}</td>
       <td>${number(row.reasoning_output_tokens)}</td>
       <td>${value(row.efforts)}</td>
+      <td>${row.statuses}</td>
     </tr>
   `).join("");
 }

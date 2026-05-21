@@ -14,6 +14,29 @@ generated outputs, secrets, credentials, or private production data.
 
 ## Tasks
 
+### Auto Refresh Missing Model Filter
+
+Goal: stop dashboard auto refresh from failing when the model filter control is
+not present in the current header layout.
+
+Planned changes:
+
+- [x] Make model option rendering tolerate the removed optional filter element.
+- [x] Verify JavaScript syntax for the affected modules.
+
+### Dashboard Task Column Order
+
+Goal: let the dashboard task table keep `Status` at the end for now, support
+manual column ordering, and prevent long text from visually overlapping the next
+field.
+
+Planned changes:
+
+- [x] Move the task status column to the end.
+- [x] Add persisted manual column ordering for the task table.
+- [x] Clamp overflowing cell text inside its own column.
+- [x] Verify frontend syntax and restart/smoke check if needed.
+
 ### All-Time Dashboard Tasks Table
 
 Goal: make the dashboard's "Задачи целиком" table show tasks from every imported

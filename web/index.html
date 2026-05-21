@@ -59,12 +59,11 @@
         <h2>Средний расход по моделям</h2>
       </div>
       <div class="table-wrap">
-        <table data-resizable data-table-id="model-averages">
+        <table data-resizable data-reorderable data-table-id="model-averages">
           <thead>
             <tr>
               <th>Финиш</th>
               <th>Model</th>
-              <th>Status</th>
               <th>Calls</th>
               <th>Total / call</th>
               <th>Avg total</th>
@@ -75,6 +74,7 @@
               <th>Avg reasoning</th>
               <th>Total tokens</th>
               <th>Cost</th>
+              <th>Status</th>
             </tr>
           </thead>
           <tbody id="modelAverages"></tbody>
@@ -87,7 +87,7 @@
         <h2>Задачи целиком</h2>
       </div>
       <div class="table-wrap">
-        <table data-resizable data-table-id="task-buckets">
+        <table data-resizable data-reorderable data-table-id="task-buckets">
           <thead>
             <tr>
               <th>Период</th>
@@ -95,7 +95,6 @@
               <th>Финиш</th>
               <th>Tasks</th>
               <th>Models</th>
-              <th>Status</th>
               <th>Calls</th>
               <th>Total / call</th>
               <th>Total</th>
@@ -105,6 +104,7 @@
               <th>Output</th>
               <th>Reasoning</th>
               <th>Effort</th>
+              <th>Status</th>
             </tr>
           </thead>
           <tbody id="tasks"></tbody>
@@ -129,7 +129,7 @@
       </div>
       <div id="detailMeta" class="detail-meta"></div>
       <div class="table-wrap detail-table">
-        <table>
+        <table data-resizable data-reorderable data-table-id="bucket-tasks">
           <thead>
             <tr>
               <th>Time</th>
@@ -175,14 +175,13 @@
         <button id="bucketClose" type="button" aria-label="Close">&times;</button>
       </div>
       <div class="table-wrap detail-table bucket-table">
-        <table>
+        <table data-resizable data-reorderable data-table-id="bucket-tasks">
           <thead>
             <tr>
               <th>Финиш</th>
               <th>Start</th>
               <th>Проект / задача</th>
               <th>Models</th>
-              <th>Status</th>
               <th>Calls</th>
               <th>Total / call</th>
               <th>Total</th>
@@ -192,6 +191,7 @@
               <th>Output</th>
               <th>Reasoning</th>
               <th>Effort</th>
+              <th>Status</th>
             </tr>
           </thead>
           <tbody id="bucketTasks"></tbody>
@@ -200,6 +200,6 @@
     </div>
   </dialog>
 
-  <script type="module" src="/app.js?v=20260521-4"></script>
+  <script type="module" src="/app.js?v=20260521-6"></script>
 </body>
 </html>

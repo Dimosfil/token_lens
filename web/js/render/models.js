@@ -2,6 +2,8 @@ import { number, time } from "../format.js";
 
 export function renderModels(rows) {
   const select = document.getElementById("modelFilter");
+  if (!select) return;
+
   const current = select.value;
   select.innerHTML = `<option value="">Все модели</option>` + rows.map(row => (
     `<option value="${row.model}">${row.model} · ${number(row.total_tokens)}</option>`
@@ -15,7 +17,6 @@ export function renderModelAverages(rows) {
     <tr>
       <td>${time(row.finished_at)}</td>
       <td class="thread" title="${row.model}">${row.model}</td>
-      <td>${row.statuses}</td>
       <td>${number(row.turns)}</td>
       <td>${number(row.total_tokens_per_call)}</td>
       <td>${number(row.avg_total_tokens)}</td>
@@ -26,6 +27,7 @@ export function renderModelAverages(rows) {
       <td>${number(row.avg_reasoning_output_tokens)}</td>
       <td>${number(row.total_tokens)}</td>
       <td>${Number(row.estimated_cost || 0).toFixed(4)}</td>
+      <td>${row.statuses}</td>
     </tr>
   `).join("");
 }
