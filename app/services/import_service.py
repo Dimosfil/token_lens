@@ -8,8 +8,27 @@ from app.sources.base import UsageSource
 from app.sources.codex.adapter import CodexUsageSource
 from app.sources.codex.parser import parse_response_event, parse_usage_row
 from app.storage.connection import connect
-from app.storage.repositories import upsert_turn
+from app.storage.repositories import insert_raw_log, latest_raw_log_id, set_latest_raw_log_id, upsert_turn
 from app.storage.schema import init_db
+
+
+def archive_raw_logs(source: UsageSource, target) -> int:
+    iter_rows_after = getattr(source, "iter_rows_after", None)
+    if not iter_rows_after:
+        return 0
+
+    archived = 0
+    last_id = latest_raw_log_id(target)
+    if last_id == 0:
+        latest_source_id = getattr(source, "latest_log_id", lambda: 0)()
+        if latest_source_id:
+            set_latest_raw_log_id(target, latest_source_id)
+            return 0
+
+    for item in iter_rows_after(last_id):
+        if insert_raw_log(target, item):
+            archived += 1
+    return archived
 
 
 def import_usage_source(source: UsageSource, analytics_db: str, prices: dict) -> ImportStats:
@@ -19,6 +38,7 @@ def import_usage_source(source: UsageSource, analytics_db: str, prices: dict) ->
 
     target = connect(analytics_db)
     try:
+        stats.archived = archive_raw_logs(source, target)
         for item in source.iter_rows():
             stats.scanned += 1
             body = item["feedback_log_body"] or ""

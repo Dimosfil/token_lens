@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import sqlite3
 
 
@@ -12,6 +13,33 @@ DETAIL_DEFAULTS = {
 
 def upsert_turn(con: sqlite3.Connection, row: dict) -> None:
     row = {**DETAIL_DEFAULTS, **row}
+    if row["event_json"]:
+        cursor = con.execute(
+            """
+            update turns
+            set response_id = :response_id,
+                status = :status,
+                request_json = :request_json,
+                response_json = :response_json,
+                event_json = :event_json,
+                imported_at = :imported_at
+            where thread_id = :thread_id
+              and turn_id = :turn_id
+              and model = :model
+              and input_tokens = :input_tokens
+              and output_tokens = :output_tokens
+              and total_tokens = :total_tokens
+              and event_json is null
+              and not exists (
+                select 1 from turns existing
+                where existing.response_id = :response_id
+              )
+            """,
+            row,
+        )
+        if cursor.rowcount > 0:
+            return
+
     con.execute(
         """
         insert or replace into turns (
@@ -53,3 +81,52 @@ def upsert_turn(con: sqlite3.Connection, row: dict) -> None:
         """,
         row,
     )
+
+
+def latest_raw_log_id(con: sqlite3.Connection) -> int:
+    state = con.execute(
+        "select last_source_log_id from raw_log_archive_state where id = 1"
+    ).fetchone()
+    if state:
+        return int(state["last_source_log_id"])
+    row = con.execute("select coalesce(max(source_log_id), 0) as latest_id from raw_logs").fetchone()
+    return int(row["latest_id"] if row else 0)
+
+
+def set_latest_raw_log_id(con: sqlite3.Connection, source_log_id: int) -> None:
+    con.execute(
+        """
+        insert into raw_log_archive_state (id, last_source_log_id, updated_at)
+        values (1, ?, ?)
+        on conflict(id) do update set
+          last_source_log_id = excluded.last_source_log_id,
+          updated_at = excluded.updated_at
+        """,
+        [int(source_log_id), datetime.now(timezone.utc).isoformat()],
+    )
+
+
+def insert_raw_log(con: sqlite3.Connection, row: dict) -> bool:
+    ts = int(row["ts"])
+    dt = datetime.fromtimestamp(ts, timezone.utc)
+    cursor = con.execute(
+        """
+        insert or ignore into raw_logs (
+          source_log_id, ts, ts_iso, day, thread_id, feedback_log_body, archived_at
+        ) values (
+          :source_log_id, :ts, :ts_iso, :day, :thread_id, :feedback_log_body, :archived_at
+        )
+        """,
+        {
+            "source_log_id": row["id"],
+            "ts": ts,
+            "ts_iso": dt.isoformat(),
+            "day": dt.date().isoformat(),
+            "thread_id": row["thread_id"],
+            "feedback_log_body": row["feedback_log_body"] or "",
+            "archived_at": datetime.now(timezone.utc).isoformat(),
+        },
+    )
+    if cursor.rowcount > 0:
+        set_latest_raw_log_id(con, row["id"])
+    return cursor.rowcount > 0

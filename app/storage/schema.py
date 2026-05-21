@@ -34,6 +34,25 @@ create index if not exists idx_turns_ts on turns(ts);
 create index if not exists idx_turns_day on turns(day);
 create index if not exists idx_turns_model on turns(model);
 create index if not exists idx_turns_thread on turns(thread_id);
+
+create table if not exists raw_logs (
+  source_log_id integer primary key,
+  ts integer not null,
+  ts_iso text not null,
+  day text not null,
+  thread_id text,
+  feedback_log_body text not null,
+  archived_at text not null
+);
+
+create index if not exists idx_raw_logs_ts on raw_logs(ts);
+create index if not exists idx_raw_logs_thread on raw_logs(thread_id);
+
+create table if not exists raw_log_archive_state (
+  id integer primary key check (id = 1),
+  last_source_log_id integer not null default 0,
+  updated_at text not null
+);
 """
 
 

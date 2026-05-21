@@ -7,6 +7,7 @@ from pathlib import Path
 
 from app.api.handlers import parse_limit
 from app.services import analytics_service
+from app.services.import_service import import_usage_source
 from app.sources.codex.parser import parse_response_event, parse_usage_row
 from app.storage import queries
 from app.storage.connection import connect
@@ -95,6 +96,7 @@ class ApiContractTests(unittest.TestCase):
         }, set(summary["summary"]))
         self.assertLessEqual({
             "turns", "latest_source_log_id", "latest_ts", "total_tokens", "version",
+            "raw_logs", "latest_raw_log_id", "latest_raw_log_ts",
         }, set(state))
         self.assertLessEqual({
             "period", "day", "turns", "input_tokens", "output_tokens",
@@ -134,12 +136,14 @@ class ApiContractTests(unittest.TestCase):
         self.assertLessEqual({
             "started_at", "finished_at", "thread_id", "thread_name", "turn_id",
             "submission_ids", "response_ids", "models", "statuses", "model_calls",
+            "raw_event_calls", "raw_event_captured",
             "input_tokens", "cached_input_tokens", "non_cached_input_tokens",
             "output_tokens", "reasoning_output_tokens", "total_tokens",
             "total_tokens_per_call", "estimated_cost",
         }, set(detail["task"]))
         self.assertEqual(len(detail["calls"]), 1)
-        self.assertLessEqual({"request", "response", "event"}, set(detail["calls"][0]))
+        self.assertLessEqual({"request", "response", "event", "raw_event_captured"}, set(detail["calls"][0]))
+        self.assertFalse(detail["calls"][0]["raw_event_captured"])
 
     def test_service_state_includes_import_observability(self):
         original_load_config = analytics_service.load_config
@@ -161,6 +165,113 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(parse_limit({"limit": ["bad"]}, default=25, maximum=50), 25)
         self.assertEqual(parse_limit({"limit": ["0"]}, default=25, maximum=50), 1)
         self.assertEqual(parse_limit({"limit": ["5000"]}, default=25, maximum=50), 50)
+
+    def test_import_archives_every_raw_log_row(self):
+        class Source:
+            def __init__(self):
+                self.rows = [
+                    {
+                        "id": 10,
+                        "ts": int(time.time()) - 5,
+                        "thread_id": "thread-raw",
+                        "feedback_log_body": "unrecognized raw event",
+                    },
+                    {
+                        "id": 11,
+                        "ts": int(time.time()) - 4,
+                        "thread_id": "thread-raw",
+                        "feedback_log_body": (
+                            'instrument_name="codex.turn.token_usage" model=gpt-5 '
+                            'thread.id=thread-raw turn.id=turn-raw '
+                            "codex.turn.token_usage.input_tokens=3 "
+                            "codex.turn.token_usage.output_tokens=2 "
+                            "codex.turn.token_usage.total_tokens=5"
+                        ),
+                    },
+                ]
+
+            def iter_rows(self):
+                return iter(self.rows)
+
+            def iter_rows_after(self, last_id=0):
+                return (row for row in self.rows if row["id"] > last_id)
+
+            def load_thread_names(self):
+                return {}
+
+        stats = import_usage_source(Source(), self.db_path, {})
+        con = connect(self.db_path)
+        try:
+            raw_count = con.execute("select count(*) from raw_logs").fetchone()[0]
+            raw_body = con.execute(
+                "select feedback_log_body from raw_logs where source_log_id = 10"
+            ).fetchone()[0]
+        finally:
+            con.close()
+
+        self.assertEqual(stats.archived, 2)
+        self.assertEqual(stats.imported, 1)
+        self.assertEqual(raw_count, 2)
+        self.assertEqual(raw_body, "unrecognized raw event")
+
+    def test_response_event_backfills_matching_usage_row_payloads(self):
+        class Source:
+            def __init__(self):
+                self.rows = [
+                    {
+                        "id": 20,
+                        "ts": int(time.time()) - 5,
+                        "thread_id": "thread-merge",
+                        "feedback_log_body": (
+                            'instrument_name="codex.turn.token_usage" model=gpt-5 '
+                            'thread.id=thread-merge turn.id=turn-merge submission.id="sub-merge" '
+                            "codex.turn.token_usage.input_tokens=9 "
+                            "codex.turn.token_usage.cached_input_tokens=4 "
+                            "codex.turn.token_usage.output_tokens=6 "
+                            "codex.turn.token_usage.total_tokens=15"
+                        ),
+                    },
+                    {
+                        "id": 21,
+                        "ts": int(time.time()) - 4,
+                        "thread_id": "thread-merge",
+                        "feedback_log_body": (
+                            'thread.id=thread-merge turn.id=turn-merge submission.id="sub-merge" '
+                            '{"type":"response.completed","response":{"id":"resp-merge",'
+                            '"status":"completed","model":"gpt-5","input":[{"role":"user","content":"inspect"}],'
+                            '"output":[{"type":"message","content":[{"type":"output_text","text":"done"}]}],'
+                            '"usage":{"input_tokens":9,"input_tokens_details":{"cached_tokens":4},'
+                            '"output_tokens":6,"total_tokens":15}}}'
+                        ),
+                    },
+                ]
+
+            def iter_rows(self):
+                return iter(self.rows)
+
+            def iter_rows_after(self, last_id=0):
+                return (row for row in self.rows if row["id"] > last_id)
+
+            def load_thread_names(self):
+                return {}
+
+        stats = import_usage_source(Source(), self.db_path, {})
+        con = connect(self.db_path)
+        try:
+            detail = queries.task_detail(con, "thread-merge", "turn-merge")
+            row_count = con.execute(
+                "select count(*) from turns where thread_id = 'thread-merge'"
+            ).fetchone()[0]
+        finally:
+            con.close()
+
+        self.assertEqual(stats.imported, 2)
+        self.assertEqual(row_count, 1)
+        self.assertEqual(detail["task"]["raw_event_calls"], 1)
+        self.assertTrue(detail["task"]["raw_event_captured"])
+        self.assertTrue(detail["calls"][0]["raw_event_captured"])
+        self.assertEqual(detail["calls"][0]["response_id"], "resp-merge")
+        self.assertIn("inspect", str(detail["calls"][0]["request"]))
 
 
 class ParserContractTests(unittest.TestCase):

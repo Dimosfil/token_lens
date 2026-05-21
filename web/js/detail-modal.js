@@ -29,6 +29,10 @@ function metric(label, value) {
   return `<div class="detail-metric"><span>${label}</span><strong>${escapeHtml(value)}</strong></div>`;
 }
 
+function rawEventLabel(captured) {
+  return captured ? "Captured" : "Missing";
+}
+
 function renderMeta(task) {
   const el = document.getElementById("detailMeta");
   if (!task) {
@@ -41,6 +45,7 @@ function renderMeta(task) {
     metric("Calls", number(task.model_calls)),
     metric("Total tokens", number(task.total_tokens)),
     metric("Total / call", number(task.total_tokens_per_call)),
+    metric("Raw events", `${number(task.raw_event_calls)} / ${number(task.model_calls)}`),
     metric("Models", joinList(task.models)),
     metric("Statuses", joinList(task.statuses)),
     metric("Thread", task.thread_name || task.thread_id),
@@ -61,6 +66,7 @@ function renderCalls(calls) {
       <td>${number(call.cached_input_tokens)}</td>
       <td>${number(call.output_tokens)}</td>
       <td>${number(call.reasoning_output_tokens)}</td>
+      <td><span class="raw-event raw-event-${call.raw_event_captured ? "captured" : "missing"}">${rawEventLabel(call.raw_event_captured)}</span></td>
       <td class="mono">${escapeHtml(call.response_id || call.source_log_id)}</td>
     </tr>
   `).join("");

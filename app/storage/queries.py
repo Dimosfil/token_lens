@@ -284,6 +284,7 @@ def task_detail(con: sqlite3.Connection, thread_id: str, turn_id: str):
         row["request"] = decode_json(row.pop("request_json"))
         row["response"] = decode_json(row.pop("response_json"))
         row["event"] = decode_json(row.pop("event_json"))
+        row["raw_event_captured"] = row["event"] is not None
 
     task = {
         "started_at": rows[0]["ts_iso"],
@@ -296,6 +297,7 @@ def task_detail(con: sqlite3.Connection, thread_id: str, turn_id: str):
         "models": sorted({row["model"] for row in rows if row["model"]}),
         "statuses": sorted({row["status"] for row in rows if row["status"]}),
         "model_calls": len(rows),
+        "raw_event_calls": sum(1 for row in rows if row["raw_event_captured"]),
         "input_tokens": sum(row["input_tokens"] for row in rows),
         "cached_input_tokens": sum(row["cached_input_tokens"] for row in rows),
         "non_cached_input_tokens": sum(row["non_cached_input_tokens"] for row in rows),
@@ -304,6 +306,7 @@ def task_detail(con: sqlite3.Connection, thread_id: str, turn_id: str):
         "total_tokens": sum(row["total_tokens"] for row in rows),
         "estimated_cost": sum(row["estimated_cost"] for row in rows),
     }
+    task["raw_event_captured"] = task["raw_event_calls"] == task["model_calls"]
     task["total_tokens_per_call"] = round(task["total_tokens"] / task["model_calls"]) if task["model_calls"] else 0
     return {"task": task, "calls": rows}
 
@@ -351,6 +354,15 @@ def data_state(con: sqlite3.Connection):
         "latest_ts",
         "total_tokens",
     ))
+    raw = con.execute(
+        """
+        select count(*) as raw_logs,
+               coalesce(max(source_log_id), 0) as latest_raw_log_id,
+               coalesce(max(ts), 0) as latest_raw_log_ts
+        from raw_logs
+        """
+    ).fetchone()
+    state.update(dict(raw))
     return state
 
 

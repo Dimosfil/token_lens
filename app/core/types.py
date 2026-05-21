@@ -8,3 +8,4 @@ class ImportStats:
     scanned: int = 0
     imported: int = 0
     skipped: int = 0
+    archived: int = 0

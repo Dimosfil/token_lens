@@ -14,6 +14,44 @@ generated outputs, secrets, credentials, or private production data.
 
 ## Tasks
 
+### Raw Event Capture And Token Suspects
+
+Goal: make raw Codex response events a reliable source of truth for call details
+and later token-waste analysis.
+
+Planned changes:
+
+- [x] Backfill or reimport older rows so existing calls can populate
+      `event_json` when a raw Codex event exists.
+- [x] Add an explicit raw event captured/missing indicator in the call detail
+      modal.
+- [x] Keep raw JSON visible in the UI instead of trying to normalize every
+      request field upfront.
+- [ ] Add a `Token suspects` table or endpoint that highlights likely waste:
+      high input vs average, mostly cached input, many in-progress or zero-token
+      calls, large instructions/tools/schema/metadata, previous-response chains,
+      and repeated system context.
+- [ ] Add an `Analyze token waste` action for a selected call that sends the
+      full raw event plus computed measurements to the analyzer.
+
+Risks or dependencies:
+
+- [x] Confirm `event_json` is populated from Codex raw events before trusting AI
+      analysis.
+- [ ] Use the whole request/event object for analysis, not only visible
+      request/response text.
+- [ ] Preserve read-only access to external Codex logs and store analysis data
+      only in Token Lens' own database.
+
+Verification:
+
+- [x] Reimport/backfill fills `event_json` for rows whose source log contains a
+      response event.
+- [x] Detail modal clearly distinguishes captured raw event data from missing
+      raw event data.
+- [ ] Suspect detection can be smoke-checked with database rows containing
+      known large instructions/tools or previous-response context.
+
 ### Dashboard Human Task Labels
 
 Goal: reduce visible hash/id noise in dashboard tables and keep one useful project/task identifier.
