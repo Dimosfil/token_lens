@@ -13,6 +13,10 @@ function orderKey(table) {
   return `token-lens:table-order:${tableId(table)}`;
 }
 
+function scrollKey(table) {
+  return `token-lens:table-scroll:${tableId(table)}`;
+}
+
 function readJson(key, fallback) {
   try {
     return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback));
@@ -35,6 +39,15 @@ function readOrder(table) {
 
 function writeOrder(table, order) {
   localStorage.setItem(orderKey(table), JSON.stringify(order));
+}
+
+function readScroll(table) {
+  const value = Number(localStorage.getItem(scrollKey(table)));
+  return Number.isFinite(value) ? value : 0;
+}
+
+function writeScroll(table, value) {
+  localStorage.setItem(scrollKey(table), String(Math.max(0, Math.round(value || 0))));
 }
 
 function slug(value, fallback) {
@@ -116,14 +129,15 @@ function applyColumnOrder(table, order = readOrder(table)) {
 }
 
 function columnWidth(th) {
-  return Math.max(th.getBoundingClientRect().width, MIN_COLUMN_WIDTH);
+  const styleWidth = Number.parseFloat(th.style.width);
+  const width = Number.isFinite(styleWidth) ? styleWidth : th.getBoundingClientRect().width;
+  return Math.max(width, MIN_COLUMN_WIDTH);
 }
 
-function applyColumnWidth(table, columnIndex, width) {
+function applyColumnWidthByKey(table, key, width) {
   const safeWidth = Math.max(Math.round(width), MIN_COLUMN_WIDTH);
-  const key = currentOrder(table)[columnIndex];
   table.querySelectorAll("tr").forEach(row => {
-    const cell = Array.from(row.children).find(item => item.dataset.columnKey === key) || row.children[columnIndex];
+    const cell = Array.from(row.children).find(item => item.dataset.columnKey === key);
     if (!cell) return;
     cell.style.width = `${safeWidth}px`;
     cell.style.minWidth = `${safeWidth}px`;
@@ -131,6 +145,12 @@ function applyColumnWidth(table, columnIndex, width) {
   });
   syncTableWidth(table);
   return safeWidth;
+}
+
+function applyColumnWidth(table, columnIndex, width) {
+  const key = currentOrder(table)[columnIndex];
+  if (!key) return null;
+  return applyColumnWidthByKey(table, key, width);
 }
 
 function syncTableWidth(table) {
@@ -150,14 +170,26 @@ function topScrollbar(table) {
   return sibling?.classList.contains("table-scroll-top") ? sibling : null;
 }
 
+function tableWrap(table) {
+  return table.closest(".table-wrap");
+}
+
 function syncTopScrollbarWidth(table, width) {
   const top = topScrollbar(table);
   const spacer = top?.querySelector(".table-scroll-spacer");
   if (spacer) spacer.style.width = `${width}px`;
 }
 
+function restoreScroll(table) {
+  const wrap = tableWrap(table);
+  const top = topScrollbar(table);
+  const left = readScroll(table);
+  if (wrap) wrap.scrollLeft = left;
+  if (top) top.scrollLeft = left;
+}
+
 function ensureTopScrollbar(table) {
-  const wrap = table.closest(".table-wrap");
+  const wrap = tableWrap(table);
   if (!wrap) return;
 
   let top = topScrollbar(table);
@@ -177,19 +209,29 @@ function ensureTopScrollbar(table) {
     if (syncing) return;
     syncing = true;
     wrap.scrollLeft = top.scrollLeft;
+    writeScroll(table, top.scrollLeft);
     syncing = false;
   });
   wrap.addEventListener("scroll", () => {
     if (syncing) return;
     syncing = true;
     top.scrollLeft = wrap.scrollLeft;
+    writeScroll(table, wrap.scrollLeft);
     syncing = false;
   });
 }
 
-function saveColumnWidth(table, columnIndex, width) {
+function saveWidthsSnapshot(table) {
+  const widths = {};
+  table.querySelectorAll("thead th").forEach(th => {
+    if (th.dataset.columnKey) widths[th.dataset.columnKey] = Math.round(columnWidth(th));
+  });
+  writeWidths(table, widths);
+}
+
+function saveColumnWidth(table, key, width) {
+  if (!key) return;
   const widths = readWidths(table);
-  const key = currentOrder(table)[columnIndex];
   widths[key] = width;
   writeWidths(table, widths);
 }
@@ -200,29 +242,36 @@ function restoreWidths(table) {
   currentOrder(table).forEach((key, index) => {
     const canonicalIndex = columnKeys(table).indexOf(key);
     const width = legacyWidths ? legacyWidths[canonicalIndex] : widths[key];
-    if (Number.isFinite(width)) applyColumnWidth(table, index, width);
+    if (Number.isFinite(width)) applyColumnWidthByKey(table, key, width);
   });
   syncTableWidth(table);
+  restoreScroll(table);
 }
 
-function startResize(event, table, th, columnIndex) {
+function startResize(event, table, th) {
   event.stopPropagation();
   event.preventDefault();
+  const key = th.dataset.columnKey;
+  if (!key) return;
   const startX = event.clientX;
   const startWidth = columnWidth(th);
+  event.currentTarget.setPointerCapture?.(event.pointerId);
   document.body.classList.add("is-resizing-table");
 
   function onMove(moveEvent) {
     const nextWidth = startWidth + moveEvent.clientX - startX;
-    applyColumnWidth(table, columnIndex, nextWidth);
+    applyColumnWidthByKey(table, key, nextWidth);
+    saveWidthsSnapshot(table);
   }
 
   function onUp() {
     document.removeEventListener("pointermove", onMove);
     document.removeEventListener("pointerup", onUp);
     document.body.classList.remove("is-resizing-table");
-    saveColumnWidth(table, columnIndex, columnWidth(th));
+    saveColumnWidth(table, key, columnWidth(th));
+    saveWidthsSnapshot(table);
     syncTableWidth(table);
+    restoreScroll(table);
   }
 
   document.addEventListener("pointermove", onMove);
@@ -240,6 +289,7 @@ function moveColumn(table, fromKey, toKey) {
   writeOrder(table, order);
   applyColumnOrder(table, order);
   restoreWidths(table);
+  saveWidthsSnapshot(table);
 }
 
 function addColumnDrag(table) {
@@ -289,10 +339,11 @@ function addResizeHandles(table) {
     handle.title = "Resize column";
     handle.draggable = false;
     handle.addEventListener("dragstart", event => event.preventDefault());
-    handle.addEventListener("pointerdown", event => startResize(event, table, th, index));
+    handle.addEventListener("pointerdown", event => startResize(event, table, th));
     th.appendChild(handle);
   });
   syncTableWidth(table);
+  restoreScroll(table);
 }
 
 function observeRows(table) {

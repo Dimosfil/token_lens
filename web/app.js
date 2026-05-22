@@ -15,6 +15,7 @@ let chartMode = "total";
 let taskMode = "aggregate";
 let lastDashboard = null;
 const AUTO_REFRESH_MS = 5000;
+const PAGE_SETTINGS_KEY = "token-lens:page-settings:v1";
 const RANGE_SECONDS = {
   "1h": 60 * 60,
   "24h": 24 * 60 * 60,
@@ -29,6 +30,57 @@ const BUCKET_SECONDS = {
 };
 const DEFAULT_BUCKET = "day";
 const SEPARATE_TASK_RANGES = new Set(["1h", "24h"]);
+
+
+function readPageSettings() {
+  try {
+    return JSON.parse(localStorage.getItem(PAGE_SETTINGS_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+
+function writePageSettings(settings) {
+  localStorage.setItem(PAGE_SETTINGS_KEY, JSON.stringify(settings));
+}
+
+
+function hasOption(select, value) {
+  return Array.from(select.options).some(option => option.value === value);
+}
+
+
+function restorePageSettings() {
+  const settings = readPageSettings();
+  const range = document.getElementById("rangeFilter");
+  const bucket = document.getElementById("bucketFilter");
+  if (settings.range && hasOption(range, settings.range)) range.value = settings.range;
+  if (settings.bucket && hasOption(bucket, settings.bucket)) bucket.value = settings.bucket;
+  if (settings.customStart) document.getElementById("customStart").value = settings.customStart;
+  if (settings.customEnd) document.getElementById("customEnd").value = settings.customEnd;
+  if (settings.chartMode) chartMode = settings.chartMode;
+  if (settings.taskMode) taskMode = settings.taskMode;
+}
+
+
+function savePageSettings() {
+  writePageSettings({
+    range: document.getElementById("rangeFilter").value,
+    bucket: document.getElementById("bucketFilter").value,
+    customStart: document.getElementById("customStart").value,
+    customEnd: document.getElementById("customEnd").value,
+    chartMode,
+    taskMode,
+  });
+}
+
+
+function syncChartModeOptions() {
+  document.querySelectorAll("[data-chart-mode]").forEach(item => {
+    item.classList.toggle("is-active", item.dataset.chartMode === chartMode);
+  });
+}
 
 
 function bucketAllowed(range, bucket) {
@@ -119,6 +171,7 @@ function renderDashboard(dashboard) {
   const bucket = document.getElementById("bucketFilter").value;
   taskMode = dashboard.task_modes?.active || dashboard.task_mode || taskMode;
   syncTaskModeOptions();
+  savePageSettings();
   renderMetrics(dashboard.summary.summary);
   renderDaily(dashboard.daily, chartMode, bucket);
   renderTasks(dashboard.tasks, taskMode);
@@ -179,23 +232,33 @@ document.getElementById("refresh").addEventListener("click", () => refresh(true)
 document.getElementById("rangeFilter").addEventListener("change", () => {
   syncBucketOptions();
   syncTaskModeOptions();
+  savePageSettings();
   refresh(false);
 });
-document.getElementById("bucketFilter").addEventListener("change", () => refresh(false));
+document.getElementById("bucketFilter").addEventListener("change", () => {
+  savePageSettings();
+  refresh(false);
+});
 document.getElementById("customRangeButton").addEventListener("click", () => {
   document.getElementById("rangeFilter").value = "custom";
   syncBucketOptions();
+  savePageSettings();
   refresh(false);
 });
-document.getElementById("customStart").addEventListener("change", () => refresh(false));
-document.getElementById("customEnd").addEventListener("change", () => refresh(false));
+document.getElementById("customStart").addEventListener("change", () => {
+  savePageSettings();
+  refresh(false);
+});
+document.getElementById("customEnd").addEventListener("change", () => {
+  savePageSettings();
+  refresh(false);
+});
 document.getElementById("chartMode").addEventListener("click", event => {
   const button = event.target.closest("[data-chart-mode]");
   if (!button) return;
   chartMode = button.dataset.chartMode;
-  document.querySelectorAll("[data-chart-mode]").forEach(item => {
-    item.classList.toggle("is-active", item === button);
-  });
+  syncChartModeOptions();
+  savePageSettings();
   if (lastDashboard) renderDashboard(lastDashboard);
 });
 document.getElementById("taskMode").addEventListener("click", event => {
@@ -203,6 +266,7 @@ document.getElementById("taskMode").addEventListener("click", event => {
   if (!button || button.disabled) return;
   taskMode = button.dataset.taskMode;
   syncTaskModeOptions();
+  savePageSettings();
   refresh(false);
 });
 document.addEventListener("click", event => {
@@ -229,8 +293,11 @@ document.addEventListener("keydown", event => {
   openTaskDetail(row.dataset.threadId, row.dataset.turnId);
 });
 
+restorePageSettings();
 syncBucketOptions();
 syncTaskModeOptions();
+syncChartModeOptions();
+savePageSettings();
 initDetailModal();
 initBucketModal();
 initResizableTables();

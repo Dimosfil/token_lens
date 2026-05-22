@@ -363,6 +363,11 @@ td {
   white-space: nowrap;
 }
 
+table[data-resizable] th,
+table[data-resizable] td {
+  max-width: none;
+}
+
 th:first-child,
 td:first-child,
 th:nth-child(2),

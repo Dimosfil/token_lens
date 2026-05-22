@@ -14,6 +14,24 @@ generated outputs, secrets, credentials, or private production data.
 
 ## Tasks
 
+### Table Settings Persistence
+
+Goal: stop saved table widths and column order from being applied to the wrong
+columns after reordering, refreshing, or opening detail dialogs.
+
+Planned changes:
+
+- [x] Fix column resize to use the header's current position instead of the
+      position captured during initial page load.
+- [x] Give unrelated dialog tables separate persisted settings keys.
+- [x] Persist page-level controls such as range, bucket, chart mode, task mode,
+      and custom dates across page refresh.
+- [x] Save resized columns by stable column key instead of any visual index.
+- [x] Persist full table-width snapshots and horizontal scroll positions.
+- [x] Let resizable tables use user-defined widths beyond the default cell
+      max-width.
+- [x] Verify frontend syntax and restart/smoke-check the app.
+
 ### Desktop Dotnet Merge And Task Time
 
 Goal: merge two desktop .NET projects into one .NET Core desktop app, use the
