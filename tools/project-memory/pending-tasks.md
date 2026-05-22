@@ -14,6 +14,18 @@ generated outputs, secrets, credentials, or private production data.
 
 ## Tasks
 
+### Query Support Helper Split
+
+Goal: move range/bucket/task-mode and detail payload helpers out of
+`app/storage/queries.py` while preserving public query behavior.
+
+Planned changes:
+
+- [x] Add `app/storage/query_params.py` for range, bucket, and task mode helpers.
+- [x] Add `app/storage/payloads.py` for JSON decoding and raw event compaction.
+- [x] Update `app/storage/queries.py` to import the extracted helpers.
+- [x] Verify backend syntax and API contract tests.
+
 ### Table Resize Module Split
 
 Goal: split `web/js/table-resize.js` by responsibility while preserving the
@@ -88,8 +100,6 @@ root logo asset, and add task time to the task table.
 
 Planned changes:
 
-- [!] Locate the two .NET desktop project paths. No `.sln` or `.csproj` files
-      currently exist inside this project root.
 - [x] Add elapsed task time to the existing Token Lens task tables.
 - [x] Add elapsed task time to the Python mini desktop client.
 - [x] Verify backend contracts, frontend syntax, and restart/smoke-check the app.
