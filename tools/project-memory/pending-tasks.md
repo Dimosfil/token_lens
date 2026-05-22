@@ -14,6 +14,30 @@ generated outputs, secrets, credentials, or private production data.
 
 ## Tasks
 
+### Table Resize Module Split
+
+Goal: split `web/js/table-resize.js` by responsibility while preserving the
+stable `initResizableTables()` API.
+
+Planned changes:
+
+- [x] Extract table settings storage/key helpers.
+- [x] Extract column identity/order helpers.
+- [x] Extract scroll sync helpers.
+- [x] Verify JavaScript syntax and static module serving.
+
+### Dashboard UI State Split
+
+Goal: move dashboard state/range/query rules out of `web/app.js` while
+preserving current dashboard behavior.
+
+Planned changes:
+
+- [x] Add a dedicated dashboard state module for page settings, range/bucket
+      rules, task mode rules, and dashboard query building.
+- [x] Keep `web/app.js` focused on event binding, refresh, and rendering.
+- [x] Verify changed JavaScript modules and smoke-check dashboard state paths.
+
 ### Project Refactor Analysis 2026-05-22
 
 Goal: review current backend/frontend module boundaries and identify the

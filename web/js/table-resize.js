@@ -1,120 +1,25 @@
+import {
+  columnKeys,
+  completeOrder,
+  currentOrder,
+  labelCells,
+  reorderChildren,
+  setupColumnKeys,
+} from "./table-columns.js";
+import {
+  ensureTopScrollbar,
+  restoreScroll,
+  syncTopScrollbarWidth,
+} from "./table-scroll.js";
+import {
+  readOrder,
+  readWidths,
+  writeOrder,
+  writeWidths,
+} from "./table-storage.js";
+
 const MIN_COLUMN_WIDTH = 56;
 const DEFAULT_COLUMN_WIDTH = 120;
-
-function tableId(table) {
-  return table.dataset.tableId || "table";
-}
-
-function tableKey(table) {
-  return `token-lens:table-widths:${tableId(table)}`;
-}
-
-function orderKey(table) {
-  return `token-lens:table-order:${tableId(table)}`;
-}
-
-function scrollKey(table) {
-  return `token-lens:table-scroll:${tableId(table)}`;
-}
-
-function readJson(key, fallback) {
-  try {
-    return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback));
-  } catch {
-    return fallback;
-  }
-}
-
-function readWidths(table) {
-  return readJson(tableKey(table), {});
-}
-
-function writeWidths(table, widths) {
-  localStorage.setItem(tableKey(table), JSON.stringify(widths));
-}
-
-function readOrder(table) {
-  return readJson(orderKey(table), []);
-}
-
-function writeOrder(table, order) {
-  localStorage.setItem(orderKey(table), JSON.stringify(order));
-}
-
-function readScroll(table) {
-  const value = Number(localStorage.getItem(scrollKey(table)));
-  return Number.isFinite(value) ? value : 0;
-}
-
-function writeScroll(table, value) {
-  localStorage.setItem(scrollKey(table), String(Math.max(0, Math.round(value || 0))));
-}
-
-function slug(value, fallback) {
-  const text = String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "-")
-    .replace(/[^a-z0-9_-]/g, "");
-  return text || fallback;
-}
-
-function setupColumnKeys(table) {
-  if (table.__columnKeys) return table.__columnKeys;
-  const keys = Array.from(table.querySelectorAll("thead th")).map((th, index) => {
-    const key = th.dataset.columnKey || slug(th.textContent, `column-${index}`);
-    th.dataset.columnKey = key;
-    th.dataset.originalIndex = String(index);
-    return key;
-  });
-  table.__columnKeys = keys;
-  return keys;
-}
-
-function columnKeys(table) {
-  return table.__columnKeys || setupColumnKeys(table);
-}
-
-function currentOrder(table) {
-  return Array.from(table.querySelectorAll("thead th")).map(th => th.dataset.columnKey);
-}
-
-function completeOrder(table, order) {
-  const keys = columnKeys(table);
-  const seen = new Set();
-  const safe = [];
-  order.forEach(key => {
-    if (keys.includes(key) && !seen.has(key)) {
-      seen.add(key);
-      safe.push(key);
-    }
-  });
-  keys.forEach(key => {
-    if (!seen.has(key)) safe.push(key);
-  });
-  return safe;
-}
-
-function labelCells(table) {
-  const keys = columnKeys(table);
-  table.querySelectorAll("tbody tr").forEach(row => {
-    Array.from(row.children).forEach((cell, index) => {
-      if (!cell.dataset.columnKey) cell.dataset.columnKey = keys[index] || `column-${index}`;
-    });
-  });
-}
-
-function reorderChildren(parent, selector, order) {
-  const children = Array.from(parent.querySelectorAll(selector));
-  const visibleOrder = children.map(child => child.dataset.columnKey);
-  if (order.every((key, index) => visibleOrder[index] === key)) return;
-
-  const byKey = new Map(children.map(child => [child.dataset.columnKey, child]));
-  order.forEach(key => {
-    const child = byKey.get(key);
-    if (child) parent.appendChild(child);
-  });
-}
 
 function applyColumnOrder(table, order = readOrder(table)) {
   if (!table.dataset.reorderable) return;
@@ -162,63 +67,6 @@ function syncTableWidth(table) {
     table.style.minWidth = `max(100%, ${totalWidth}px)`;
     syncTopScrollbarWidth(table, totalWidth);
   }
-}
-
-function topScrollbar(table) {
-  const wrap = table.closest(".table-wrap");
-  const sibling = wrap?.previousElementSibling;
-  return sibling?.classList.contains("table-scroll-top") ? sibling : null;
-}
-
-function tableWrap(table) {
-  return table.closest(".table-wrap");
-}
-
-function syncTopScrollbarWidth(table, width) {
-  const top = topScrollbar(table);
-  const spacer = top?.querySelector(".table-scroll-spacer");
-  if (spacer) spacer.style.width = `${width}px`;
-}
-
-function restoreScroll(table) {
-  const wrap = tableWrap(table);
-  const top = topScrollbar(table);
-  const left = readScroll(table);
-  if (wrap) wrap.scrollLeft = left;
-  if (top) top.scrollLeft = left;
-}
-
-function ensureTopScrollbar(table) {
-  const wrap = tableWrap(table);
-  if (!wrap) return;
-
-  let top = topScrollbar(table);
-  if (!top) {
-    top = document.createElement("div");
-    top.className = "table-scroll-top";
-    top.setAttribute("aria-hidden", "true");
-
-    const spacer = document.createElement("div");
-    spacer.className = "table-scroll-spacer";
-    top.appendChild(spacer);
-    wrap.parentElement.insertBefore(top, wrap);
-  }
-
-  let syncing = false;
-  top.addEventListener("scroll", () => {
-    if (syncing) return;
-    syncing = true;
-    wrap.scrollLeft = top.scrollLeft;
-    writeScroll(table, top.scrollLeft);
-    syncing = false;
-  });
-  wrap.addEventListener("scroll", () => {
-    if (syncing) return;
-    syncing = true;
-    top.scrollLeft = wrap.scrollLeft;
-    writeScroll(table, wrap.scrollLeft);
-    syncing = false;
-  });
 }
 
 function saveWidthsSnapshot(table) {
