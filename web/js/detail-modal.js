@@ -1,18 +1,9 @@
 import { getJson } from "./api.js";
 import { number, time } from "./format.js";
+import { escapeHtml } from "./render/html.js";
 
 let detail = null;
 let selectedCall = 0;
-
-function escapeHtml(value) {
-  return String(value ?? "").replace(/[&<>"']/g, char => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    "\"": "&quot;",
-    "'": "&#39;",
-  }[char]));
-}
 
 function pretty(value) {
   if (value == null || value === "") return "No captured payload";

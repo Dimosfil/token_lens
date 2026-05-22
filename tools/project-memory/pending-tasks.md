@@ -14,6 +14,31 @@ generated outputs, secrets, credentials, or private production data.
 
 ## Tasks
 
+### Project Refactor Analysis 2026-05-22
+
+Goal: review current backend/frontend module boundaries and identify the
+smallest safe refactor steps for future work.
+
+Planned changes:
+
+- [x] Map current entry points, module sizes, and compatibility shims.
+- [x] Review backend service, storage, source, and API boundaries for atomic
+      extraction opportunities.
+- [x] Review frontend entrypoint, renderers, and table utilities for atomic
+      extraction opportunities.
+- [x] Summarize recommended refactor order with verification checks.
+
+### Frontend Shared Render Helpers
+
+Goal: remove duplicated task/HTML helper logic from task and turn renderers
+without changing dashboard behavior.
+
+Planned changes:
+
+- [x] Add a small shared render helper module.
+- [x] Use shared helpers in task and turn table renderers.
+- [x] Verify changed JavaScript modules.
+
 ### Table Settings Persistence
 
 Goal: stop saved table widths and column order from being applied to the wrong
