@@ -165,6 +165,7 @@ export function dashboardQuery() {
   const bucket = document.getElementById("bucketFilter").value;
   if (range) params.set("range", range);
   if (bucket) params.set("bucket", bucket);
+  params.set("source", "codex");
   if (taskMode) params.set("task_mode", taskMode);
   if (range === "custom") {
     const start = document.getElementById("customStart").value;

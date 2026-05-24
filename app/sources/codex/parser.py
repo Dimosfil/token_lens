@@ -71,6 +71,7 @@ def build_turn_row(
     dt = datetime.fromtimestamp(ts, timezone.utc)
     row = {
         "source_log_id": source_log_id,
+        "source": "codex",
         "response_id": response_id,
         "status": status,
         "ts": ts,

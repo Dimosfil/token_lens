@@ -9,6 +9,7 @@ from pathlib import Path
 from app.api.handlers import parse_limit
 from app.services import analytics_service
 from app.services.import_service import import_usage_source
+from app.sources.opencode.parser import parse_opencode_event
 from app.sources.codex.parser import parse_response_event, parse_usage_row
 from app.storage import queries
 from app.storage.connection import connect
@@ -418,6 +419,44 @@ class ParserContractTests(unittest.TestCase):
             self.assertEqual(usage_row[key], response_row[key])
         self.assertIn("hi", response_row["request_json"])
         self.assertIn("hello", response_row["response_json"])
+
+    def test_opencode_event_normalizes_to_turn_row(self):
+        payload = {
+            "source": "opencode",
+            "timestamp": 1_700_000_000_000,
+            "directory": "D:\\AI\\AiAnalytics\\token-lens",
+            "event": {
+                "type": "message.updated",
+                "sessionID": "opencode-session-1",
+                "messageID": "message-1",
+                "message": {
+                    "model": "deepseek/deepseek-chat",
+                    "usage": {
+                        "input_tokens": 120,
+                        "input_tokens_details": {"cached_tokens": 20},
+                        "output_tokens": 30,
+                        "output_tokens_details": {"reasoning_tokens": 5},
+                        "total_tokens": 150,
+                    },
+                },
+            },
+        }
+
+        row = parse_opencode_event(payload, {})
+
+        self.assertIsNotNone(row)
+        self.assertLess(row["source_log_id"], 0)
+        self.assertEqual(row["response_id"], "opencode:message-1")
+        self.assertEqual(row["thread_id"], "opencode-session-1")
+        self.assertEqual(row["turn_id"], "message-1")
+        self.assertEqual(row["model"], "deepseek/deepseek-chat")
+        self.assertEqual(row["input_tokens"], 120)
+        self.assertEqual(row["cached_input_tokens"], 20)
+        self.assertEqual(row["non_cached_input_tokens"], 100)
+        self.assertEqual(row["output_tokens"], 30)
+        self.assertEqual(row["reasoning_output_tokens"], 5)
+        self.assertEqual(row["total_tokens"], 150)
+        self.assertIn("message.updated", row["event_json"])
 
 
 if __name__ == "__main__":

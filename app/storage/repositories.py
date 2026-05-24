@@ -5,6 +5,7 @@ import sqlite3
 
 
 DETAIL_DEFAULTS = {
+    "source": "codex",
     "request_json": None,
     "response_json": None,
     "event_json": None,
@@ -18,6 +19,7 @@ def upsert_turn(con: sqlite3.Connection, row: dict) -> None:
             """
             update turns
             set response_id = :response_id,
+                source = :source,
                 status = :status,
                 request_json = :request_json,
                 response_json = :response_json,
@@ -43,13 +45,13 @@ def upsert_turn(con: sqlite3.Connection, row: dict) -> None:
     con.execute(
         """
         insert or replace into turns (
-          source_log_id, response_id, status, ts, ts_iso, day, thread_id, thread_name, turn_id,
+          source_log_id, source, response_id, status, ts, ts_iso, day, thread_id, thread_name, turn_id,
           submission_id, model, reasoning_effort, input_tokens,
           cached_input_tokens, non_cached_input_tokens, output_tokens,
           reasoning_output_tokens, total_tokens, estimated_cost,
           request_json, response_json, event_json, imported_at
         ) values (
-          :source_log_id, :response_id, :status, :ts, :ts_iso, :day, :thread_id, :thread_name, :turn_id,
+          :source_log_id, :source, :response_id, :status, :ts, :ts_iso, :day, :thread_id, :thread_name, :turn_id,
           :submission_id, :model, :reasoning_effort, :input_tokens,
           :cached_input_tokens, :non_cached_input_tokens, :output_tokens,
           :reasoning_output_tokens, :total_tokens, :estimated_cost,
@@ -57,6 +59,7 @@ def upsert_turn(con: sqlite3.Connection, row: dict) -> None:
         )
         on conflict(response_id) do update set
           source_log_id = excluded.source_log_id,
+          source = excluded.source,
           status = excluded.status,
           ts = excluded.ts,
           ts_iso = excluded.ts_iso,

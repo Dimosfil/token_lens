@@ -14,6 +14,32 @@ generated outputs, secrets, credentials, or private production data.
 
 ## Tasks
 
+### Dashboard Tabs For OpenCode Expansion
+
+Goal: add a tab switcher that preserves the current Codex dashboard as the
+default working view and creates a separate OpenCode expansion surface.
+
+Planned changes:
+
+- [x] Wrap the existing dashboard in a Codex tab without changing its controls.
+- [x] Add an OpenCode tab placeholder for the upcoming orchestrator analytics.
+- [x] Preserve the selected tab across refreshes.
+- [x] Verify frontend syntax and start the local desktop/browser app.
+
+### OpenCode Usage Ingest
+
+Goal: connect the current OpenCode setup to Token Lens so OpenCode usage events
+can be collected into the analytics database without changing the Codex import
+path.
+
+Planned changes:
+
+- [x] Add a Token Lens ingest endpoint for OpenCode plugin events.
+- [x] Normalize OpenCode usage payloads into existing turn rows.
+- [x] Add a local OpenCode plugin under the explicit OpenCode config path.
+- [x] Enable the plugin in the current OpenCode config without removing existing plugins.
+- [x] Verify with a sample event, tests, and a backend restart.
+
 ### Query Support Helper Split
 
 Goal: move range/bucket/task-mode and detail payload helpers out of

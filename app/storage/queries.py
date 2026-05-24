@@ -41,6 +41,13 @@ def _and_clause(where: str, clause: str) -> str:
     return f"{where} and {clause}" if where else f"where {clause}"
 
 
+def _source_clause(where: str, params: list, source: str = "") -> tuple[str, list]:
+    if source in {"codex", "opencode"}:
+        where = _and_clause(where, "source = ?")
+        params.append(source)
+    return where, params
+
+
 def _bucket_expr(bucket: str = "day") -> str:
     return BUCKETS.get(bucket, BUCKETS["day"])
 
@@ -114,8 +121,9 @@ def _fill_bucket_rows(rows: list[dict], range_key: str, bucket: str) -> list[dic
     return [by_period.get(period, _empty_bucket_row(period, bucket)) for period in periods]
 
 
-def summary(con: sqlite3.Connection, range_key: str = "", start_ts: int | None = None, end_ts: int | None = None):
+def summary(con: sqlite3.Connection, range_key: str = "", start_ts: int | None = None, end_ts: int | None = None, source: str = ""):
     where, params = _range_clause(range_key, start_ts, end_ts)
+    where, params = _source_clause(where, params, source)
     row = con.execute(
         f"""
         select count(*) as turns,
@@ -134,7 +142,7 @@ def summary(con: sqlite3.Connection, range_key: str = "", start_ts: int | None =
     ).fetchone()
     top = con.execute(
         f"""
-        select ts_iso, thread_id, thread_name, turn_id, response_id, status, model, total_tokens,
+        select source, ts_iso, thread_id, thread_name, turn_id, response_id, status, model, total_tokens,
                input_tokens, output_tokens, reasoning_output_tokens
         from turns
         {where}
@@ -146,8 +154,9 @@ def summary(con: sqlite3.Connection, range_key: str = "", start_ts: int | None =
     return {"summary": dict(row), "top_turns": rows_to_dicts(top)}
 
 
-def daily(con: sqlite3.Connection, range_key: str = "", bucket: str = "day", start_ts: int | None = None, end_ts: int | None = None):
+def daily(con: sqlite3.Connection, range_key: str = "", bucket: str = "day", start_ts: int | None = None, end_ts: int | None = None, source: str = ""):
     where, params = _range_clause(range_key, start_ts, end_ts)
+    where, params = _source_clause(where, params, source)
     normalized_bucket = normalize_bucket(bucket, range_key)
     period_expr = _bucket_expr(normalized_bucket)
     rows = rows_to_dicts(con.execute(
@@ -172,16 +181,17 @@ def daily(con: sqlite3.Connection, range_key: str = "", bucket: str = "day", sta
     return _fill_bucket_rows(rows, range_key, normalized_bucket)
 
 
-def turns(con: sqlite3.Connection, limit: int, model: str = "", range_key: str = "", start_ts: int | None = None, end_ts: int | None = None):
+def turns(con: sqlite3.Connection, limit: int, model: str = "", range_key: str = "", start_ts: int | None = None, end_ts: int | None = None, source: str = ""):
     params = []
     where, params = _range_clause(range_key, start_ts, end_ts)
+    where, params = _source_clause(where, params, source)
     if model:
         where = _and_clause(where, "model = ?")
         params.append(model)
     params.append(limit)
     return rows_to_dicts(con.execute(
         f"""
-        select source_log_id, ts, ts_iso, day, thread_id, thread_name, turn_id, response_id,
+        select source, source_log_id, ts, ts_iso, day, thread_id, thread_name, turn_id, response_id,
                submission_id, status, model,
                reasoning_effort, input_tokens, cached_input_tokens,
                non_cached_input_tokens, output_tokens,
@@ -195,8 +205,9 @@ def turns(con: sqlite3.Connection, limit: int, model: str = "", range_key: str =
     ).fetchall())
 
 
-def tasks(con: sqlite3.Connection, limit: int | None, range_key: str = "", start_ts: int | None = None, end_ts: int | None = None):
+def tasks(con: sqlite3.Connection, limit: int | None, range_key: str = "", start_ts: int | None = None, end_ts: int | None = None, source: str = ""):
     where, params = _range_clause(range_key, start_ts, end_ts)
+    where, params = _source_clause(where, params, source)
     limit_clause = ""
     if limit is not None:
         limit_clause = "limit ?"
@@ -206,6 +217,7 @@ def tasks(con: sqlite3.Connection, limit: int | None, range_key: str = "", start
         select min(ts_iso) as started_at,
                max(ts_iso) as finished_at,
                max(ts) - min(ts) as elapsed_seconds,
+               max(source) as source,
                min(source_log_id) as first_source_log_id,
                max(source_log_id) as last_source_log_id,
                thread_id,
@@ -240,10 +252,12 @@ def task_buckets(
     bucket: str = "day",
     start_ts: int | None = None,
     end_ts: int | None = None,
+    source: str = "",
 ):
     normalized_bucket = normalize_bucket(bucket, range_key)
     period_expr = _bucket_expr(normalized_bucket)
     where, params = _range_clause(range_key, start_ts, end_ts)
+    where, params = _source_clause(where, params, source)
     rows = rows_to_dicts(con.execute(
         f"""
         select {period_expr} as period,
@@ -282,10 +296,12 @@ def bucket_tasks(
     range_key: str = "",
     start_ts: int | None = None,
     end_ts: int | None = None,
+    source: str = "",
 ):
     normalized_bucket = normalize_bucket(bucket, range_key)
     period_expr = _bucket_expr(normalized_bucket)
     where, params = _range_clause(range_key, start_ts, end_ts)
+    where, params = _source_clause(where, params, source)
     where = _and_clause(where, f"{period_expr} = ?")
     params.append(period)
     return rows_to_dicts(con.execute(
@@ -370,8 +386,9 @@ def task_detail(con: sqlite3.Connection, thread_id: str, turn_id: str):
     return {"task": task, "calls": rows}
 
 
-def models(con: sqlite3.Connection, range_key: str = "", start_ts: int | None = None, end_ts: int | None = None):
+def models(con: sqlite3.Connection, range_key: str = "", start_ts: int | None = None, end_ts: int | None = None, source: str = ""):
     where, params = _range_clause(range_key, start_ts, end_ts)
+    where, params = _source_clause(where, params, source)
     return rows_to_dicts(con.execute(
         f"""
         select model,
@@ -433,13 +450,14 @@ def dashboard(
     task_mode: str = TASK_MODE_AGGREGATE,
     start_ts: int | None = None,
     end_ts: int | None = None,
+    source: str = "",
 ):
     normalized_task_mode = normalize_task_mode(task_mode, range_key)
     return {
         "state": data_state(con),
-        "summary": summary(con, range_key, start_ts, end_ts),
-        "daily": daily(con, range_key, bucket, start_ts, end_ts),
-        "turns": turns(con, 150, model, range_key, start_ts, end_ts),
+        "summary": summary(con, range_key, start_ts, end_ts, source),
+        "daily": daily(con, range_key, bucket, start_ts, end_ts, source),
+        "turns": turns(con, 150, model, range_key, start_ts, end_ts, source),
         "task_mode": normalized_task_mode,
         "task_modes": {
             "requested": task_mode or TASK_MODE_AGGREGATE,
@@ -447,9 +465,9 @@ def dashboard(
             "separate_available": normalize_range(range_key) in SEPARATE_TASK_RANGES,
         },
         "tasks": (
-            tasks(con, None, range_key, start_ts, end_ts)
+            tasks(con, None, range_key, start_ts, end_ts, source)
             if normalized_task_mode == TASK_MODE_SEPARATE
-            else task_buckets(con, range_key, bucket, start_ts, end_ts)
+            else task_buckets(con, range_key, bucket, start_ts, end_ts, source)
         ),
-        "models": models(con, range_key, start_ts, end_ts),
+        "models": models(con, range_key, start_ts, end_ts, source),
     }

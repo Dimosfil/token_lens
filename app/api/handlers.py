@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
 from app.api.responses import send_json
 from app.services import analytics_service
 from app.services.background import run_import
+from app.services.opencode_ingest import ingest_event
 from app.static_server import serve_static
 from app.storage import queries
 
@@ -30,6 +32,21 @@ def parse_ts(query: dict, key: str) -> int | None:
         return int(value)
     except ValueError:
         return None
+
+
+def read_json_body(handler: BaseHTTPRequestHandler, max_bytes: int = 2_000_000) -> dict | None:
+    try:
+        length = int(handler.headers.get("Content-Length", "0"))
+    except ValueError:
+        length = 0
+    if length <= 0 or length > max_bytes:
+        return None
+    body = handler.rfile.read(length)
+    try:
+        payload = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
 
 
 class AnalyticsHandler(BaseHTTPRequestHandler):
@@ -60,9 +77,17 @@ class AnalyticsHandler(BaseHTTPRequestHandler):
                 first(query, "task_mode"),
                 start_ts,
                 end_ts,
+                first(query, "source"),
             )
             payload["import_stats"] = stats.__dict__
             send_json(self, payload)
+            return
+        if parsed.path == "/api/ingest/opencode":
+            payload = read_json_body(self)
+            if payload is None:
+                self.send_error(400, "valid JSON object body is required")
+                return
+            send_json(self, ingest_event(payload))
             return
         self.send_error(404)
 
@@ -79,28 +104,29 @@ class AnalyticsHandler(BaseHTTPRequestHandler):
                 first(query, "task_mode"),
                 start_ts,
                 end_ts,
+                first(query, "source"),
             ))
         elif path == "/api/summary":
-            send_json(self, analytics_service.summary(range_key, start_ts, end_ts))
+            send_json(self, analytics_service.summary(range_key, start_ts, end_ts, first(query, "source")))
         elif path == "/api/state":
             send_json(self, analytics_service.data_state())
         elif path == "/api/import-status":
             send_json(self, analytics_service.background_import_status())
         elif path == "/api/daily":
-            send_json(self, analytics_service.daily(range_key, bucket, start_ts, end_ts))
+            send_json(self, analytics_service.daily(range_key, bucket, start_ts, end_ts, first(query, "source")))
         elif path == "/api/turns":
             limit = parse_limit(query)
             model = first(query, "model")
-            send_json(self, analytics_service.turns(limit, model, range_key, start_ts, end_ts))
+            send_json(self, analytics_service.turns(limit, model, range_key, start_ts, end_ts, first(query, "source")))
         elif path == "/api/tasks":
             limit = parse_limit(query)
-            send_json(self, analytics_service.tasks(limit, range_key, start_ts, end_ts))
+            send_json(self, analytics_service.tasks(limit, range_key, start_ts, end_ts, first(query, "source")))
         elif path == "/api/bucket-tasks":
             period = first(query, "period")
             if not period:
                 self.send_error(400, "period is required")
                 return
-            send_json(self, analytics_service.bucket_tasks(period, bucket, range_key, start_ts, end_ts))
+            send_json(self, analytics_service.bucket_tasks(period, bucket, range_key, start_ts, end_ts, first(query, "source")))
         elif path == "/api/task-detail":
             thread_id = first(query, "thread_id")
             turn_id = first(query, "turn_id")
@@ -109,7 +135,7 @@ class AnalyticsHandler(BaseHTTPRequestHandler):
                 return
             send_json(self, analytics_service.task_detail(thread_id, turn_id))
         elif path == "/api/models":
-            send_json(self, analytics_service.models(range_key, start_ts, end_ts))
+            send_json(self, analytics_service.models(range_key, start_ts, end_ts, first(query, "source")))
         else:
             self.send_error(404)
 

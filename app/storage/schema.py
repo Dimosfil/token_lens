@@ -6,6 +6,7 @@ from .connection import connect
 SCHEMA = """
 create table if not exists turns (
   source_log_id integer primary key,
+  source text not null default 'codex',
   response_id text unique,
   status text not null default 'completed',
   ts integer not null,
@@ -64,11 +65,17 @@ def init_db(db_path: str) -> None:
         if "response_id" not in columns:
             con.execute("alter table turns add column response_id text")
             con.execute("create unique index if not exists idx_turns_response_id on turns(response_id)")
+        if "source" not in columns:
+            con.execute("alter table turns add column source text not null default 'codex'")
+            con.execute(
+                "update turns set source = 'opencode' where source_log_id < 0 or response_id like 'opencode:%'"
+            )
         if "status" not in columns:
             con.execute("alter table turns add column status text not null default 'completed'")
         for detail_column in ("request_json", "response_json", "event_json"):
             if detail_column not in columns:
                 con.execute(f"alter table turns add column {detail_column} text")
+        con.execute("create index if not exists idx_turns_source on turns(source)")
         con.commit()
     finally:
         con.close()

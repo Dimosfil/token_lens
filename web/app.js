@@ -20,12 +20,56 @@ import { initBucketModal, openBucketDetail, renderTasks } from "./js/render/task
 import { renderTop } from "./js/render/turns.js";
 import { setAutoStatus } from "./js/status.js";
 import { initResizableTables } from "./js/table-resize.js";
+import { initTabs } from "./js/tabs.js";
 
 
 let dataVersion = null;
 let refreshPromise = null;
 let lastDashboard = null;
 const AUTO_REFRESH_MS = 5000;
+
+
+function formatInteger(value) {
+  return Number(value || 0).toLocaleString("ru-RU");
+}
+
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, char => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "\"": "&quot;",
+    "'": "&#39;",
+  }[char]));
+}
+
+
+function renderOpenCodeDashboard(dashboard) {
+  const summary = dashboard.summary.summary;
+  document.getElementById("opencodeAgents").textContent = String(dashboard.models.length);
+  document.getElementById("opencodeRuns").textContent = formatInteger(summary.threads);
+  document.getElementById("opencodeCalls").textContent = formatInteger(summary.turns);
+  document.getElementById("opencodeTokens").textContent = formatInteger(summary.total_tokens);
+  const recent = document.getElementById("opencodeRecent");
+  recent.innerHTML = dashboard.turns.slice(0, 12).map(row => `
+    <div class="top-item">
+      <div>
+        <strong>${escapeHtml(row.model)}</strong>
+        <small>${escapeHtml(row.thread_name || row.thread_id)} · ${escapeHtml(row.status)}</small>
+      </div>
+      <strong>${formatInteger(row.total_tokens)}</strong>
+    </div>
+  `).join("") || `<p>No OpenCode usage events collected yet.</p>`;
+}
+
+
+async function refreshOpenCode() {
+  setAutoStatus("Loading OpenCode data");
+  const dashboard = await getJson("/api/dashboard?source=opencode&range=24h&bucket=hour&task_mode=separate");
+  renderOpenCodeDashboard(dashboard);
+  setAutoStatus(`Updated ${new Date().toLocaleTimeString("ru-RU")}`);
+}
 
 
 function renderDashboard(dashboard) {
@@ -153,8 +197,16 @@ document.addEventListener("keydown", event => {
   event.preventDefault();
   openTaskDetail(row.dataset.threadId, row.dataset.turnId);
 });
+document.addEventListener("token-lens:tab-change", event => {
+  if (event.detail.tab === "opencode") {
+    refreshOpenCode().catch(err => setAutoStatus(`OpenCode refresh error: ${err.message}`, true));
+  } else {
+    refresh(false);
+  }
+});
 
 restorePageSettings();
+initTabs();
 syncBucketOptions();
 syncTaskModeOptions();
 syncChartModeOptions();
