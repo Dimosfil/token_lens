@@ -14,6 +14,18 @@ generated outputs, secrets, credentials, or private production data.
 
 ## Tasks
 
+### Mini Settings Persistence 2026-05-28
+
+Goal: persist Token Lens Mini settings across app restarts.
+
+Planned changes:
+
+- [x] Locate current mini UI controls and launch defaults.
+- [x] Add a local settings file under ignored app data.
+- [x] Save row, signal, threshold, enabled state, and window settings from the UI.
+- [x] Load saved settings on startup without breaking command-line defaults.
+- [x] Run focused syntax checks.
+
 ### Mini Token Signal 2026-05-28
 
 Goal: add an optional system alert in Token Lens Mini when `Total / Call`

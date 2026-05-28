@@ -20,6 +20,7 @@ from urllib.request import Request, urlopen
 ROOT = Path(__file__).resolve().parents[1]
 LOGO_PATH = ROOT / "Logo.png"
 ICON_PATH = ROOT / "Logo.ico"
+SETTINGS_PATH = ROOT / "data" / "mini_settings.json"
 DEFAULT_BASE_URL = "http://127.0.0.1:8765"
 DEFAULT_LIMIT = 4
 DEFAULT_REFRESH_MS = 5000
@@ -68,6 +69,43 @@ def parse_int(value, default: int = 0) -> int:
         return int(value or 0)
     except (TypeError, ValueError):
         return default
+
+
+def load_mini_settings() -> dict:
+    try:
+        with SETTINGS_PATH.open("r", encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def save_mini_settings(settings: dict) -> None:
+    SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = SETTINGS_PATH.with_suffix(".json.tmp")
+    temp_path.write_text(
+        json.dumps(settings, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    temp_path.replace(SETTINGS_PATH)
+
+
+def setting_int(settings: dict, key: str, default: int, minimum: int, maximum: int) -> int:
+    return clamp(parse_int(settings.get(key), default), minimum, maximum)
+
+
+def setting_bool(settings: dict, key: str, default: bool) -> bool:
+    value = settings.get(key, default)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() not in {"0", "false", "no", "off"}
+    return bool(value)
+
+
+def setting_str(settings: dict, key: str, default: str) -> str:
+    value = settings.get(key, default)
+    return value if isinstance(value, str) else default
 
 
 class FLASHWINFO(ctypes.Structure):
@@ -130,15 +168,18 @@ class MiniClientApp:
         signal_threshold: int,
         signal_name: str,
         signal_enabled: bool,
+        settings: dict | None = None,
     ):
         self.root = root
         self.api = api
+        self.settings = settings or {}
         self.refresh_ms = clamp(refresh_ms, 1000, 60000)
         self.range_key = range_key
         self.data_version = None
         self.worker_running = False
         self.closed = False
         self.poll_after_id = None
+        self.settings_after_id = None
         self.last_signal_key = None
         self.limit_var = tk.IntVar(value=clamp(limit, 1, 50))
         self.signal_enabled_var = tk.BooleanVar(value=signal_enabled)
@@ -149,6 +190,7 @@ class MiniClientApp:
         self.status_var = tk.StringVar(value="Loading data")
 
         self._build_ui()
+        self._bind_settings_persistence()
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         self.refresh(import_first=False)
 
@@ -156,7 +198,11 @@ class MiniClientApp:
         self.root.title("Token Lens Mini")
         self._set_window_icon()
         self.root.minsize(620, 220)
-        self.root.geometry("720x260")
+        geometry = setting_str(self.settings, "geometry", "720x260")
+        try:
+            self.root.geometry(geometry)
+        except tk.TclError:
+            self.root.geometry("720x260")
 
         outer = ttk.Frame(self.root, padding=10)
         outer.pack(fill=tk.BOTH, expand=True)
@@ -212,6 +258,16 @@ class MiniClientApp:
         self.table.column("total", width=110, minwidth=90, anchor=tk.E, stretch=False)
         self.table.pack(fill=tk.BOTH, expand=True)
 
+    def _bind_settings_persistence(self):
+        for variable in (
+            self.limit_var,
+            self.signal_enabled_var,
+            self.signal_threshold_var,
+            self.signal_name_var,
+        ):
+            variable.trace_add("write", lambda *_args: self.schedule_settings_save())
+        self.root.bind("<Configure>", lambda _event: self.schedule_settings_save(), add="+")
+
     def _set_window_icon(self):
         if ICON_PATH.exists():
             try:
@@ -232,6 +288,10 @@ class MiniClientApp:
         if self.poll_after_id is not None:
             self.root.after_cancel(self.poll_after_id)
             self.poll_after_id = None
+        if self.settings_after_id is not None:
+            self.root.after_cancel(self.settings_after_id)
+            self.settings_after_id = None
+        self.save_settings_now()
         self.root.destroy()
 
     def schedule_poll(self):
@@ -255,6 +315,54 @@ class MiniClientApp:
             self.poll_after_id = None
         self.status_var.set("Importing data" if import_first else "Loading data")
         self._run_worker(lambda: self._refresh_worker(import_first))
+
+    def schedule_settings_save(self):
+        if self.closed:
+            return
+        if self.settings_after_id is not None:
+            self.root.after_cancel(self.settings_after_id)
+        self.settings_after_id = self.root.after(400, self.save_settings_now)
+
+    def save_settings_now(self):
+        self.settings_after_id = None
+        snapshot = {
+            **self.settings,
+            "base_url": self.api.base_url,
+            "limit": self.read_int_var(self.limit_var, DEFAULT_LIMIT, 1, 50),
+            "refresh_ms": self.refresh_ms,
+            "range": self.range_key,
+            "signal_enabled": self.read_bool_var(self.signal_enabled_var, True),
+            "signal_threshold": self.read_int_var(
+                self.signal_threshold_var,
+                DEFAULT_SIGNAL_THRESHOLD,
+                0,
+                10000000,
+            ),
+            "signal": self.read_signal_name(),
+            "geometry": self.root.geometry(),
+        }
+        try:
+            save_mini_settings(snapshot)
+            self.settings = snapshot
+        except OSError:
+            pass
+
+    def read_int_var(self, variable: tk.IntVar, default: int, minimum: int, maximum: int) -> int:
+        try:
+            value = variable.get()
+        except tk.TclError:
+            value = default
+        return clamp(value, minimum, maximum)
+
+    def read_bool_var(self, variable: tk.BooleanVar, default: bool) -> bool:
+        try:
+            return bool(variable.get())
+        except tk.TclError:
+            return default
+
+    def read_signal_name(self) -> str:
+        signal_name = self.signal_name_var.get()
+        return signal_name if signal_name in SIGNAL_CHOICES else "Exclamation"
 
     def _run_worker(self, target):
         self.worker_running = True
@@ -402,6 +510,22 @@ class MiniClientApp:
 
 def main():
     args = parse_args()
+    settings = load_mini_settings()
+    base_url = setting_str(settings, "base_url", args.base_url)
+    limit = setting_int(settings, "limit", args.limit, 1, 50)
+    refresh_ms = setting_int(settings, "refresh_ms", args.refresh_ms, 1000, 60000)
+    range_key = setting_str(settings, "range", args.range_key)
+    signal_threshold = setting_int(
+        settings,
+        "signal_threshold",
+        args.signal_threshold,
+        0,
+        10000000,
+    )
+    signal_name = setting_str(settings, "signal", args.signal)
+    if signal_name not in SIGNAL_CHOICES:
+        signal_name = args.signal
+    signal_enabled = setting_bool(settings, "signal_enabled", args.signal_enabled)
     try:
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_USER_MODEL_ID)
     except (AttributeError, OSError):
@@ -409,13 +533,14 @@ def main():
     root = tk.Tk()
     app = MiniClientApp(
         root,
-        ApiClient(args.base_url),
-        args.limit,
-        args.refresh_ms,
-        args.range_key,
-        args.signal_threshold,
-        args.signal,
-        args.signal_enabled,
+        ApiClient(base_url),
+        limit,
+        refresh_ms,
+        range_key,
+        signal_threshold,
+        signal_name,
+        signal_enabled,
+        settings,
     )
     root.mainloop()
     return app
