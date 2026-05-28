@@ -15,10 +15,30 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $refreshMs = [Math]::Max(1, $RefreshSeconds) * 1000
-$py = Get-Command "py.exe" -ErrorAction SilentlyContinue
-$pythonw = Get-Command "pythonw.exe" -ErrorAction SilentlyContinue
-$python = if ($py) { $py.Source } elseif ($pythonw) { $pythonw.Source } else { (Get-Command "python.exe").Source }
 $client = Join-Path $root "desktop\mini_client.py"
+
+function Resolve-ProjectDesktopPython {
+  $uv = Join-Path $env:USERPROFILE ".local\bin\uv.exe"
+  if (Test-Path $uv) {
+    $resolved = & $uv run python -c "import sys; print(sys.executable)" 2>$null
+    if ($LASTEXITCODE -eq 0 -and $resolved) {
+      $resolvedLines = @($resolved)
+      $python = [string]$resolvedLines[0]
+      $pythonw = Join-Path (Split-Path -Parent $python) "pythonw.exe"
+      if (Test-Path $pythonw) {
+        return $pythonw
+      }
+      return $python
+    }
+  }
+
+  $pythonwCommand = Get-Command "pythonw.exe" -ErrorAction SilentlyContinue
+  if ($pythonwCommand) {
+    return $pythonwCommand.Source
+  }
+
+  return (Get-Command "python.exe").Source
+}
 
 function Quote-ProcessArgument([object]$Value) {
   $text = [string]$Value
@@ -29,9 +49,6 @@ function Quote-ProcessArgument([object]$Value) {
 }
 
 $arguments = @()
-if ($py) {
-  $arguments += "-3"
-}
 $arguments += @(
   $client,
   "--base-url", $BaseUrl,
@@ -40,5 +57,6 @@ $arguments += @(
 )
 $argumentLine = ($arguments | ForEach-Object { Quote-ProcessArgument $_ }) -join " "
 
+$python = Resolve-ProjectDesktopPython
 $proc = Start-Process -FilePath $python -ArgumentList $argumentLine -WorkingDirectory $root -WindowStyle Hidden -PassThru
 Write-Host "Token Lens Mini started. PID: $($proc.Id)"

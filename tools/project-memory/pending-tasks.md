@@ -14,6 +14,54 @@ generated outputs, secrets, credentials, or private production data.
 
 ## Tasks
 
+### Windows Autostart Refresh 2026-05-27
+
+Goal: install Token Lens Windows startup entry and launch both web server and
+desktop mini client.
+
+Planned changes:
+
+- [x] Point autostart at the desktop launcher that also starts the web server.
+- [x] Install or refresh the Windows Startup shortcut.
+- [x] Start the local web server and desktop mini client.
+- [x] Verify the web URL responds.
+
+### Instruction Kit Update 2026-05-27
+
+Goal: update the copied `general-instructions` kit from `2026.05.20.6` to
+`2026.05.27.1`.
+
+Planned changes:
+
+- [x] Apply pending instruction migrations to local copied instruction files.
+- [x] Record applied migration metadata after verification.
+- [x] Run update checks and inspect scoped diffs.
+- [!] Commit and push only instruction-kit update changes if safe.
+
+### Local App Autostart 2026-05-25
+
+Goal: start Token Lens locally and add a Windows autostart entry for the app.
+
+Planned changes:
+
+- [x] Start or restart the local Token Lens server.
+- [x] Identify the smallest local autostart mechanism.
+- [x] Add a scoped autostart helper or shortcut.
+- [x] Verify the server URL and autostart target.
+
+### OpenCode Dashboard Parity
+
+Goal: make the OpenCode tab use the same dashboard surface as Codex while
+querying OpenCode-only analytics.
+
+Planned changes:
+
+- [x] Reuse the Codex dashboard DOM for both source tabs.
+- [x] Route dashboard, refresh, bucket detail, and polling through the active
+      source.
+- [x] Remove the outdated OpenCode placeholder view.
+- [x] Verify frontend syntax and API smoke paths.
+
 ### Dashboard Tabs For OpenCode Expansion
 
 Goal: add a tab switcher that preserves the current Codex dashboard as the

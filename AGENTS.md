@@ -129,6 +129,33 @@ Inspect logs:
   or arbitrary external folder unless the user gives an explicit concrete path
   and action. Use APIs, connectors, or task-manager endpoints for cross-project
   communication.
+- Treat `gi config`, `gi конфиг`, `ги конфиг`, `gi config service`,
+  `ги конфиг сервис`, `ги конфиг сервис url=<url>`, and
+  `ги конфиг сервис урл=<url>` as requests to get or set the bootstrap config
+  for the config/discovery service. Read the project-local override only if
+  local instructions define one, then read GI main config from
+  `D:\AI\general-instructions\config\gi-main.json` or
+  `GENERAL_INSTRUCTIONS_HOME`. Use its `configServiceUrl` to query the config
+  service. Resolve local app and task-manager runtime URLs by service id
+  through config-service; project task-manager config should keep only the
+  selected manager name/id and non-secret project preferences. For the
+  `url=<url>` form, validate a full `http://` or `https://` URL with no
+  secrets, update the shared `configServiceUrl` or the explicit project-local
+  override, and tell services to use that URL for registration and discovery.
+  Do not scan sibling project folders, guess ports, copy URLs from old
+  task-manager memory, or use stale task-manager records as a runtime fallback.
+- Treat `gi install`, `gi инсталл`, `ги инсталл`, and obvious typo variants
+  such as `gi иснтлл` as requests to build the current project and produce an
+  installer. Use Inno Setup by default when no installer tool is named. If the
+  user writes a program after `gi install` / `gi инсталл`, use that program as
+  the preferred packaging tool. Read project-local build and packaging
+  instructions, scripts, manifests, and installer configs first. Resolve the
+  application version from project-local metadata such as manifests, package
+  files, assembly attributes, release files, or installer configs before
+  packaging; update the version in build output, installer metadata, and the
+  installer filename or artifact name when the local tooling supports it. Ask a
+  short clarification question if the build, installer, or versioning contract
+  is missing instead of inventing one.
 - Treat nested checkouts, vendored repositories, cloned examples, and
   third-party source trees as separate scope. Do not inspect them as part of the
   main project unless the user explicitly asks, the task is about that nested

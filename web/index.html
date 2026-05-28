@@ -45,7 +45,7 @@
     <button class="workspace-tab" type="button" data-tab-target="opencode" aria-selected="false">OpenCode</button>
   </nav>
 
-  <main id="codexTab" data-tab-panel="codex">
+  <main id="codexTab" data-tab-panel="codex opencode">
     <section class="metrics" id="metrics"></section>
 
     <section class="panel">
@@ -150,55 +150,6 @@
     </section>
   </main>
 
-  <main id="opencodeTab" data-tab-panel="opencode" hidden>
-    <section class="panel opencode-intro">
-      <div>
-        <h2>OpenCode orchestrator</h2>
-        <p>Usage analytics for OpenCode agents will live here after the ingest plugin is connected.</p>
-      </div>
-    </section>
-
-    <section class="opencode-grid">
-      <div class="metric">
-        <span>Agents</span>
-        <strong id="opencodeAgents">0</strong>
-      </div>
-      <div class="metric">
-        <span>Runs</span>
-        <strong id="opencodeRuns">0</strong>
-      </div>
-      <div class="metric">
-        <span>Tool calls</span>
-        <strong id="opencodeCalls">0</strong>
-      </div>
-      <div class="metric">
-        <span>Total tokens</span>
-        <strong id="opencodeTokens">0</strong>
-      </div>
-    </section>
-
-    <section class="panel">
-      <div class="panel-head">
-        <h2>Agent roles</h2>
-      </div>
-      <div class="opencode-roles">
-        <span>orchestrator</span>
-        <span>explorer</span>
-        <span>librarian</span>
-        <span>oracle</span>
-        <span>designer</span>
-        <span>fixer</span>
-      </div>
-    </section>
-
-    <section class="panel">
-      <div class="panel-head">
-        <h2>Recent OpenCode calls</h2>
-      </div>
-      <div id="opencodeRecent" class="top-list"></div>
-    </section>
-  </main>
-
   <dialog id="detailDialog" class="detail-dialog">
     <div class="detail-shell">
       <div class="detail-head">
@@ -282,6 +233,6 @@
     </div>
   </dialog>
 
-  <script type="module" src="/app.js?v=20260522-4"></script>
+  <script type="module" src="/app.js?v=20260524-1"></script>
 </body>
 </html>

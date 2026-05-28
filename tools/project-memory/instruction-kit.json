@@ -1,5 +1,5 @@
 ﻿{
-    "instruction_kit_version":  "2026.05.20.6",
+    "instruction_kit_version":  "2026.05.27.1",
     "source":  "D:\\AI\\general-instructions",
     "installed_at":  "2026-05-19T23:11:04+03:00",
     "update_check":  {
@@ -19,6 +19,7 @@
                          "tools/select-git-commit-languages.ps1",
                          "tools/select-system-language.ps1",
                          "tools/check-instruction-kit-updates.ps1",
+                         "tools/project-memory/task-managers.json",
                          "skills/task-manager-plans/SKILL.md",
                          "skills/task-manager-plans/references/managers/worknest.md",
                          ".gitignore"
@@ -65,7 +66,12 @@
                                "2026.05.20.3__analyze_bug_evidence_before_fixing",
                                "2026.05.20.4__require_executable_sprint_plan_contract",
                                "2026.05.20.5__add_project_system_language_preferences",
-                               "2026.05.20.6__add_gi_pull_command"
+                               "2026.05.20.6__add_gi_pull_command",
+                               "2026.05.20.7__make_pending_migration_count_singleton_safe",
+                               "2026.05.21.1__add_gi_install_command",
+                               "2026.05.21.2__add_gi_install_versioning",
+                               "2026.05.21.3__add_model_routing_and_cost_control",
+                               "2026.05.27.1__resolve_task_managers_through_config_service"
                            ],
-    "last_update_check_at":  "2026-05-20T18:06:59+03:00"
+    "last_update_check_at":  "2026-05-27T09:39:51+03:00"
 }

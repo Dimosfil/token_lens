@@ -3,7 +3,8 @@ const DEFAULT_TAB = "codex";
 
 
 function tabExists(tabName) {
-  return Boolean(document.querySelector(`[data-tab-panel="${tabName}"]`));
+  return Array.from(document.querySelectorAll("[data-tab-panel]"))
+    .some(panel => panel.dataset.tabPanel.split(/\s+/).includes(tabName));
 }
 
 
@@ -16,7 +17,7 @@ function readActiveTab() {
 export function setActiveTab(tabName) {
   const nextTab = tabExists(tabName) ? tabName : DEFAULT_TAB;
   document.querySelectorAll("[data-tab-panel]").forEach(panel => {
-    panel.hidden = panel.dataset.tabPanel !== nextTab;
+    panel.hidden = !panel.dataset.tabPanel.split(/\s+/).includes(nextTab);
   });
   document.querySelectorAll("[data-tab-target]").forEach(button => {
     const isActive = button.dataset.tabTarget === nextTab;

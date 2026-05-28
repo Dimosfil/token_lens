@@ -26,49 +26,12 @@ import { initTabs } from "./js/tabs.js";
 let dataVersion = null;
 let refreshPromise = null;
 let lastDashboard = null;
+let activeSource = "codex";
 const AUTO_REFRESH_MS = 5000;
 
 
-function formatInteger(value) {
-  return Number(value || 0).toLocaleString("ru-RU");
-}
-
-
-function escapeHtml(value) {
-  return String(value ?? "").replace(/[&<>"']/g, char => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    "\"": "&quot;",
-    "'": "&#39;",
-  }[char]));
-}
-
-
-function renderOpenCodeDashboard(dashboard) {
-  const summary = dashboard.summary.summary;
-  document.getElementById("opencodeAgents").textContent = String(dashboard.models.length);
-  document.getElementById("opencodeRuns").textContent = formatInteger(summary.threads);
-  document.getElementById("opencodeCalls").textContent = formatInteger(summary.turns);
-  document.getElementById("opencodeTokens").textContent = formatInteger(summary.total_tokens);
-  const recent = document.getElementById("opencodeRecent");
-  recent.innerHTML = dashboard.turns.slice(0, 12).map(row => `
-    <div class="top-item">
-      <div>
-        <strong>${escapeHtml(row.model)}</strong>
-        <small>${escapeHtml(row.thread_name || row.thread_id)} · ${escapeHtml(row.status)}</small>
-      </div>
-      <strong>${formatInteger(row.total_tokens)}</strong>
-    </div>
-  `).join("") || `<p>No OpenCode usage events collected yet.</p>`;
-}
-
-
-async function refreshOpenCode() {
-  setAutoStatus("Loading OpenCode data");
-  const dashboard = await getJson("/api/dashboard?source=opencode&range=24h&bucket=hour&task_mode=separate");
-  renderOpenCodeDashboard(dashboard);
-  setAutoStatus(`Updated ${new Date().toLocaleTimeString("ru-RU")}`);
+function currentDashboardQuery() {
+  return dashboardQuery(activeSource);
 }
 
 
@@ -99,7 +62,7 @@ async function refresh(importFirst = false) {
 
 async function refreshNow(importFirst = false) {
   setAutoStatus(importFirst ? "Importing data" : "Loading data");
-  const query = dashboardQuery();
+  const query = currentDashboardQuery();
   const url = importFirst ? `/api/refresh${query}` : `/api/dashboard${query}`;
   const options = importFirst ? { method: "POST" } : {};
   const dashboard = await getJson(url, options);
@@ -177,7 +140,7 @@ document.getElementById("taskMode").addEventListener("click", event => {
 document.addEventListener("click", event => {
   const bucketRow = event.target.closest(".bucket-row");
   if (bucketRow) {
-    openBucketDetail(bucketRow.dataset.period, dashboardQuery());
+    openBucketDetail(bucketRow.dataset.period, currentDashboardQuery());
     return;
   }
   const row = event.target.closest(".detail-row");
@@ -189,7 +152,7 @@ document.addEventListener("keydown", event => {
   const bucketRow = event.target.closest(".bucket-row");
   if (bucketRow) {
     event.preventDefault();
-    openBucketDetail(bucketRow.dataset.period, dashboardQuery());
+    openBucketDetail(bucketRow.dataset.period, currentDashboardQuery());
     return;
   }
   const row = event.target.closest(".detail-row");
@@ -198,11 +161,9 @@ document.addEventListener("keydown", event => {
   openTaskDetail(row.dataset.threadId, row.dataset.turnId);
 });
 document.addEventListener("token-lens:tab-change", event => {
-  if (event.detail.tab === "opencode") {
-    refreshOpenCode().catch(err => setAutoStatus(`OpenCode refresh error: ${err.message}`, true));
-  } else {
-    refresh(false);
-  }
+  activeSource = event.detail.tab === "opencode" ? "opencode" : "codex";
+  lastDashboard = null;
+  refresh(false).catch(err => setAutoStatus(`${activeSource} refresh error: ${err.message}`, true));
 });
 
 restorePageSettings();

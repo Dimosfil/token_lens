@@ -157,7 +157,7 @@ export function syncTaskModeOptions() {
 }
 
 
-export function dashboardQuery() {
+export function dashboardQuery(source = "codex") {
   syncBucketOptions();
   syncTaskModeOptions();
   const params = new URLSearchParams();
@@ -165,7 +165,7 @@ export function dashboardQuery() {
   const bucket = document.getElementById("bucketFilter").value;
   if (range) params.set("range", range);
   if (bucket) params.set("bucket", bucket);
-  params.set("source", "codex");
+  params.set("source", source);
   if (taskMode) params.set("task_mode", taskMode);
   if (range === "custom") {
     const start = document.getElementById("customStart").value;

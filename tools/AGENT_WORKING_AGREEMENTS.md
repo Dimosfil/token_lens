@@ -176,6 +176,22 @@ or:
   git repository, or no upstream is configured, stop and explain the blocker.
   If conflicts appear during pull, resolve only obvious, low-risk conflicts
   where intent is clear and user changes are preserved; otherwise stop and ask.
+- Treat `gi config`, `gi конфиг`, `ги конфиг`, `gi config service`,
+  `ги конфиг сервис`, `ги конфиг сервис url=<url>`, and
+  `ги конфиг сервис урл=<url>` as requests to get or set the bootstrap config
+  for the config/discovery service. Resolve local app and task-manager runtime
+  URLs by service id through config-service. Validate saved service URLs as full
+  `http://` or `https://` URLs without usernames, passwords, tokens, query
+  strings, or fragments.
+- Treat `gi install`, `gi инсталл`, `ги инсталл`, and obvious typo variants
+  such as `gi иснтлл` as requests to build the current project and produce an
+  installer. Use Inno Setup by default when no installer tool is named; use the
+  named packaging tool when the user supplies one. Read local build and
+  packaging instructions first, resolve the application version from
+  project-local metadata, and keep production build, installer metadata, and
+  artifact naming aligned when local tooling supports it. Ask one short
+  clarification question if build, installer, or versioning contracts are
+  missing or ambiguous.
 - Treat `gi тест-план` and `gi test plan` as requests to inspect local project
   test commands and produce a compact verification plan for the current feature,
   bug fix, or release check. Plan first; run checks only when the user asks or
@@ -232,11 +248,14 @@ or:
 ## Task Managers
 
 - Treat task-manager configuration as project-local state.
-- Store the manager API endpoint in `base_url`; do not use a UI URL unless the
-  adapter explicitly says the same URL serves both UI and API.
-- Do not leave enabled manager endpoints empty, guessed, or set to `TODO`.
+- Store only the manager name or `service_id` plus non-secret project
+  preferences in project memory.
+- Resolve task-manager runtime URLs through GI config-service by service id;
+  do not store, guess, or copy API endpoints from old notes or other projects.
+- If a configured manager id is missing from config-service, stop with a concise
+  blocker instead of falling back to port scans or stale task-manager memory.
 - Before posting plans or starting sprint work, verify the workflow-specific
-  manager capabilities, not only generic health.
+  manager contract and capabilities, not only generic health.
 - Treat task managers as work queues and lifecycle recorders, not as the actors
   doing implementation work. The agent takes, implements, verifies, and reports
   tasks through the manager.
