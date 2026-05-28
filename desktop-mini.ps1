@@ -1,7 +1,11 @@
 param(
   [int]$Rows = 4,
   [int]$RefreshSeconds = 5,
-  [string]$BaseUrl = "http://127.0.0.1:8765"
+  [string]$BaseUrl = "http://127.0.0.1:8765",
+  [int]$SignalThreshold = 100000,
+  [ValidateSet("Simple", "Asterisk", "Exclamation", "Hand", "Question")]
+  [string]$Signal = "Exclamation",
+  [switch]$NoSignal
 )
 
 $ErrorActionPreference = "Stop"
@@ -53,8 +57,13 @@ $arguments += @(
   $client,
   "--base-url", $BaseUrl,
   "--limit", $Rows,
-  "--refresh-ms", $refreshMs
+  "--refresh-ms", $refreshMs,
+  "--signal-threshold", $SignalThreshold,
+  "--signal", $Signal
 )
+if ($NoSignal) {
+  $arguments += "--no-signal-enabled"
+}
 $argumentLine = ($arguments | ForEach-Object { Quote-ProcessArgument $_ }) -join " "
 
 $python = Resolve-ProjectDesktopPython

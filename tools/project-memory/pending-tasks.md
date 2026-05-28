@@ -14,6 +14,19 @@ generated outputs, secrets, credentials, or private production data.
 
 ## Tasks
 
+### Mini Token Signal 2026-05-28
+
+Goal: add an optional system alert in Token Lens Mini when `Total / Call`
+exceeds a user-selected threshold.
+
+Planned changes:
+
+- [x] Locate the desktop mini UI and refresh flow.
+- [x] Add threshold, signal selection, and enable/disable controls near Refresh.
+- [x] Trigger the selected system signal when refreshed rows exceed the threshold.
+- [x] Preview the selected system signal when the signal dropdown changes.
+- [x] Run focused syntax or smoke checks.
+
 ### Windows Autostart Refresh 2026-05-27
 
 Goal: install Token Lens Windows startup entry and launch both web server and

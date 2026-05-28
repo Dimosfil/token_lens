@@ -8,6 +8,10 @@ import threading
 import time
 import tkinter as tk
 from tkinter import ttk
+try:
+    import winsound
+except ImportError:
+    winsound = None
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -19,7 +23,20 @@ ICON_PATH = ROOT / "Logo.ico"
 DEFAULT_BASE_URL = "http://127.0.0.1:8765"
 DEFAULT_LIMIT = 4
 DEFAULT_REFRESH_MS = 5000
+DEFAULT_SIGNAL_THRESHOLD = 100000
 APP_USER_MODEL_ID = "TokenLens.Mini.CleanLogo"
+FLASHW_STOP = 0
+FLASHW_CAPTION = 0x00000001
+FLASHW_TRAY = 0x00000002
+FLASHW_ALL = FLASHW_CAPTION | FLASHW_TRAY
+FLASHW_TIMERNOFG = 0x0000000C
+SIGNAL_CHOICES = {
+    "Simple": -1,
+    "Asterisk": 0x00000040,
+    "Exclamation": 0x00000030,
+    "Hand": 0x00000010,
+    "Question": 0x00000020,
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -28,6 +45,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
     parser.add_argument("--refresh-ms", type=int, default=DEFAULT_REFRESH_MS)
     parser.add_argument("--range", dest="range_key", default="")
+    parser.add_argument("--signal-threshold", type=int, default=DEFAULT_SIGNAL_THRESHOLD)
+    parser.add_argument("--signal", choices=SIGNAL_CHOICES.keys(), default="Exclamation")
+    parser.add_argument("--signal-enabled", action=argparse.BooleanOptionalAction, default=True)
     return parser.parse_args()
 
 
@@ -41,6 +61,23 @@ def format_number(value) -> str:
     except (TypeError, ValueError):
         return "0"
     return f"{number:,}".replace(",", " ")
+
+
+def parse_int(value, default: int = 0) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return default
+
+
+class FLASHWINFO(ctypes.Structure):
+    _fields_ = [
+        ("cbSize", ctypes.c_uint),
+        ("hwnd", ctypes.c_void_p),
+        ("dwFlags", ctypes.c_uint),
+        ("uCount", ctypes.c_uint),
+        ("dwTimeout", ctypes.c_uint),
+    ]
 
 
 def format_duration(seconds) -> str:
@@ -83,7 +120,17 @@ class ApiClient:
 
 
 class MiniClientApp:
-    def __init__(self, root: tk.Tk, api: ApiClient, limit: int, refresh_ms: int, range_key: str):
+    def __init__(
+        self,
+        root: tk.Tk,
+        api: ApiClient,
+        limit: int,
+        refresh_ms: int,
+        range_key: str,
+        signal_threshold: int,
+        signal_name: str,
+        signal_enabled: bool,
+    ):
         self.root = root
         self.api = api
         self.refresh_ms = clamp(refresh_ms, 1000, 60000)
@@ -92,7 +139,13 @@ class MiniClientApp:
         self.worker_running = False
         self.closed = False
         self.poll_after_id = None
+        self.last_signal_key = None
         self.limit_var = tk.IntVar(value=clamp(limit, 1, 50))
+        self.signal_enabled_var = tk.BooleanVar(value=signal_enabled)
+        self.signal_threshold_var = tk.IntVar(value=max(0, signal_threshold))
+        self.signal_name_var = tk.StringVar(
+            value=signal_name if signal_name in SIGNAL_CHOICES else "Exclamation"
+        )
         self.status_var = tk.StringVar(value="Loading data")
 
         self._build_ui()
@@ -102,8 +155,8 @@ class MiniClientApp:
     def _build_ui(self):
         self.root.title("Token Lens Mini")
         self._set_window_icon()
-        self.root.minsize(520, 220)
-        self.root.geometry("640x260")
+        self.root.minsize(620, 220)
+        self.root.geometry("720x260")
 
         outer = ttk.Frame(self.root, padding=10)
         outer.pack(fill=tk.BOTH, expand=True)
@@ -125,6 +178,24 @@ class MiniClientApp:
         rows.bind("<FocusOut>", lambda _event: self.refresh(import_first=False))
 
         ttk.Button(toolbar, text="Refresh", command=lambda: self.refresh(import_first=True)).pack(side=tk.LEFT)
+        ttk.Checkbutton(toolbar, text="Signal", variable=self.signal_enabled_var).pack(side=tk.LEFT, padx=(10, 4))
+        ttk.Spinbox(
+            toolbar,
+            from_=0,
+            to=10000000,
+            increment=1000,
+            width=8,
+            textvariable=self.signal_threshold_var,
+        ).pack(side=tk.LEFT, padx=(0, 4))
+        signal_picker = ttk.Combobox(
+            toolbar,
+            width=11,
+            state="readonly",
+            values=tuple(SIGNAL_CHOICES.keys()),
+            textvariable=self.signal_name_var,
+        )
+        signal_picker.pack(side=tk.LEFT)
+        signal_picker.bind("<<ComboboxSelected>>", lambda _event: self.play_signal())
         ttk.Label(toolbar, textvariable=self.status_var, anchor=tk.E).pack(side=tk.RIGHT, fill=tk.X, expand=True)
 
         columns = ("model", "time", "calls", "per_call", "total")
@@ -260,6 +331,7 @@ class MiniClientApp:
                     format_number(row.get("total_tokens")),
                 ),
             )
+        self.maybe_signal(rows, version)
         self.status_var.set(f"Updated {time.strftime('%H:%M:%S')}")
 
     def set_checked_status(self):
@@ -267,6 +339,65 @@ class MiniClientApp:
 
     def set_error(self, error: Exception):
         self.status_var.set(f"Error: {error}")
+
+    def current_signal_threshold(self) -> int:
+        try:
+            value = self.signal_threshold_var.get()
+        except tk.TclError:
+            value = DEFAULT_SIGNAL_THRESHOLD
+            self.signal_threshold_var.set(value)
+        value = max(0, value)
+        if self.signal_threshold_var.get() != value:
+            self.signal_threshold_var.set(value)
+        return value
+
+    def maybe_signal(self, rows: list[dict], version):
+        if not self.signal_enabled_var.get():
+            return
+        threshold = self.current_signal_threshold()
+        if threshold <= 0:
+            return
+        over_limit = [
+            parse_int(row.get("total_tokens_per_call"))
+            for row in rows[: self.current_limit()]
+            if parse_int(row.get("total_tokens_per_call")) > threshold
+        ]
+        if not over_limit:
+            return
+        signal_key = (version, threshold, self.signal_name_var.get(), max(over_limit))
+        if signal_key == self.last_signal_key:
+            return
+        self.last_signal_key = signal_key
+        self.play_signal()
+
+    def play_signal(self):
+        signal_name = self.signal_name_var.get()
+        if winsound is not None:
+            try:
+                winsound.MessageBeep(SIGNAL_CHOICES.get(signal_name, -1))
+                self.flash_window()
+                return
+            except RuntimeError:
+                pass
+        try:
+            self.root.bell()
+        except tk.TclError:
+            pass
+        self.flash_window()
+
+    def flash_window(self):
+        try:
+            hwnd = self.root.winfo_id()
+            info = FLASHWINFO(
+                ctypes.sizeof(FLASHWINFO),
+                hwnd,
+                FLASHW_ALL | FLASHW_TIMERNOFG,
+                5,
+                0,
+            )
+            ctypes.windll.user32.FlashWindowEx(ctypes.byref(info))
+        except (AttributeError, OSError, tk.TclError):
+            pass
 
 
 def main():
@@ -282,6 +413,9 @@ def main():
         args.limit,
         args.refresh_ms,
         args.range_key,
+        args.signal_threshold,
+        args.signal,
+        args.signal_enabled,
     )
     root.mainloop()
     return app
