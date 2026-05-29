@@ -180,6 +180,8 @@ class MiniClientApp:
         self.closed = False
         self.poll_after_id = None
         self.settings_after_id = None
+        self.seen_signal_rows = set()
+        self.signal_seen_initialized = False
         self.last_signal_key = None
         self.limit_var = tk.IntVar(value=clamp(limit, 1, 50))
         self.signal_enabled_var = tk.BooleanVar(value=signal_enabled)
@@ -256,6 +258,7 @@ class MiniClientApp:
         self.table.column("calls", width=70, minwidth=60, anchor=tk.E, stretch=False)
         self.table.column("per_call", width=110, minwidth=95, anchor=tk.E, stretch=False)
         self.table.column("total", width=110, minwidth=90, anchor=tk.E, stretch=False)
+        self.table.tag_configure("over-limit", background="#fff1b8")
         self.table.pack(fill=tk.BOTH, expand=True)
 
     def _bind_settings_persistence(self):
@@ -425,12 +428,15 @@ class MiniClientApp:
     def render_rows(self, rows: list[dict], version):
         self.data_version = version
         self.table.configure(height=self.current_limit())
+        threshold = self.current_signal_threshold()
         for item in self.table.get_children():
             self.table.delete(item)
         for row in rows[: self.current_limit()]:
+            over_limit = threshold > 0 and parse_int(row.get("total_tokens_per_call")) > threshold
             self.table.insert(
                 "",
                 tk.END,
+                tags=("over-limit",) if over_limit else (),
                 values=(
                     row.get("models") or "",
                     format_duration(row.get("elapsed_seconds")),
@@ -439,7 +445,7 @@ class MiniClientApp:
                     format_number(row.get("total_tokens")),
                 ),
             )
-        self.maybe_signal(rows, version)
+        self.maybe_signal(rows, version, threshold)
         self.status_var.set(f"Updated {time.strftime('%H:%M:%S')}")
 
     def set_checked_status(self):
@@ -459,20 +465,52 @@ class MiniClientApp:
             self.signal_threshold_var.set(value)
         return value
 
-    def maybe_signal(self, rows: list[dict], version):
-        if not self.signal_enabled_var.get():
-            return
-        threshold = self.current_signal_threshold()
+    def signal_row_key(self, row: dict) -> tuple:
+        thread_id = row.get("thread_id")
+        turn_id = row.get("turn_id")
+        if thread_id and turn_id:
+            return ("task", thread_id, turn_id)
+        return (
+            "fallback",
+            row.get("finished_at"),
+            row.get("models"),
+            parse_int(row.get("model_calls")),
+            parse_int(row.get("total_tokens")),
+        )
+
+    def maybe_signal(self, rows: list[dict], version, threshold: int):
         if threshold <= 0:
+            self.seen_signal_rows.update(
+                self.signal_row_key(row)
+                for row in rows[: self.current_limit()]
+            )
+            self.signal_seen_initialized = True
             return
-        over_limit = [
-            parse_int(row.get("total_tokens_per_call"))
-            for row in rows[: self.current_limit()]
-            if parse_int(row.get("total_tokens_per_call")) > threshold
-        ]
-        if not over_limit:
+
+        visible_rows = rows[: self.current_limit()]
+        visible_keys = {self.signal_row_key(row) for row in visible_rows}
+        new_over_limit_keys = []
+        for row in visible_rows:
+            row_key = self.signal_row_key(row)
+            if row_key in self.seen_signal_rows:
+                continue
+            if parse_int(row.get("total_tokens_per_call")) > threshold:
+                new_over_limit_keys.append(row_key)
+        self.seen_signal_rows.update(visible_keys)
+
+        if not self.signal_seen_initialized:
+            self.signal_seen_initialized = True
             return
-        signal_key = (version, threshold, self.signal_name_var.get(), max(over_limit))
+        if not self.signal_enabled_var.get() or not new_over_limit_keys:
+            return
+
+        self.signal_seen_initialized = True
+        signal_key = (
+            version,
+            threshold,
+            self.signal_name_var.get(),
+            tuple(repr(key) for key in new_over_limit_keys),
+        )
         if signal_key == self.last_signal_key:
             return
         self.last_signal_key = signal_key

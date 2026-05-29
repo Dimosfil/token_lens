@@ -39,6 +39,17 @@ Planned changes:
 - [x] Preview the selected system signal when the signal dropdown changes.
 - [x] Run focused syntax or smoke checks.
 
+### Mini Signal New Rows 2026-05-29
+
+Goal: make Token Lens Mini signal only for newly observed rows over the
+threshold and visually mark rows currently over the threshold.
+
+Planned changes:
+
+- [x] Track per-row signal identity instead of re-alerting on old visible rows.
+- [x] Highlight visible rows whose `Total / Call` exceeds the current threshold.
+- [x] Run focused syntax checks for the desktop mini client.
+
 ### Windows Autostart Refresh 2026-05-27
 
 Goal: install Token Lens Windows startup entry and launch both web server and
