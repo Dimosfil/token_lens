@@ -9,8 +9,7 @@ Store non-secret WorkNest settings in `tools/project-memory/task-managers.json`:
 
 - `id`: `worknest`
 - `enabled`: `true` or `false`
-- `base_url`: WorkNest API URL from the project config, not the UI URL unless
-  the same origin explicitly serves both UI and API
+- `service_id`: config-service lookup key, normally `worknest`
 - `workspace`: WorkNest workspace slug or name, if known
 - `project`: WorkNest project slug, board, or list, if known
 - `intake_mode`: `raw` for the current HTTP intake MVP
@@ -19,11 +18,11 @@ Store non-secret WorkNest settings in `tools/project-memory/task-managers.json`:
 Do not store API tokens, cookies, passwords, or private workspace data in the
 shared instruction files or committed project memory.
 
-`base_url` is required when enabling WorkNest. During setup, get it from the
-project instructions, environment/config, or the user, then write it to
-`tools/project-memory/task-managers.json`. Do not leave `base_url` as `TODO`.
-Treat `base_url` as project-local state; do not copy it from another project
-without user confirmation.
+`service_id` is required when enabling WorkNest. Resolve it through GI
+config-service with `GET /services/worknest`, check `endpoints.availability`,
+read `endpoints.contract`, and use `endpoints.api` for operations. Do not store
+or copy WorkNest runtime URLs in project memory when the service is registered
+in config-service.
 
 ## Current Intake MVP
 
@@ -44,15 +43,17 @@ Known endpoints:
 - `POST /agent-intake/raw`
 - `GET /agent-intake/raw`
 - `GET /agent-intake/raw/:id`
-- `GET /agent-intake/next-task`
+- `GET /agent-intake/next-task?project=<project>&sprintId=<sprintId>`
 - `POST /agent-intake/task-completed`
 
 Use `/health` only as a basic liveness check. Before posting a plan, verify the
 raw intake contract or raw intake endpoint. Before running `gi start sprint`,
 verify active/next task and completion endpoints required by the current
-workflow. If `/health` succeeds but required workflow endpoints return missing
-or incompatible responses, report a stale or misconfigured WorkNest API endpoint
-and stop before sending work.
+workflow, including the documented HTTP method and query parameters. If
+`/health` succeeds but required workflow endpoints return missing or
+incompatible responses, re-read this adapter contract, report a stale or
+misconfigured WorkNest API endpoint when the contract still does not match, and
+stop before sending work.
 
 If WorkNest accepts `type: "task"` or another single-task intake payload, verify
 that the response either creates an executable sprint/task and returns the IDs
@@ -214,25 +215,26 @@ When reading from WorkNest:
 
 When writing to the current WorkNest intake:
 
-1. Require `base_url` in `tools/project-memory/task-managers.json`; ask for it
-   before sending if missing or still `TODO`.
-2. Read `/agent-intake/contract` before sending sprint-plan work and follow the
-   documented executable plan shape.
-3. Prefer `POST /agent-intake/raw` with a compact payload containing:
+1. Resolve `service_id` through config-service; stop if the service record is
+   missing.
+2. Read the resolved contract endpoint before sending sprint-plan work and
+   follow the documented executable plan shape.
+3. Use the resolved API endpoint for writes.
+4. Prefer the documented raw intake operation with a compact payload containing:
    - `agent`
    - `type`
    - `title` or `body`
    - optional `source`
    - optional `metadata` or `tags`
-4. Use `type: "task"` for task candidates unless the plan item is clearly an
+5. Use `type: "task"` for task candidates unless the plan item is clearly an
    idea, note, report, project candidate, decision, or unknown.
-5. Treat the raw intake response as a receipt, not as proof that a WorkNest card
+6. Treat the raw intake response as a receipt, not as proof that a WorkNest card
    or executable task exists.
-6. If the caller needs executable sprint work, require a response with lifecycle
+7. If the caller needs executable sprint work, require a response with lifecycle
    identifiers or send a supported executable payload such as `type: "plan"`
    with `project`, `title`, and `items[]`. Do not downgrade `kind:
    "sprint-plan"` to `type: "raw"`.
-7. Do not auto-edit WorkNest project files. The parser/router and later
+8. Do not auto-edit WorkNest project files. The parser/router and later
    accept/reject flow decide what becomes a real card.
 
 Executable sprint-plan payloads for the current WorkNest API must be sent to

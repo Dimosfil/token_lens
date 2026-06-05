@@ -14,11 +14,13 @@ configured task managers.
 2. Read `tools/project-memory/task-managers.json` if it exists.
 3. If no manager is configured, ask the user to choose from available manager
    adapters or choose "none".
-4. For each selected or configured manager, fill required connection fields from
-   project instructions, environment/config, or a short user question.
-5. Treat each manager endpoint as project-local state. Do not reuse a manager
-   endpoint from another project unless the user explicitly confirms it.
-6. Before using a manager endpoint, verify the capabilities required for the
+4. For each selected or configured manager, store the manager name or service id
+   plus non-secret project preferences.
+5. Resolve each manager runtime URL through GI config-service by service id. Do
+   not copy manager endpoints from project memory, another project, old notes,
+   or guessed ports.
+6. Before using a manager endpoint, read the manager contract and verify the
+   capabilities required for the
    requested workflow, not only generic health.
 7. For each configured manager, read only its adapter reference from
    `references/managers/`.
@@ -64,10 +66,11 @@ Use `tools/project-memory/task-managers.json` as the project-owned config. Keep
 secrets out of this file; store only manager names, enabled flags, workspace or
 project identifiers, and non-secret sync preferences.
 
-`base_url` is the manager API endpoint used for operations. Do not put a UI URL
-in `base_url` unless the adapter explicitly says the same URL serves both UI and
-API. Do not leave endpoint fields empty, guessed, or set to `TODO` when a
-manager is enabled.
+`service_id` is the config-service lookup key for the manager. The local project
+config should not store runtime URLs when the manager is registered in
+config-service. Resolve `service_id` with `GET /services/{serviceId}`, check
+`endpoints.availability`, read `endpoints.contract`, and use `endpoints.api` for
+operations.
 
 Expected shape:
 
@@ -78,11 +81,11 @@ Expected shape:
     {
       "id": "worknest",
       "enabled": true,
-      "base_url": "http://127.0.0.1:4187/",
+      "service_id": "worknest",
       "workspace": "",
       "project": "worknest-core",
       "intake_mode": "raw",
-      "notes": "Project-local manager API endpoint. UI URLs are documented separately if needed."
+      "notes": "Runtime URLs are resolved through GI config-service."
     }
   ]
 }
@@ -99,21 +102,25 @@ When the user runs `gi tm`:
    the connected managers and next available sync action.
 4. If no enabled manager exists, show a short numbered Markdown checklist with
    checkbox items for available adapters plus `none`, and ask which to connect.
+   Render each option as a task-list bullet with the number inside the label,
+   such as `- [ ] 1. WorkNest`; do not use ordered-task syntax such as
+   `1. [ ] WorkNest`.
 5. After the user chooses managers, create or update
    `tools/project-memory/task-managers.json` from the shared template.
-6. Do not finish manager setup with required fields left as `TODO`. Ask for
-   missing values before reporting setup complete.
-7. Verify the selected manager's required capabilities for the next requested
-   workflow. If health succeeds but required capability checks fail, report a
-   stale or misconfigured manager endpoint and stop.
+6. Do not finish manager setup with required project fields left as `TODO`. Ask
+   for missing values before reporting setup complete.
+7. Resolve the selected manager service id through config-service and verify the
+   required capabilities for the next requested workflow. If config-service has
+   no matching record or capability checks fail, report a missing or
+   misconfigured manager service and stop.
 
 Example checklist:
 
 ```markdown
 Choose task-manager adapters for plan sync:
 
-1. [ ] WorkNest - send plans to WorkNest raw intake.
-2. [ ] none - do not connect a task manager now.
+- [ ] 1. WorkNest - send plans to WorkNest raw intake.
+- [ ] 2. none - do not connect a task manager now.
 ```
 
 ## `gi план` / `gi post plan`
@@ -151,22 +158,24 @@ When the user runs `gi manager test`, `gi tm test`, `gi манагер тест`
 1. Stay in the current project root.
 2. Read `tools/project-memory/task-managers.json`.
 3. If no manager is enabled, run the same manager selection flow as `gi tm`.
-4. Verify the current manager's required test capabilities before creating
+4. Resolve the current manager service id through config-service, read
+   `endpoints.contract`, and use `endpoints.api` for operations.
+5. Verify the current manager's required test capabilities before creating
    anything: create/load task, next-task or task lookup, status update or start,
    completion, and final readback.
-5. Create a clearly labeled disposable test task through the manager adapter.
+6. Create a clearly labeled disposable test task through the manager adapter.
    The task must require no repository edits, secret access, network side
    effects beyond the manager API, destructive action, or cross-project file
    access.
-6. Load or read the created task back through the manager API and verify its
+7. Load or read the created task back through the manager API and verify its
    title, description, status, and lifecycle identifiers.
-7. Take the task in work using the manager's lifecycle operation when supported.
-8. Execute the task as a no-op verification step, such as recording that the
+8. Take the task in work using the manager's lifecycle operation when supported.
+9. Execute the task as a no-op verification step, such as recording that the
    manager lifecycle round trip was observed.
-9. Mark the task `done` or completed through the manager adapter.
-10. Read the task back again and verify that the final status is `done`,
+10. Mark the task `done` or completed through the manager adapter.
+11. Read the task back again and verify that the final status is `done`,
     completed, archived, or the adapter's documented equivalent.
-11. Report a compact result with manager id, endpoint, created task id or URL,
+12. Report a compact result with manager id, resolved endpoint, created task id or URL,
     lifecycle steps completed, final status, and any unsupported capability.
 
 If any step fails, stop at the first contract gap, leave the task in the safest
@@ -184,16 +193,18 @@ start-active-sprint command:
 4. Verify the manager supports active sprint lookup and task completion for the
    requested workflow. If those capabilities are missing, report the endpoint
    mismatch and stop.
-5. If an intake receipt lacks the identifiers required for next-task,
+5. When a manager endpoint returns an unexpected method, parameter, or routing
+   error, re-read the adapter's endpoint contract before trying a workaround.
+6. If an intake receipt lacks the identifiers required for next-task,
    task-completed, archive, or close flows, report the task-manager contract gap
    and stop instead of inventing a replacement plan.
-6. If exactly one active sprint exists, the agent takes it in work through the
+7. If exactly one active sprint exists, the agent takes it in work through the
    manager. If none or many exist, ask the user to choose.
-7. Execute sprint tasks in manager-defined order until no `todo` or `ready`
+8. Execute sprint tasks in manager-defined order until no `todo` or `ready`
    tasks remain or a blocker requires user input.
-8. Update task status and completion notes according to the manager adapter.
-9. Keep normal safety rules: ask before destructive actions, credential changes,
-   broad rewrites, or irreversible external changes.
+9. Update task status and completion notes according to the manager adapter.
+10. Keep normal safety rules: ask before destructive actions, credential changes,
+    broad rewrites, or irreversible external changes.
 
 ## Task-Manager Role
 

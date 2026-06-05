@@ -66,7 +66,10 @@
   checklist showing `English` as always selected and current additional
   languages as checked. Explain that `English` is the required primary
   commit-message language and cannot be disabled. Ask the user to reply with
-  language names or numbers.
+  language names or numbers. Render each option as a task-list bullet with the
+  number inside the label, such as `- [x] 1. English`; do not use
+  `1. [x] English`, because some chat renderers split the checkbox and label
+  onto separate lines.
 - When reporting this change, mention the plain
   `tools/project-memory/git-preferences.json` path instead of malformed or
   placeholder markdown links.
@@ -86,16 +89,37 @@ or:
 
 - Follow `tools/project-memory/system-preferences.json` for the agent's
   user-facing working language in this project.
-- Apply the configured system language to progress updates, final answers,
-  clarifying questions, and user-facing explanations.
-- Do not apply the system language to code, commands, logs, quoted text, or a
-  response language the user explicitly requested for a specific message.
+- Apply the configured system or project language to progress updates, final
+  answers, clarifying questions, user-facing explanations, agent-created task
+  titles, task descriptions, task-manager updates, plans, and checklists.
+- For task titles, descriptions, and task-manager updates, treat the first
+  configured task language as the main language. If exactly one task language is
+  configured, write task text only in that language. If multiple task languages
+  are configured, write the main-language text first and then add one clear
+  translation per additional language. Do not duplicate the same content twice
+  in one language, and do not mix untranslated labels, templates, or Definition
+  of Done text from another configured language into the main-language text.
+- Do not apply the system or project language to existing task text, code,
+  commands, logs, quoted text, or a response language the user explicitly
+  requested for a specific message.
+- Treat `gi language`, `gi язык`, `ги язык`, `gi project language`,
+  `gi проект язык`, `ги проект язык`, `gi язык проекта`, and `ги язык проекта`
+  as requests to configure three ordered language sequences: project working
+  environment, commit messages, and tasks.
+- If the unified project-language command does not include explicit languages,
+  ask in three numbered steps. For each step, show a concise numbered Markdown
+  checklist with the available languages and the current selection, then accept
+  the user's next answer as numbers or language names for that step.
+- If the user replies with only numbers, such as `1 2`, map them to the most
+  recent checklist and preserve that order. Do not ask what those numbers mean
+  after showing the checklist.
 - Treat `gi system language`, `gi систем язык`, and `ги систем язык` as
   requests to configure this preference.
 - Keep this setting separate from commit-message languages. `gi commit
   language`, `gi коммит язык`, `ги коммит язык`, and older `gi язык коммита`
   forms configure `tools/project-memory/git-preferences.json`, not the agent's
-  working language.
+  working language. The unified project-language command updates both
+  preference files.
 - If the user explicitly wants to configure the system language manually, they
   can run:
 
@@ -153,6 +177,11 @@ or:
 - Keep `gi` command responses scoped to the shared instruction-kit command. Do
   not resume an older product task after a `gi` command unless the user
   explicitly asks.
+- For `gi start`, `gi restore`, and title-only startup messages, restore only
+  compact orientation for the next turn. Mention remembered plans, stale task
+  notes, old refactoring phases, or local commits ahead of a remote only as
+  context when relevant. Do not offer to continue, run, finish, or push
+  remembered work unless the user explicitly asks for that action.
 - Run `gi` commands against this project root. Do not switch to another
   repository, the shared instruction library, or a path from an older task unless
   the user explicitly asks.
@@ -183,6 +212,29 @@ or:
   URLs by service id through config-service. Validate saved service URLs as full
   `http://` or `https://` URLs without usernames, passwords, tokens, query
   strings, or fragments.
+- Treat `gi config service on`, `gi config service off`,
+  `ги конфиг сервис on`, and `ги конфиг сервис off` as requests to set the
+  current application's project-local config-service self-registration flag, not
+  as commands to start or stop config-service itself. Enabling the flag requires
+  an existing config-service URL in the same local config area or documented GI
+  bootstrap config.
+- For web-facing applications that expose a port, HTTP API, web UI,
+  task-manager service, or local daemon endpoint, startup must check live
+  config-service config before publishing or refreshing the app's own service
+  record when self-registration is enabled. If config-service is missing,
+  unreachable, or incomplete, startup reports the blocker and waits instead of
+  guessing or falling back to stale ports. Non-web apps do not query or publish
+  to config-service during normal startup unless local instructions define a
+  discoverable web/API runtime.
+- Treat `gi reboot`, `ги ребут`, `gi restart`, and `ги рестарт` as requests to
+  start or restart the current application using project-local run instructions.
+- Treat `gi ftp`, `ги фтп`, `gi ftp push`, and `ги фтп пуш` as requests to
+  upload configured build output to FTP, FTPS, or SFTP. Treat `gi ftp config`
+  as FTP/SFTP config setup without uploading, `gi ftp folder` as remote folder
+  selection without uploading, and `gi ftp service` as selecting or registering
+  an FTP-capable config-service record. Keep credentials, tokens, private keys,
+  private remote paths, and other secrets out of git, config-service records,
+  logs, and final responses.
 - Treat `gi install`, `gi инсталл`, `ги инсталл`, and obvious typo variants
   such as `gi иснтлл` as requests to build the current project and produce an
   installer. Use Inno Setup by default when no installer tool is named; use the
@@ -215,6 +267,13 @@ or:
 - Prefer patch-style edits for manual changes.
 - Avoid unrelated formatting churn.
 - Add comments only when they clarify non-obvious behavior.
+- Preserve existing file encodings. On Windows, do not rewrite source files with
+  PowerShell `Get-Content ... | Set-Content ...` pipelines unless both read and
+  write encodings are explicit and known correct. Prefer `apply_patch`,
+  editor-native saves, or language APIs that read and write with an explicit
+  encoding such as UTF-8. If non-ASCII text appears as mojibake after a command,
+  stop, restore the last clean file version, and reapply only the intended small
+  patch.
 
 ## Task Planning
 

@@ -1,5 +1,6 @@
 param(
     [int]$MaxLines = 80,
+    [switch]$ConfigureProjectLanguage,
     [switch]$ConfigureGitCommitLanguages,
     [switch]$ConfigureSystemLanguage
 )
@@ -158,6 +159,18 @@ function Write-GitCommitPreferenceNotice {
     }
 }
 
+function Invoke-ProjectLanguageSelector {
+    $selectorPath = "tools/select-project-language.ps1"
+    if (Test-Path -LiteralPath $selectorPath) {
+        & $selectorPath
+        return $true
+    }
+
+    Write-Host "Could not find $selectorPath."
+    Write-Host "Copy it from templates/select-project-language.template.ps1."
+    return $false
+}
+
 function Write-SystemLanguagePreferenceNotice {
     $systemPreferencesPath = "tools/project-memory/system-preferences.json"
     Write-Host ""
@@ -192,7 +205,18 @@ function Write-SystemLanguagePreferenceNotice {
         $preferences = Get-Content -LiteralPath $systemPreferencesPath -Raw | ConvertFrom-Json
         $mode = [string]$preferences.agent_response_language.mode
         $language = [string]$preferences.agent_response_language.language
-        if ($mode -eq "fixed" -and $language) {
+        $languages = @($preferences.agent_response_language.project_environment_languages | ForEach-Object { [string]$_ })
+        if ($languages.Count -eq 0) {
+            $languages = @($preferences.agent_response_language.languages | ForEach-Object { [string]$_ })
+        }
+        $taskLanguages = @($preferences.agent_response_language.task_languages | ForEach-Object { [string]$_ })
+        if ($mode -eq "fixed" -and $languages.Count -gt 0) {
+            Write-Host ("Project working environment: {0}" -f ($languages -join ", "))
+            if ($taskLanguages.Count -gt 0) {
+                Write-Host ("Tasks: {0}" -f ($taskLanguages -join ", "))
+            }
+        }
+        elseif ($mode -eq "fixed" -and $language) {
             Write-Host "Agent working language: $language"
         }
         else {
@@ -208,6 +232,12 @@ function Write-SystemLanguagePreferenceNotice {
 }
 
 Write-InstructionKitUpdateNotice
+
+if ($ConfigureProjectLanguage) {
+    Write-Host ""
+    Write-Host "== Project Language =="
+    [void](Invoke-ProjectLanguageSelector)
+}
 
 Write-SmallFile -Path "AGENTS.md" -Title "AGENTS.md"
 Write-SmallFile -Path "tools/AGENT_WORKING_AGREEMENTS.md" -Title "Working Agreements"

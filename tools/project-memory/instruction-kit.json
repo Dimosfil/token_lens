@@ -1,5 +1,5 @@
-﻿{
-    "instruction_kit_version":  "2026.05.27.1",
+{
+    "instruction_kit_version":  "2026.06.05.1",
     "source":  "D:\\AI\\general-instructions",
     "installed_at":  "2026-05-19T23:11:04+03:00",
     "update_check":  {
@@ -16,6 +16,8 @@
                          "tools/project-memory/pending-tasks.md",
                          "tools/project-memory/git-preferences.json",
                          "tools/project-memory/system-preferences.json",
+                         "tools/project-memory/build_project_memory_index.py",
+                         "tools/select-project-language.ps1",
                          "tools/select-git-commit-languages.ps1",
                          "tools/select-system-language.ps1",
                          "tools/check-instruction-kit-updates.ps1",
@@ -71,7 +73,21 @@
                                "2026.05.21.1__add_gi_install_command",
                                "2026.05.21.2__add_gi_install_versioning",
                                "2026.05.21.3__add_model_routing_and_cost_control",
-                               "2026.05.27.1__resolve_task_managers_through_config_service"
+                               "2026.05.27.1__resolve_task_managers_through_config_service",
+                               "2026.05.27.2__add_unified_project_language",
+                               "2026.05.27.3__clarify_update_intake_project_ownership",
+                               "2026.05.27.4__number_unified_project_language_selection",
+                               "2026.05.28.1__check_config_service_on_self_registering_app_startup",
+                               "2026.05.28.2__add_config_service_flag_and_reboot_command",
+                               "2026.05.28.3__render_language_checklists_as_task_bullets",
+                               "2026.05.28.4__preserve_text_encoding_when_editing",
+                               "2026.05.28.5__add_project_memory_sqlite_index",
+                               "2026.05.28.6__keep_start_and_update_scoped",
+                               "2026.05.29.1__add_project_ftp_config_and_deploy_command",
+                               "2026.05.29.2__web_services_self_register_when_missing",
+                               "2026.05.29.3__resolve_ftp_services_through_config_service",
+                               "2026.05.29.4__add_explicit_ftp_push_and_folder_commands",
+                               "2026.05.30.1__clarify_worknest_next_task_endpoint_contract"
                            ],
-    "last_update_check_at":  "2026-05-27T09:39:51+03:00"
+    "last_update_check_at":  "2026-06-05T14:00:06+03:00"
 }

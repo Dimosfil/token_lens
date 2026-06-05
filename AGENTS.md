@@ -122,6 +122,13 @@ Inspect logs:
 - Do not revert user changes unless explicitly requested.
 - Treat dirty worktrees as normal.
 - Keep changes scoped to the current task.
+- Preserve text encodings when editing files. On Windows, do not rewrite source
+  files with PowerShell pipelines such as `Get-Content ... | Set-Content ...`
+  unless both read and write encodings are explicit and known correct. Prefer
+  `apply_patch`, editor-native saves, or language APIs that read and write the
+  file with an explicit encoding such as UTF-8. If non-ASCII text appears as
+  mojibake after a command, stop, restore the last clean file version, and
+  reapply only the intended small patch.
 - Ask before destructive operations, broad refactors, or unrelated scope
   expansion.
 - Treat this project root as the filesystem boundary for normal work. Do not
@@ -144,6 +151,54 @@ Inspect logs:
   override, and tell services to use that URL for registration and discovery.
   Do not scan sibling project folders, guess ports, copy URLs from old
   task-manager memory, or use stale task-manager records as a runtime fallback.
+- Treat `gi config service on`, `gi config service off`,
+  `ги конфиг сервис on`, and `ги конфиг сервис off` as requests to set the
+  current application's project-local config-service self-registration flag.
+  `on` means the app should publish or refresh its own service record during
+  startup; `off` means it must not. Do not reinterpret this as starting or
+  stopping config-service itself. When setting `on`, first confirm a
+  config-service URL is already configured in the same local config area or
+  documented GI bootstrap config; if no URL is configured, tell the user to set
+  `gi config service url=<url>` before enabling self-registration. Ask one short
+  question if no local config location is documented.
+- For web-facing applications that expose a port, HTTP API, web UI,
+  task-manager service, or local daemon endpoint, require a live config-service
+  config check on every process startup before publishing or refreshing the
+  app's own service record when self-registration is enabled. On startup, query
+  the app's own `service_id`; if no record exists, create one with the current
+  port and documented endpoints, and if the record exists but the port or
+  endpoints changed, refresh it. If config-service is missing, unreachable, or
+  incomplete, startup should report the blocker and wait instead of guessing or
+  falling back to stale ports. Desktop apps, CLI tools, libraries, scripts, and
+  other non-web applications must not query or publish to config-service during
+  normal startup unless local instructions explicitly define a discoverable
+  web/API runtime. Use cached config only as an explicit degraded-startup
+  fallback documented by local run instructions.
+- Treat `gi ftp`, `ги фтп`, `gi ftp push`, `ги фтп пуш`, `gi upload ftp`,
+  `gi deploy ftp`, and `gi залей на фтп` as requests to upload this project's
+  configured build output to FTP, FTPS, or SFTP. Treat `gi ftp config`,
+  `gi ftp конфиг`, and `ги фтп конфиг` as requests to create, inspect, or update
+  the project-local FTP/SFTP config without uploading. Treat `gi ftp folder`,
+  `gi ftp папка`, and `ги фтп папка` as requests to inspect, choose, or update
+  the remote upload folder (`remotePath`) without uploading. Treat
+  `gi ftp service`, `gi ftp сервис`, and `ги фтп сервис` as requests to manually
+  register, inspect, or select an FTP/FTPS/SFTP service record in config-service
+  without uploading. Read project-local deploy instructions and
+  `tools/deploy/ftp.local.json` first; when this project needs FTP and local
+  config does not name a target service, query config-service for FTP-capable
+  services. If exactly one matching service exists, use it after verifying its
+  contract; if several exist, ask the user to choose with the same numbered
+  Markdown checkbox style used by language selection. Keep secrets out of
+  config-service: store only discovery metadata and secret references such as
+  environment variable names. Keep project-specific deploy settings in the
+  separate project-local config file rather than shared instructions or chat
+  history. Prefer `tools/deploy/ftp.local.example.json` only as a redacted
+  shape. Do not commit hostnames, usernames, passwords, tokens, private keys, or
+  private remote paths unless project policy explicitly marks them non-secret.
+- Treat `gi reboot`, `ги ребут`, `gi restart`, and `ги рестарт` as requests to
+  start or restart the current application using project-local run instructions.
+  If the app is running, restart it; if it is not running, start it. Launch in
+  the background so focus does not jump away from the user's current window.
 - Treat `gi install`, `gi инсталл`, `ги инсталл`, and obvious typo variants
   such as `gi иснтлл` as requests to build the current project and produce an
   installer. Use Inno Setup by default when no installer tool is named. If the
@@ -173,6 +228,29 @@ Inspect logs:
   If the entity is still missing, ask the user a short clarification question.
   Do not use another project folder or the shared instruction library as a
   runtime fallback unless the user explicitly gives that path and action.
+- Prefer one language command with three ordered choices when the user wants
+  language preferences for project work. Treat `gi language`, `gi язык`,
+  `ги язык`, `gi project language`, `gi проект язык`, `ги проект язык`,
+  `gi язык проекта`, and `ги язык проекта` as requests to configure, in order:
+  project working environment languages, commit-message languages, and task
+  languages in `tools/project-memory/system-preferences.json` and
+  `tools/project-memory/git-preferences.json`.
+- Apply the configured project working-environment language order to plans,
+  checklists, progress updates, final answers, clarifying questions, and
+  user-facing explanations. Do not use it to rewrite existing task text, code,
+  commands, logs, quoted text, or a response language the user explicitly
+  requested for a specific message.
+- Apply the configured task language order to agent-created task titles, task
+  descriptions, and task-manager updates.
+- For task titles, descriptions, and task-manager updates, treat the first
+  configured task language as the main language. If exactly one task language is
+  configured, write task text only in that language. If multiple task languages
+  are configured, write the main-language text first and then add one clear
+  translation per additional language. Do not duplicate the same content twice
+  in one language, and do not mix untranslated labels, templates, or Definition
+  of Done text from another configured language into the main-language text.
+- For each `gi язык` choice, preserve the user's selected order. The first
+  selected language in each choice is primary for that surface.
 - Do not commit secrets, credentials, local databases, logs, or generated caches.
 - Do not print full `git diff` output by default. Prefer `git diff --stat` and
   targeted queries for relevant files or patterns.
@@ -210,6 +288,9 @@ Inspect logs:
   system UI counters are not agent progress updates.
 - Startup restore must be compact; do not dump large files, full runbooks, full
   SQLite contents, full logs, generated outputs, or full diffs.
+- `gi start` and `gi restore` must not promote remembered plans, old task notes,
+  or local commits ahead of a remote into suggested next actions unless the user
+  explicitly asks to continue, run, push, or finish them.
 - Treat short greetings, thanks, acknowledgements, and status-neutral messages
   as no-ops unless they include an explicit task, path, command, error, or
   project question. Do not run startup restore for those messages.
@@ -218,7 +299,21 @@ Inspect logs:
   before editing files, unless the user explicitly says to fix it, such as
   `fix`, `почини`, or `gi почини`.
 - Keep commit-message language preferences separate from the agent's
-  user-facing working language.
+  user-facing working language unless the user uses the unified project-language
+  command.
+- If `gi язык` or an equivalent unified project-language command is sent without
+  explicit languages, run a three-step chat flow instead of asking for one
+  free-form line. At each step, show the same numbered Markdown checklist of
+  available languages with the current selection checked, name the current
+  surface, and tell the user they may reply with numbers or language names.
+  Render each option as a task-list bullet with the number inside the label,
+  such as `- [x] 1. English`; do not use ordered-task syntax such as
+  `1. [x] English`, because some chat renderers split the checkbox and label
+  onto separate lines.
+- When the user replies to that flow with a numeric-only answer such as `1 2`,
+  interpret the numbers against the most recent language checklist and apply the
+  resulting ordered languages to the current step. Do not ask which languages
+  the numbers mean when the checklist was just shown.
 - Treat `gi commit language`, `gi коммит язык`, `ги коммит язык`, and older
   `gi язык коммита` forms as requests to configure commit-message languages in
   `tools/project-memory/git-preferences.json`.
@@ -226,9 +321,10 @@ Inspect logs:
   requests to configure the agent's project working language in
   `tools/project-memory/system-preferences.json`.
 - Follow `tools/project-memory/system-preferences.json` for progress updates,
-  final answers, clarifying questions, and user-facing explanations. Do not use
-  it to rewrite code, commands, logs, quoted text, or a response language the
-  user explicitly requested for a specific message.
+  final answers, clarifying questions, user-facing explanations, and
+  agent-created task artifacts. Do not use it to rewrite existing task text,
+  code, commands, logs, quoted text, or a response language the user explicitly
+  requested for a specific message.
 - Launch applications in the background so focus does not jump away from the
   user's current window.
 - Follow the copied `general-instructions` instruction kit for the full set of
