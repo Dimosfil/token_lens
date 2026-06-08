@@ -731,3 +731,15 @@ Planned changes:
 
 - [x] Scroll the daily chart to its right edge after rendering non-empty data.
 - [x] Verify JavaScript syntax and lightweight behavior.
+
+### Instruction Kit Update 2026-06-08
+
+Goal: update the copied `general-instructions` kit from `2026.06.06.4` to
+`2026.06.08.2`.
+
+Planned changes:
+
+- [x] Apply relative/shared source path guidance.
+- [x] Apply canonical GitHub source repo guidance.
+- [x] Verify metadata, PowerShell parsing, diffs, and instruction-kit status.
+- [!] Commit and push were blocked by pre-existing unrelated untracked files.

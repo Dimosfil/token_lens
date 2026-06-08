@@ -1,9 +1,11 @@
 ﻿{
-    "instruction_kit_version":  "2026.06.06.4",
-    "source":  "D:\\AI\\general-instructions",
+    "instruction_kit_version":  "2026.06.08.2",
+    "source":  "https://github.com/Dimosfil/general-instructions.git",
     "installed_at":  "2026-05-19T23:11:04+03:00",
     "update_check":  {
-                         "shared_library_path":  "D:\\AI\\general-instructions",
+                         "source_repo":  "https://github.com/Dimosfil/general-instructions.git",
+                         "source_cache_path":  "",
+                         "shared_library_path":  "",
                          "enabled":  true
                      },
     "copied_files":  [
@@ -91,7 +93,9 @@
                                "2026.06.06.1__add_windows_tool_setup_and_rule_finish_policy",
                                "2026.06.06.2__require_task_manager_active_task_lifecycle",
                                "2026.06.06.3__add_task_manager_add_sprint_command",
-                               "2026.06.06.4__add_agent_service_guide_endpoint"
+                               "2026.06.06.4__add_agent_service_guide_endpoint",
+                               "2026.06.08.1__prefer_relative_shared_instruction_paths",
+                               "2026.06.08.2__use_github_source_repo_for_instruction_updates"
                            ],
-    "last_update_check_at":  "2026-06-08T16:05:34+03:00"
+    "last_update_check_at":  "2026-06-08T16:34:38+03:00"
 }

@@ -46,11 +46,29 @@ function Write-InstructionKitUpdateNotice {
     }
 
     $sharedPath = $null
-    if ($kit.update_check -and $kit.update_check.shared_library_path) {
-        $sharedPath = [string]$kit.update_check.shared_library_path
-    }
-    elseif ($env:GENERAL_INSTRUCTIONS_HOME) {
+    if ($env:GENERAL_INSTRUCTIONS_HOME) {
         $sharedPath = $env:GENERAL_INSTRUCTIONS_HOME
+    }
+    elseif ((Test-Path -LiteralPath "VERSION.md") -and (Test-Path -LiteralPath "INDEX.md") -and (Test-Path -LiteralPath "migrations")) {
+        $sharedPath = "."
+    }
+    elseif ($kit.update_check -and ($kit.update_check.PSObject.Properties.Name -contains "shared_library_path") -and $kit.update_check.shared_library_path) {
+        $candidate = [string]$kit.update_check.shared_library_path
+        if (Test-Path -LiteralPath $candidate) {
+            $sharedPath = $candidate
+        }
+    }
+    elseif ($kit.update_check -and ($kit.update_check.PSObject.Properties.Name -contains "source_cache_path") -and $kit.update_check.source_cache_path) {
+        $candidate = [string]$kit.update_check.source_cache_path
+        if (Test-Path -LiteralPath $candidate) {
+            $sharedPath = $candidate
+        }
+    }
+    elseif ($env:LOCALAPPDATA) {
+        $candidate = Join-Path $env:LOCALAPPDATA "general-instructions\source-repo"
+        if (Test-Path -LiteralPath $candidate) {
+            $sharedPath = $candidate
+        }
     }
 
     if (-not $sharedPath) {
@@ -79,7 +97,7 @@ function Write-InstructionKitUpdateNotice {
         Write-Host "== Instruction Kit Update =="
         Write-Host "Installed: $installedVersion"
         Write-Host "Available: $latestVersion"
-        Write-Host "Review $sharedPath\CHANGELOG.md and refresh copied instruction files if needed."
+        Write-Host "Review $sharedPath\CHANGELOG.md or run gi обновить to refresh from the configured source repo."
     }
 }
 

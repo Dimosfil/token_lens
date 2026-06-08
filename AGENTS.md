@@ -152,12 +152,13 @@ Inspect logs:
   `ги конфиг сервис`, `ги конфиг сервис url=<url>`, and
   `ги конфиг сервис урл=<url>` as requests to get or set the bootstrap config
   for the config/discovery service. Read the project-local override only if
-  local instructions define one, then read GI main config from
-  `D:\AI\general-instructions\config\gi-main.json` or
-  `GENERAL_INSTRUCTIONS_HOME`. Use its `configServiceUrl` to query the config
-  service. Resolve local app and task-manager runtime URLs by service id
-  through config-service; project task-manager config should keep only the
-  selected manager name/id and non-secret project preferences. For the
+  local instructions define one, then read GI main config from the configured
+  shared-instruction source repo checkout/cache, the current shared-instruction
+  checkout, or `GENERAL_INSTRUCTIONS_HOME`. Use its `config/gi-main.json`
+  `configServiceUrl` to query the config service. Resolve local app and
+  task-manager runtime URLs by service id through config-service; project
+  task-manager config should keep only the selected manager name/id and
+  non-secret project preferences. For the
   `url=<url>` form, validate a full `http://` or `https://` URL with no
   secrets, update the shared `configServiceUrl` or the explicit project-local
   override, and tell services to use that URL for registration and discovery.
