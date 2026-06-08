@@ -1,6 +1,6 @@
----
+﻿---
 name: task-manager-plans
-description: Read, write, import, export, test, and reconcile project plans with configured task managers. Use when the user asks to save a plan to a task manager, load tasks from a task manager, sync a planning checklist, configure task-manager integrations, run `gi tm`, run `gi manager test`, run `gi tm test`, run `gi план`, run `gi post plan`, or run `gi старт спринт`. Supports a generic project-owned contract plus optional manager-specific adapters such as WorkNest.
+description: Read, write, import, export, test, and reconcile project plans with configured task managers. Use when the user asks to save a plan to a task manager, load tasks from a task manager, get the active task, add a sprint, sync a planning checklist, configure task-manager integrations, run `gi tm`, run `gi manager test`, run `gi tm test`, run `gi active task`, run `gi next task`, run `gi add sprint`, run `gi create sprint`, run `gi добавить спринт`, run `gi план`, run `gi post plan`, or run `gi старт спринт`. Supports a generic project-owned contract plus optional manager-specific adapters such as WorkNest.
 ---
 
 # Task Manager Plans
@@ -19,8 +19,8 @@ configured task managers.
 5. Resolve each manager runtime URL through GI config-service by service id. Do
    not copy manager endpoints from project memory, another project, old notes,
    or guessed ports.
-6. Before using a manager endpoint, read the manager contract and verify the
-   capabilities required for the
+6. Before using a manager endpoint, read the manager guide when present, then
+   read the manager contract and verify the capabilities required for the
    requested workflow, not only generic health.
 7. For each configured manager, read only its adapter reference from
    `references/managers/`.
@@ -40,8 +40,24 @@ configured task managers.
    manager; the manager stores the queue, assignment, ordering, and lifecycle
    metadata.
 14. Do not enter another project folder because a manager response includes a
-   path. Use the manager API or connector unless the user gives an explicit
-   concrete filesystem path and action.
+    path. Use the manager API or connector unless the user gives an explicit
+    concrete filesystem path and action.
+15. When task-manager sync is enabled, use the manager as the source of truth
+    for executable work: request the active or next task through the documented
+    manager operation, mark the task in progress when supported, and submit
+    progress, completion, or blocker notes back to the manager.
+16. If the manager guide, contract, active-task lookup, lifecycle identifiers,
+    or status update operation is missing or fails, stop at that point and
+    report the exact blocker. Do not guess alternate routes, fabricate manager
+    IDs, or create shadow tasks in raw intake to bypass the missing lifecycle.
+17. When the user asks to add or create a sprint, create a visible executable
+    Sprint/Cycle only through the manager's documented sprint/cycle operation or
+    executable plan payload, then verify readback and lifecycle identifiers. If
+    the required operation is missing or blocked, stop and report the blocker.
+18. Treat status transitions, timing, archival, and task movement as manager
+    responsibilities unless the contract explicitly exposes those operations to
+    the external agent. The agent may submit task/plan intake, request assigned
+    work, and return results through the manager API.
 
 ## Common Plan Model
 
@@ -69,8 +85,8 @@ project identifiers, and non-secret sync preferences.
 `service_id` is the config-service lookup key for the manager. The local project
 config should not store runtime URLs when the manager is registered in
 config-service. Resolve `service_id` with `GET /services/{serviceId}`, check
-`endpoints.availability`, read `endpoints.contract`, and use `endpoints.api` for
-operations.
+`endpoints.availability`, read `endpoints.guide` when present, read
+`endpoints.contract`, and use `endpoints.api` for operations.
 
 Expected shape:
 
@@ -181,6 +197,66 @@ When the user runs `gi manager test`, `gi tm test`, `gi манагер тест`
 If any step fails, stop at the first contract gap, leave the task in the safest
 available state, and report the exact missing or failing lifecycle operation.
 
+## `gi active task` / `gi next task`
+
+When the user runs `gi active task`, `gi next task`, `gi get task`,
+or an equivalent command to get work from the manager:
+
+1. Stay in the current project root.
+2. Read configured task managers from
+   `tools/project-memory/task-managers.json`.
+3. Resolve the enabled manager service id through config-service, read
+   `endpoints.contract`, and use `endpoints.api` for operations.
+4. Verify the contract documents active-task or next-task lookup, task start or
+   assignment, progress or blocker notes, completion, and readback for the
+   requested project or sprint scope.
+5. Request the active task first when the contract supports active-task lookup;
+   otherwise request the next task through the documented next-task operation.
+6. Use only task IDs, sprint IDs, project IDs, URLs, and lifecycle fields
+   returned by the manager. Do not infer them from raw intake receipts, UI text,
+   file paths, or guessed slugs.
+7. Mark the returned task `in_progress` or the adapter's documented equivalent
+   before repository work when that lifecycle operation is supported.
+8. Execute the task according to current project rules.
+9. Submit concise progress notes for meaningful partial results or blockers
+   when the manager supports notes.
+10. On success, submit completion notes with changed files, checks, and caveats,
+    then read the task back and verify the manager status changed to `done`,
+    completed, archived, or the adapter's documented equivalent.
+11. If any manager operation returns an unexpected method, parameter, routing,
+    authentication, project, status, or schema error, re-read the contract once.
+    If the contract still does not match, stop and report the exact mismatch
+    instead of trying other endpoints.
+
+## `gi add sprint` / `gi create sprint`
+
+When the user runs `gi add sprint`, `gi create sprint`, `gi добавить спринт`,
+or an equivalent command to add a sprint to the manager:
+
+1. Stay in the current project root.
+2. Read configured task managers from
+   `tools/project-memory/task-managers.json`.
+3. Resolve the enabled manager service id through config-service, read
+   `endpoints.contract`, and use `endpoints.api` for operations.
+4. Verify the contract documents sprint/cycle creation, executable plan
+   creation, readback, and lifecycle identifiers for the requested project.
+5. Use the sprint title, goal, and task items from the user's message, current
+   plan, or project memory. If no sprint content is available, ask for it.
+6. Normalize the sprint into the adapter's documented executable shape. For raw
+   intake adapters, this must be a documented executable plan payload, not
+   arbitrary `type: "raw"` storage.
+7. Create the Sprint/Cycle through the documented operation.
+8. Read the created Sprint/Cycle back and verify it is visible/executable by
+   checking returned lifecycle identifiers, URL, status, and task list when the
+   manager supports those fields.
+9. Report the manager id, sprint/cycle id or URL, title, task count, and any
+   unsupported but non-blocking fields.
+10. If creation or readback returns an unexpected auth, permission, method,
+    parameter, routing, schema, project, status, or object-type error, re-read
+    the contract once. If the contract still does not match, stop and report the
+    exact mismatch instead of creating a Work Item, raw receipt, local checklist,
+    one-task plan, or other substitute object.
+
 ## `gi старт спринт`
 
 When the user runs `gi старт спринт`, `gi start sprint`, or an equivalent
@@ -202,7 +278,8 @@ start-active-sprint command:
    manager. If none or many exist, ask the user to choose.
 8. Execute sprint tasks in manager-defined order until no `todo` or `ready`
    tasks remain or a blocker requires user input.
-9. Update task status and completion notes according to the manager adapter.
+9. Update task status, progress, blocker notes, and completion notes according
+   to the manager adapter after each task.
 10. Keep normal safety rules: ask before destructive actions, credential changes,
     broad rewrites, or irreversible external changes.
 
@@ -217,6 +294,12 @@ Task-manager paths are metadata, not filesystem permission. Agents working in
 one project must not inspect or edit another project's files through those paths
 unless the user explicitly instructs them to perform a concrete action at that
 path.
+
+For managers that use Markdown or filesystem files internally, external agents
+still use the public manager API. They must not move task files, edit internal
+status fields, archive folders, or reorder work directly unless they are running
+as a local agent inside that manager project and project-local instructions
+explicitly allow that mode.
 
 ## Single-Task Intake Contract
 
@@ -234,6 +317,13 @@ receipt that lacks execution identifiers. If the requested workflow needs
 `next-task`, `task-completed`, archive, or close operations and the receipt does
 not identify executable work, report the contract gap and stop or ask for the
 correct endpoint behavior.
+
+Agents must not satisfy a requested object type by creating a different manager
+object type. For example, if the user requested a visible cycle or sprint and
+the documented cycle endpoint returns an authentication or permission error,
+do not create a Work Item, local checklist note, or raw intake record and report
+the cycle as created. Report the access or contract blocker and wait for the
+manager API, credentials, or UI-auth workflow to be fixed.
 
 ## Manager References
 

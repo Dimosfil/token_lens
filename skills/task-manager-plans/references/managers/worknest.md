@@ -20,9 +20,17 @@ shared instruction files or committed project memory.
 
 `service_id` is required when enabling WorkNest. Resolve it through GI
 config-service with `GET /services/worknest`, check `endpoints.availability`,
-read `endpoints.contract`, and use `endpoints.api` for operations. Do not store
-or copy WorkNest runtime URLs in project memory when the service is registered
-in config-service.
+read `endpoints.guide` when present, read `endpoints.contract`, and use
+`endpoints.api` for operations. Do not store or copy WorkNest runtime URLs in
+project memory when the service is registered in config-service.
+
+Local project memory may name WorkNest with `service_id: "worknest"` and a
+default project such as `worknest-core`. Historical local URLs such as
+`http://127.0.0.1:4190` or startup commands such as
+`tools/start-worknest.ps1 -IncludeAgent -SkipWeb` are only operator context.
+External agents must resolve the current WorkNest API URL through
+config-service before every workflow instead of treating a remembered URL as
+canonical.
 
 ## Current Intake MVP
 
@@ -39,6 +47,7 @@ npm run dev:api
 Known endpoints:
 
 - `GET /health`
+- `GET /agent-intake/guide` when the live service exposes an agent guide
 - `GET /agent-intake/contract`
 - `POST /agent-intake/raw`
 - `GET /agent-intake/raw`
@@ -46,14 +55,19 @@ Known endpoints:
 - `GET /agent-intake/next-task?project=<project>&sprintId=<sprintId>`
 - `POST /agent-intake/task-completed`
 
+The external-agent contract is: send a task or plan, request assigned work, and
+return execution results. WorkNest manager owns status transitions, timing,
+archival, task ordering, and task movement unless the live contract explicitly
+delegates a specific lifecycle operation to the external agent.
+
 Use `/health` only as a basic liveness check. Before posting a plan, verify the
-raw intake contract or raw intake endpoint. Before running `gi start sprint`,
-verify active/next task and completion endpoints required by the current
-workflow, including the documented HTTP method and query parameters. If
-`/health` succeeds but required workflow endpoints return missing or
-incompatible responses, re-read this adapter contract, report a stale or
-misconfigured WorkNest API endpoint when the contract still does not match, and
-stop before sending work.
+agent guide when present, then verify the raw intake contract or raw intake
+endpoint. Before running `gi start sprint`, verify active/next task and
+completion endpoints required by the current workflow, including the documented
+HTTP method and query parameters. If `/health` succeeds but required workflow
+endpoints return missing or incompatible responses, re-read the guide and this
+adapter contract, report a stale or misconfigured WorkNest API endpoint when
+the contract still does not match, and stop before sending work.
 
 If WorkNest accepts `type: "task"` or another single-task intake payload, verify
 that the response either creates an executable sprint/task and returns the IDs
@@ -61,6 +75,13 @@ needed by `/agent-intake/next-task` and `/agent-intake/task-completed`, rejects
 the payload with a clear contract error, or documents it as raw intake only. Do
 not create a replacement one-task plan to complete a raw task receipt that lacks
 execution identifiers.
+
+Do not replace a requested WorkNest object type with another object type. If a
+visible Cycle/Sprint is required and `/product/cycles` or the documented cycle
+operation returns `401 Authentication required`, a permission error, or a
+contract mismatch, stop and report that Cycle creation is blocked. Do not create
+a Work Item, raw receipt, or local `pending-tasks.md` note as a substitute for
+the missing Cycle.
 
 Do not send `kind: "sprint-plan"` with `type: "raw"` and treat the receipt as a
 created sprint. Before sending sprint work, read `/agent-intake/contract` and
@@ -70,6 +91,12 @@ workflow, that means a supported plan payload with fields such as `type:
 documents a newer equivalent. If the contract does not support executable
 sprint creation, stop and report the mismatch instead of adding compatibility
 code or claiming a sprint was created.
+
+Use the same executable creation rule for `gi add sprint`, `gi create sprint`,
+`gi добавить спринт`, and equivalent add-sprint commands. The result must be a
+visible executable Cycle/Sprint with readback or lifecycle identifiers. If
+WorkNest only returns a raw receipt or the Cycle/Sprint route requires UI
+authentication, stop and report the blocker.
 
 Raw intake payloads are stored under `storage/agent-intake/raw/` in the WorkNest
 project and may contain user-supplied data. Do not commit, print, or log full
@@ -85,11 +112,17 @@ The intake API is intentionally neutral. Do not bind an intake item directly to
 a project or folder unless the user explicitly asks. Parser/router stages should
 later convert raw envelopes into normalized events and routed candidates.
 
+Executable sprint plans are not plain raw text. For the current WorkNest
+contract, use a structured plan payload with `type: "plan"`, `project`, `title`,
+and non-empty `items[]`. WorkNest turns that payload into an executable sprint
+and tasks, then returns identifiers the agent must use for later `next-task` and
+`task-completed` calls.
+
 ## Sprint Workflow For Markdown Projects
 
-When a WorkNest-style Markdown project receives an accepted plan, treat the plan
-as a sprint. The sprint folder is the execution unit, and numbered task files
-define the order in which agents should work.
+When a WorkNest-style Markdown project receives an accepted plan, WorkNest may
+store it internally as a sprint. The sprint folder is the internal execution
+unit, and numbered task files define the order in which WorkNest assigns work.
 
 Create a unique dated sprint folder directly inside the target project:
 
@@ -134,11 +167,14 @@ DependsOn: none
 Tags: [...]
 ```
 
-Agents should execute sprint task files in ascending `Order`. To get the next
-task, find the first task file in order whose `Status` is `todo` or `ready`.
+Local agents running inside the WorkNest project may execute sprint task files
+in ascending `Order` when project-local instructions allow that mode. External
+agents must not scan these files; they request the next task through the
+WorkNest API.
 
-When a task is completed, update the task file status to `done` and append a
-concise result or completion section.
+When an external agent completes a task, it sends concise result notes through
+`POST /agent-intake/task-completed`. WorkNest updates internal Markdown status,
+timing, archival, and movement according to its own manager rules.
 
 Testing tasks can be added later. Do not block the initial sprint workflow on a
 full testing model.
@@ -177,9 +213,11 @@ For the selected sprint:
    records.
 4. Execute the task in the current project according to its instructions and
    project rules.
-5. On success, submit concise completion notes with changed files, checks, and
-   important caveats.
-6. Continue to the next `todo` or `ready` task in order through the manager.
+5. Submit progress or blocker notes through WorkNest when the task cannot be
+   completed in the same run.
+6. On success, submit concise completion notes with changed files, checks, and
+   important caveats, then read the task back when the API supports readback.
+7. Continue to the next `todo` or `ready` task in order through the manager.
 
 Stop the sprint run and report the blocker when a task needs user input, has
 missing access, conflicts with project instructions, requires a destructive
@@ -213,12 +251,12 @@ When reading from WorkNest:
 
 ## Write Plan
 
-When writing to the current WorkNest intake:
+When writing to the current WorkNest intake or adding a sprint:
 
 1. Resolve `service_id` through config-service; stop if the service record is
    missing.
-2. Read the resolved contract endpoint before sending sprint-plan work and
-   follow the documented executable plan shape.
+2. Read the resolved contract endpoint before sending sprint-plan work or
+   adding a sprint, and follow the documented executable plan shape.
 3. Use the resolved API endpoint for writes.
 4. Prefer the documented raw intake operation with a compact payload containing:
    - `agent`

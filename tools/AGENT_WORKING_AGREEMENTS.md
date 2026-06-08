@@ -313,8 +313,14 @@ or:
   do not store, guess, or copy API endpoints from old notes or other projects.
 - If a configured manager id is missing from config-service, stop with a concise
   blocker instead of falling back to port scans or stale task-manager memory.
-- Before posting plans or starting sprint work, verify the workflow-specific
-  manager contract and capabilities, not only generic health.
+- Before posting plans or starting sprint work, read the manager guide when
+  present, then verify the workflow-specific manager contract and capabilities,
+  not only generic health.
+- For agent-facing HTTP services, treat `endpoints.guide` as service-owned
+  onboarding and `endpoints.contract` as strict workflow validation. If the
+  guide and contract disagree about endpoints, ownership, or permissions, stop
+  and report the mismatch instead of inferring behavior from stale memory,
+  filesystem paths, dashboard URLs, or raw receipts.
 - Treat task managers as work queues and lifecycle recorders, not as the actors
   doing implementation work. The agent takes, implements, verifies, and reports
   tasks through the manager.

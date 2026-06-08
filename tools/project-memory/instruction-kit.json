@@ -1,5 +1,5 @@
-{
-    "instruction_kit_version":  "2026.06.05.1",
+﻿{
+    "instruction_kit_version":  "2026.06.06.4",
     "source":  "D:\\AI\\general-instructions",
     "installed_at":  "2026-05-19T23:11:04+03:00",
     "update_check":  {
@@ -87,7 +87,11 @@
                                "2026.05.29.2__web_services_self_register_when_missing",
                                "2026.05.29.3__resolve_ftp_services_through_config_service",
                                "2026.05.29.4__add_explicit_ftp_push_and_folder_commands",
-                               "2026.05.30.1__clarify_worknest_next_task_endpoint_contract"
+                               "2026.05.30.1__clarify_worknest_next_task_endpoint_contract",
+                               "2026.06.06.1__add_windows_tool_setup_and_rule_finish_policy",
+                               "2026.06.06.2__require_task_manager_active_task_lifecycle",
+                               "2026.06.06.3__add_task_manager_add_sprint_command",
+                               "2026.06.06.4__add_agent_service_guide_endpoint"
                            ],
-    "last_update_check_at":  "2026-06-05T14:00:06+03:00"
+    "last_update_check_at":  "2026-06-08T16:05:34+03:00"
 }

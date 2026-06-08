@@ -10,6 +10,18 @@ SQLite analytics database.
 Primary surface: local Python web app served from `app.server` with static UI in
 `web/`.
 
+## Windows Command Policy
+
+- Prefer PowerShell-native networking commands such as `Invoke-RestMethod` and
+  `Invoke-WebRequest` instead of `curl.exe`.
+- Do not probe for `curl.exe` with `where.exe curl` or `Get-Command curl` unless
+  the user explicitly asks for curl diagnostics.
+- Prefer trusted helper binaries from `C:\Users\<user>\.codex\bin` before
+  WindowsApps or System32 shims.
+- If Windows or antivirus tools block agent commands with `Access denied`,
+  trust narrow Codex-owned tool folders such as `.codex\.sandbox-bin\` and
+  `.codex\bin\`; do not add broad exclusions for System32 or PowerShell itself.
+
 ## Restore Context
 
 If the user only sends a short greeting, thanks, acknowledgement, or
@@ -151,6 +163,13 @@ Inspect logs:
   override, and tell services to use that URL for registration and discovery.
   Do not scan sibling project folders, guess ports, copy URLs from old
   task-manager memory, or use stale task-manager records as a runtime fallback.
+- For agent-facing HTTP services, prefer a service-owned guide endpoint plus a
+  strict contract endpoint. Resolve runtime URLs through config-service. Read
+  `endpoints.guide` first when present, then `endpoints.contract` before
+  sending state-changing requests. Treat the guide as onboarding and the
+  contract as workflow validation. If they disagree, stop and report the
+  mismatch. Do not infer permissions from filesystem paths, stale memory, old
+  dashboard URLs, or raw task receipts.
 - Treat `gi config service on`, `gi config service off`,
   `ги конфиг сервис on`, and `ги конфиг сервис off` as requests to set the
   current application's project-local config-service self-registration flag.
@@ -174,6 +193,23 @@ Inspect logs:
   normal startup unless local instructions explicitly define a discoverable
   web/API runtime. Use cached config only as an explicit degraded-startup
   fallback documented by local run instructions.
+- Treat `gi active task`, `gi next task`, `gi get task`, and equivalent
+  active-task wording as requests to get executable work from the configured
+  task manager. Resolve the manager through config-service, read the manager
+  contract, request the active or next task through the documented operation,
+  update manager lifecycle state and notes, and stop with the exact blocker if
+  the contract, auth, permissions, lifecycle IDs, or requested object type is
+  missing or mismatched. Do not create raw intake receipts, local checklist
+  notes, or a different manager object type as a substitute for the requested
+  task, sprint, or cycle.
+- Treat `gi add sprint`, `gi create sprint`, `gi добавить спринт`, and
+  equivalent add-sprint wording as requests to create a visible executable
+  Sprint/Cycle through the configured task manager. Resolve the manager through
+  config-service, read the manager contract, use only the documented sprint or
+  cycle creation operation, verify readback/lifecycle identifiers, and stop with
+  the exact blocker if auth, permissions, schema, lifecycle, or object type
+  mismatches. Do not downgrade the request to raw intake, Work Items, local
+  checklists, or one-task plans.
 - Treat `gi ftp`, `ги фтп`, `gi ftp push`, `ги фтп пуш`, `gi upload ftp`,
   `gi deploy ftp`, and `gi залей на фтп` as requests to upload this project's
   configured build output to FTP, FTPS, or SFTP. Treat `gi ftp config`,

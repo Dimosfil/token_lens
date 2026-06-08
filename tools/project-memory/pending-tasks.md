@@ -708,3 +708,16 @@ Verification:
 - [x] Restarted with `.\start.ps1 -Restart`
 - [x] HTTP smoke: `/api/state`, `/api/dashboard?range=1h&bucket=hour`,
       `/api/bucket-tasks?...`, and custom date dashboard query
+
+### Instruction Kit Update 2026-06-06
+
+Goal: update the copied `general-instructions` kit from `2026.06.05.1` to
+`2026.06.06.4`.
+
+Planned changes:
+
+- [x] Apply Windows tool setup and rule-finish guidance.
+- [x] Apply task-manager active-task lifecycle guidance.
+- [x] Apply task-manager add-sprint guidance.
+- [x] Apply agent service guide endpoint guidance.
+- [x] Verify metadata, diffs, and instruction-kit status.
