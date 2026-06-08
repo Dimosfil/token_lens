@@ -721,3 +721,13 @@ Planned changes:
 - [x] Apply task-manager add-sprint guidance.
 - [x] Apply agent service guide endpoint guidance.
 - [x] Verify metadata, diffs, and instruction-kit status.
+
+### Chart Scroll To Latest
+
+Goal: when the dashboard chart is wider than the viewport, scroll it to the
+latest bucket after page load or dashboard refresh.
+
+Planned changes:
+
+- [x] Scroll the daily chart to its right edge after rendering non-empty data.
+- [x] Verify JavaScript syntax and lightweight behavior.

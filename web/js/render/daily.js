@@ -38,12 +38,26 @@ function tooltipRows(row, value, unit) {
   ];
 }
 
+function shouldFollowLatest(el) {
+  if (el.dataset.rendered !== "true") return true;
+  return el.scrollLeft + el.clientWidth >= el.scrollWidth - 4;
+}
+
+function scrollChart(el, scrollLeft) {
+  requestAnimationFrame(() => {
+    el.scrollLeft = scrollLeft;
+  });
+}
+
 export function renderDaily(rows, mode = "total", bucket = "day") {
   const el = document.getElementById("dailyChart");
   el.dataset.bucket = bucket;
+  const followLatest = shouldFollowLatest(el);
+  const previousScrollLeft = el.scrollLeft;
   const max = Math.max(...rows.map(row => chartValue(row, mode)), 1);
   if (!rows.length) {
     el.innerHTML = `<div class="empty-chart">Нет данных</div>`;
+    el.dataset.rendered = "false";
     return;
   }
   el.innerHTML = rows.map(row => {
@@ -71,4 +85,6 @@ export function renderDaily(rows, mode = "total", bucket = "day") {
       </div>
     `;
   }).join("");
+  el.dataset.rendered = "true";
+  scrollChart(el, followLatest ? el.scrollWidth - el.clientWidth : previousScrollLeft);
 }
