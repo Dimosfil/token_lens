@@ -1,5 +1,5 @@
-﻿{
-    "instruction_kit_version":  "2026.06.08.2",
+{
+    "instruction_kit_version":  "2026.06.09.1",
     "source":  "https://github.com/Dimosfil/general-instructions.git",
     "installed_at":  "2026-05-19T23:11:04+03:00",
     "update_check":  {
@@ -95,7 +95,8 @@
                                "2026.06.06.3__add_task_manager_add_sprint_command",
                                "2026.06.06.4__add_agent_service_guide_endpoint",
                                "2026.06.08.1__prefer_relative_shared_instruction_paths",
-                               "2026.06.08.2__use_github_source_repo_for_instruction_updates"
+                               "2026.06.08.2__use_github_source_repo_for_instruction_updates",
+                               "2026.06.09.1__add_configuration_boundary_rule"
                            ],
-    "last_update_check_at":  "2026-06-08T16:34:38+03:00"
+    "last_update_check_at":  "2026-06-10T11:47:35+03:00"
 }

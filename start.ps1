@@ -35,7 +35,28 @@ function Resolve-ProjectPython {
   return (Get-Command "python.exe").Source
 }
 
+function Get-TokenLensUrl {
+  $bindHost = "127.0.0.1"
+  $bindPort = 8765
+  foreach ($path in @((Join-Path $root "config.json"), (Join-Path $root "config.local.json"))) {
+    if (-not (Test-Path -LiteralPath $path)) {
+      continue
+    }
+
+    $config = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+    if ($config.PSObject.Properties.Name -contains "host" -and $config.host) {
+      $bindHost = [string]$config.host
+    }
+    if ($config.PSObject.Properties.Name -contains "port" -and $config.port) {
+      $bindPort = [int]$config.port
+    }
+  }
+
+  return "http://$bindHost`:$bindPort"
+}
+
 New-Item -ItemType Directory -Force -Path (Join-Path $root "data") | Out-Null
+$url = Get-TokenLensUrl
 
 if (Test-Path $pidFile) {
   $existingPid = Get-Content $pidFile -ErrorAction SilentlyContinue
@@ -53,7 +74,7 @@ if (Test-Path $pidFile) {
     $appChanged = @($appFiles | Where-Object { $_.LastWriteTime -gt $existingProcess.StartTime }).Count -gt 0
     if (-not $Restart -and -not $appChanged) {
       Write-Host "Token Lens already running. PID: $existingPid"
-      Write-Host "URL: http://127.0.0.1:8765"
+      Write-Host "URL: $url"
       exit 0
     }
 
@@ -69,4 +90,4 @@ Set-Content -Path $pidFile -Value $proc.Id -Encoding ASCII
 
 Start-Sleep -Seconds 1
 Write-Host "Token Lens started. PID: $($proc.Id)"
-Write-Host "URL: http://127.0.0.1:8765"
+Write-Host "URL: $url"

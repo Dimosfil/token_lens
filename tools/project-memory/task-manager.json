@@ -1,10 +1,7 @@
 {
-  "enabled": true,
-  "base_url": "http://127.0.0.1:5173",
-  "raw_intake_path": "/agent-intake/raw",
-  "raw_read_path_template": "/agent-intake/raw/{id}",
-  "raw_start_path_template": "/agent-intake/raw/{id}/start",
-  "raw_complete_path_template": "/agent-intake/raw/{id}/complete",
+  "enabled": false,
+  "service_id": "worknest",
+  "superseded_by": "tools/project-memory/task-managers.json",
   "configured_at": "2026-05-20",
-  "notes": "Project-local task manager API endpoint configured from user command: gi manager url=http://127.0.0.1:5173/. Raw agent intake accepts POST /agent-intake/raw and lifecycle supports read/start/complete by raw id when served by the configured manager."
+  "notes": "Legacy compatibility marker only. Resolve task-manager runtime URLs through GI config-service by service_id; do not store concrete localhost URLs here."
 }

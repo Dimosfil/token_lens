@@ -743,3 +743,20 @@ Planned changes:
 - [x] Apply canonical GitHub source repo guidance.
 - [x] Verify metadata, PowerShell parsing, diffs, and instruction-kit status.
 - [!] Commit and push were blocked by pre-existing unrelated untracked files.
+
+### Instruction Kit Update 2026-06-09
+
+Goal: update the copied `general-instructions` kit from `2026.06.08.2` to
+`2026.06.09.1`.
+
+Planned changes:
+
+- [x] Add configuration-boundary guidance to local agent instructions.
+- [x] Run a targeted hard-coded configuration audit.
+- [x] Move local Codex source paths to ignored `config.local.json`.
+- [x] Replace legacy task-manager runtime URL with a service-id marker.
+- [!] Defer cleanup of historical project-memory notes that mention old local
+      task-manager URLs.
+- [x] Record applied migration metadata.
+- [x] Verify diffs and instruction-kit status.
+- [!] Commit and push were blocked by pre-existing unrelated untracked files.

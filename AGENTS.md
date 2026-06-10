@@ -148,6 +148,15 @@ Inspect logs:
   or arbitrary external folder unless the user gives an explicit concrete path
   and action. Use APIs, connectors, or task-manager endpoints for cross-project
   communication.
+- Do not hard-code deployment, user, runtime, host-machine, service,
+  credential, filesystem-layout, feature-flag, or operational-policy values in
+  source code, committed examples, or shared instructions. Keep project-local
+  config in documented config files, redacted examples, environment variables,
+  service-discovery records, or platform-native config. For configured paths,
+  resolve and validate absolute paths at startup or I/O boundaries and fail
+  clearly if a value is missing, unsafe, or outside the allowed workspace/data
+  root. Internal constants belong in code only when they are true algorithmic or
+  protocol invariants.
 - Treat `gi config`, `gi конфиг`, `ги конфиг`, `gi config service`,
   `ги конфиг сервис`, `ги конфиг сервис url=<url>`, and
   `ги конфиг сервис урл=<url>` as requests to get or set the bootstrap config

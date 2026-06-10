@@ -6,15 +6,28 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = ROOT / "config.json"
+LOCAL_CONFIG_PATH = ROOT / "config.local.json"
 
 
 def load_config() -> dict:
-    with CONFIG_PATH.open("r", encoding="utf-8") as f:
-        config = json.load(f)
+    config = _read_json(CONFIG_PATH)
+    if LOCAL_CONFIG_PATH.exists():
+        config.update(_read_json(LOCAL_CONFIG_PATH))
 
-    analytics_db = Path(config["analytics_db"])
-    if not analytics_db.is_absolute():
-        analytics_db = ROOT / analytics_db
-    config["analytics_db"] = str(analytics_db)
+    for key in ("analytics_db", "codex_logs_db", "codex_session_index"):
+        if config.get(key):
+            config[key] = str(_resolve_config_path(config[key]))
 
     return config
+
+
+def _read_json(path: Path) -> dict:
+    with path.open("r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _resolve_config_path(value: str) -> Path:
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        path = ROOT / path
+    return path

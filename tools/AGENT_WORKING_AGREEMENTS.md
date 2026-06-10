@@ -10,6 +10,13 @@
   project or arbitrary external folder unless the user gives an explicit
   concrete path and action. Use APIs, connectors, or task-manager endpoints for
   cross-project communication.
+- Keep configuration values at the configuration boundary: do not hard-code
+  deployment, user, runtime, host-machine, service, credential,
+  filesystem-layout, feature-flag, or operational-policy values in source code,
+  committed examples, or shared instructions. Use documented local config,
+  redacted examples, environment variables, service discovery, or
+  platform-native config, and validate configured paths at startup or I/O
+  boundaries.
 - Treat nested checkouts, vendored repositories, cloned examples, and
   third-party source trees as separate scope. Do not inspect them as part of the
   main project unless the user explicitly asks, the task is about that nested
