@@ -40,6 +40,14 @@
 - Do not revert user changes unless explicitly requested.
 - Treat dirty worktrees as normal.
 - If user changes affect the task, work with them.
+- Preserve recorded feature workflow contracts. If a feature has an agreed
+  runtime workflow, loading order, branching state flow, background work, or
+  user-visible guarantee, read that contract before changing the feature and
+  update it in the same scoped change when behavior intentionally changes.
+- For non-trivial features, keep the feature idea, functional description,
+  workflow contract, implementation plan, sprint breakdown, task breakdown,
+  definitions of done, and verification connected. Tasks do not replace the
+  feature contract.
 
 ## Git
 
@@ -233,6 +241,16 @@ or:
   guessing or falling back to stale ports. Non-web apps do not query or publish
   to config-service during normal startup unless local instructions define a
   discoverable web/API runtime.
+- Treat `gi manager`, `gi tm`, `gi manager test`, `ги менеджер`,
+  `ги манагер`, and equivalent task-manager status or test wording as requests
+  to inspect the configured task manager through config-service. Read the
+  enabled manager id or `service_id` from project-local task-manager config,
+  resolve it through `GET /services/{serviceId}`, read `endpoints.guide` when
+  present, read `endpoints.contract`, then use `endpoints.api` for documented
+  manager operations. Stop with the exact blocker if the manager id is missing,
+  config-service is unavailable, no matching service record exists, or the
+  guide/contract lacks the requested capability. Do not fall back to `base_url`,
+  stale task-manager memory, port scans, sibling projects, or guessed endpoints.
 - Treat `gi reboot`, `ги ребут`, `gi restart`, and `ги рестарт` as requests to
   start or restart the current application using project-local run instructions.
 - Treat `gi ftp`, `ги фтп`, `gi ftp push`, and `ги фтп пуш` as requests to

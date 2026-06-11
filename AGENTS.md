@@ -134,6 +134,31 @@ Inspect logs:
 - Do not revert user changes unless explicitly requested.
 - Treat dirty worktrees as normal.
 - Keep changes scoped to the current task.
+- When a feature has an agreed runtime workflow, loading order, branching state
+  flow, background work, or user-visible guarantee, record it in project-local
+  docs or project memory. Before changing that feature, read the relevant
+  feature workflow contract and preserve its guarantees unless the user
+  explicitly changes the agreement.
+- For non-trivial feature work, keep the feature idea, functional description,
+  workflow contract, implementation plan, sprint breakdown, task breakdown,
+  definitions of done, and verification linked together. Tasks do not replace
+  the feature contract: tasks say what to change, while the contract says what
+  behavior must remain true.
+- When preparing this project for a repository, publishing to GitHub, or
+  removing "unneeded" files, do not classify `AGENTS.md`, `tools/`,
+  `tools/project-memory/`, `skills/`, bootstrap scripts, update scripts, deploy
+  scripts, or agent-facing instruction/config files as removable only because
+  they look internal or tool-related. Inspect their purpose first and treat them
+  as possible RAG/startup infrastructure. Delete them only when the user
+  explicitly confirms they are temporary or unrelated to the project.
+- During repository cleanup, classify SQLite and database files before acting.
+  Do not delete or commit `*.sqlite`, `*.sqlite3`, or `*.db` files solely
+  because they are binary or local-looking. Keep generated agent-memory indexes
+  such as `tools/project-memory/project_memory.sqlite` ignored when they are
+  rebuildable, and commit the reviewable README, Markdown/JSON memory exports,
+  schema, and indexing scripts instead. Do not commit databases containing
+  secrets, private data, telemetry, task-manager state, absolute local paths, or
+  agent conversation history.
 - Preserve text encodings when editing files. On Windows, do not rewrite source
   files with PowerShell pipelines such as `Get-Content ... | Set-Content ...`
   unless both read and write encodings are explicit and known correct. Prefer
@@ -180,6 +205,16 @@ Inspect logs:
   contract as workflow validation. If they disagree, stop and report the
   mismatch. Do not infer permissions from filesystem paths, stale memory, old
   dashboard URLs, or raw task receipts.
+- Treat `gi manager`, `gi tm`, `gi manager test`, `ги менеджер`,
+  `ги манагер`, and equivalent task-manager status or test wording as requests
+  to inspect the configured task manager through config-service. Read the
+  enabled manager id or `service_id` from project-local task-manager config,
+  resolve it through `GET /services/{serviceId}`, read `endpoints.guide` when
+  present, read `endpoints.contract`, then use `endpoints.api` for documented
+  manager operations. Stop with the exact blocker if the manager id is missing,
+  config-service is unavailable, no matching service record exists, or the
+  guide/contract lacks the requested capability. Do not fall back to `base_url`,
+  stale task-manager memory, port scans, sibling projects, or guessed endpoints.
 - Treat `gi config service on`, `gi config service off`,
   `ги конфиг сервис on`, and `ги конфиг сервис off` as requests to set the
   current application's project-local config-service self-registration flag.

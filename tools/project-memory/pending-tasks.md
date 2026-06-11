@@ -760,3 +760,18 @@ Planned changes:
 - [x] Record applied migration metadata.
 - [x] Verify diffs and instruction-kit status.
 - [!] Commit and push were blocked by pre-existing unrelated untracked files.
+
+### Instruction Kit Update 2026-06-11
+
+Goal: update the copied `general-instructions` kit from `2026.06.09.1` to
+`2026.06.11.5`.
+
+Planned changes:
+
+- [x] Add repository cleanup and database classification guidance.
+- [x] Add feature workflow contract and planning hierarchy guidance.
+- [x] Add project-local feature workflow contract template.
+- [x] Add `gi manager`/`gi tm` config-service resolution guidance.
+- [x] Record applied migration metadata.
+- [x] Verify diffs and instruction-kit status.
+- [!] Commit and push were blocked by pre-existing unrelated untracked files.
