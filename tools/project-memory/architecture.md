@@ -88,6 +88,15 @@ They import from the modular packages so existing commands such as
 - `POST /api/import`
 - `POST /api/refresh?model=...`
 
+Dashboard responses also include `usage_limits`, a cached live snapshot from
+`codex app-server` method `account/rateLimits/read`. It reports the Codex
+account's rolling primary and secondary limits, remaining percentages derived
+from app-server `usedPercent`, reset timestamps, plan type, and available limit
+ids. `usage_limits.groups` keeps per-limit buckets such as the main `codex`
+bucket and `codex_bengalfox` / GPT-5.3-Codex-Spark, while
+`usage_limits.windows` is a flattened list for simple UI rendering. This is
+separate from the SQLite analytics data used by tables and charts.
+
 ## Data Flow
 
 1. `app.services.import_service` reads configured Codex log sources read-only

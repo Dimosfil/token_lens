@@ -14,6 +14,7 @@ import {
 } from "./js/dashboard-state.js";
 import { initDetailModal, openTaskDetail } from "./js/detail-modal.js";
 import { renderDaily } from "./js/render/daily.js";
+import { renderUsageLimits } from "./js/render/limits.js";
 import { renderMetrics } from "./js/render/metrics.js";
 import { renderModelAverages, renderModels } from "./js/render/models.js";
 import { initBucketModal, openBucketDetail, renderTasks } from "./js/render/tasks.js";
@@ -40,6 +41,7 @@ function renderDashboard(dashboard) {
   applyDashboardTaskMode(dashboard);
   syncTaskModeOptions();
   savePageSettings();
+  renderUsageLimits(dashboard.usage_limits);
   renderMetrics(dashboard.summary.summary);
   renderDaily(dashboard.daily, getChartMode(), bucket);
   renderTasks(dashboard.tasks, getTaskMode());

@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 from app.api.handlers import parse_limit
-from app.services import analytics_service
+from app.services import analytics_service, codex_account_service
 from app.services.import_service import import_usage_source
 from app.sources.opencode.parser import parse_opencode_event
 from app.sources.codex.parser import parse_response_event, parse_usage_row
@@ -129,6 +129,46 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(dashboard["task_mode"], "aggregate")
         self.assertLessEqual({"requested", "active", "separate_available"}, set(dashboard["task_modes"]))
 
+    def test_codex_account_rate_limits_are_normalized(self):
+        payload = codex_account_service._normalize_rate_limits({
+            "rateLimits": {
+                "limitId": "codex",
+                "planType": "prolite",
+                "primary": {"usedPercent": 9, "windowDurationMins": 300, "resetsAt": int(time.time()) + 60},
+                "secondary": {"usedPercent": 15, "windowDurationMins": 10080, "resetsAt": int(time.time()) + 120},
+                "credits": {"hasCredits": False, "unlimited": False, "balance": "0"},
+            },
+            "rateLimitsByLimitId": {
+                "codex": {
+                    "limitId": "codex",
+                    "planType": "prolite",
+                    "primary": {"usedPercent": 9, "windowDurationMins": 300, "resetsAt": int(time.time()) + 60},
+                    "secondary": {"usedPercent": 15, "windowDurationMins": 10080, "resetsAt": int(time.time()) + 120},
+                },
+                "codex_bengalfox": {
+                    "limitId": "codex_bengalfox",
+                    "limitName": "GPT-5.3-Codex-Spark",
+                    "planType": "prolite",
+                    "primary": {"usedPercent": 0, "windowDurationMins": 300, "resetsAt": int(time.time()) + 60},
+                    "secondary": {"usedPercent": 0, "windowDurationMins": 10080, "resetsAt": int(time.time()) + 120},
+                },
+            },
+        })
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["source"], "codex_app_server")
+        self.assertEqual(payload["limit_id"], "codex")
+        self.assertEqual(payload["plan_type"], "prolite")
+        self.assertEqual(payload["limit_ids"], ["codex", "codex_bengalfox"])
+        self.assertEqual(len(payload["groups"]), 2)
+        self.assertEqual(len(payload["windows"]), 4)
+        self.assertEqual(payload["windows"][0]["label"], "5h")
+        self.assertEqual(payload["windows"][0]["remaining_percent"], 91)
+        self.assertEqual(payload["windows"][1]["label"], "weekly")
+        self.assertEqual(payload["windows"][1]["remaining_percent"], 85)
+        self.assertEqual(payload["windows"][2]["display_name"], "GPT-5.3-Codex-Spark")
+        self.assertEqual(payload["windows"][2]["remaining_percent"], 100)
+
     def test_task_detail_returns_calls_and_payloads(self):
         con = connect(self.db_path)
         try:
@@ -185,16 +225,24 @@ class ApiContractTests(unittest.TestCase):
 
     def test_service_state_includes_import_observability(self):
         original_load_config = analytics_service.load_config
+        original_read_usage_limits = analytics_service.read_usage_limits
         try:
             analytics_service.load_config = lambda: {"analytics_db": self.db_path}
+            analytics_service.read_usage_limits = lambda _config: {
+                "ok": True,
+                "source": "codex_app_server",
+                "windows": [],
+            }
             state = analytics_service.data_state()
             dashboard = analytics_service.dashboard()
         finally:
             analytics_service.load_config = original_load_config
+            analytics_service.read_usage_limits = original_read_usage_limits
 
         self.assertIn("import_status", state)
         self.assertIn("import_status", dashboard)
         self.assertIn("import_status", dashboard["state"])
+        self.assertIn("usage_limits", dashboard)
         self.assertLessEqual({
             "status", "started_at", "completed_at", "duration_seconds", "stats", "error",
         }, set(state["import_status"]))

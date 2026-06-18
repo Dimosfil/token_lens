@@ -14,6 +14,22 @@ generated outputs, secrets, credentials, or private production data.
 
 ## Tasks
 
+### Limit Widget 2026-06-18
+
+Goal: show real Codex account usage limits from `codex app-server` as a compact
+web dashboard widget while keeping the desktop mini client focused on plain
+usage rows.
+
+Planned changes:
+
+- [x] Inspect current dashboard payload, web layout, and mini-client row UI.
+- [x] Confirm local analytics is the wrong data source for account limits.
+- [x] Include every `rateLimitsByLimitId` bucket, including GPT-5.3-Codex-Spark.
+- [x] Add a small account-limits API endpoint for desktop and browser reuse.
+- [x] Render account remaining percentages and reset times in the web dashboard.
+- [x] Show desktop mini limits as plain text rows.
+- [x] Run focused syntax and smoke checks.
+
 ### Mini Settings Persistence 2026-05-28
 
 Goal: persist Token Lens Mini settings across app restarts.

@@ -5,7 +5,8 @@ param(
   [int]$SignalThreshold = 100000,
   [ValidateSet("Simple", "Asterisk", "Exclamation", "Hand", "Question")]
   [string]$Signal = "Exclamation",
-  [switch]$NoSignal
+  [switch]$NoSignal,
+  [switch]$Restart
 )
 
 $ErrorActionPreference = "Stop"
@@ -20,6 +21,27 @@ if ($LASTEXITCODE -ne 0) {
 
 $refreshMs = [Math]::Max(1, $RefreshSeconds) * 1000
 $client = Join-Path $root "desktop\mini_client.py"
+
+function Stop-ExistingMiniClients {
+  $clientPath = (Resolve-Path -LiteralPath $client).Path
+  $escapedClientPath = $clientPath.Replace("\", "\\")
+  $processes = Get-CimInstance Win32_Process |
+    Where-Object {
+      $_.CommandLine -and (
+        $_.CommandLine -like "*$clientPath*" -or
+        $_.CommandLine -like "*$escapedClientPath*"
+      )
+    }
+
+  foreach ($process in $processes) {
+    Stop-Process -Id $process.ProcessId -ErrorAction SilentlyContinue
+  }
+}
+
+if ($Restart) {
+  Stop-ExistingMiniClients
+  Start-Sleep -Milliseconds 300
+}
 
 function Resolve-ProjectDesktopPython {
   $uv = Join-Path $env:USERPROFILE ".local\bin\uv.exe"

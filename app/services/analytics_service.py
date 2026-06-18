@@ -4,6 +4,7 @@ from collections.abc import Callable
 
 from app.core.config import load_config
 from app.services.background import import_status
+from app.services.codex_account_service import read_usage_limits
 from app.storage.connection import connect
 from app.storage import queries
 from app.storage.schema import init_db
@@ -27,6 +28,10 @@ def data_state():
     state = with_analytics_db(queries.data_state)
     state["import_status"] = import_status()
     return state
+
+
+def usage_limits():
+    return read_usage_limits(load_config())
 
 
 def daily(range_key: str = "", bucket: str = "day", start_ts: int | None = None, end_ts: int | None = None, source: str = ""):
@@ -62,7 +67,18 @@ def dashboard(
     end_ts: int | None = None,
     source: str = "",
 ):
-    payload = with_analytics_db(lambda con: queries.dashboard(con, model, range_key, bucket, task_mode, start_ts, end_ts, source))
+    config = load_config()
+    payload = with_analytics_db(lambda con: queries.dashboard(
+        con,
+        model,
+        range_key,
+        bucket,
+        task_mode,
+        start_ts,
+        end_ts,
+        source,
+    ))
+    payload["usage_limits"] = read_usage_limits(config)
     payload["state"]["import_status"] = import_status()
     payload["import_status"] = payload["state"]["import_status"]
     return payload

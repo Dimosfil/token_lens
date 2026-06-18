@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+from datetime import datetime
 import json
 from pathlib import Path
 import threading
@@ -130,6 +131,83 @@ def format_duration(seconds) -> str:
     return f"{minutes}:{remaining_seconds:02d}"
 
 
+def looks_like_id(value) -> bool:
+    text = str(value or "")
+    if len(text) < 12:
+        return False
+    return all(char.isalnum() or char in {"_", "-"} for char in text)
+
+
+def task_name(row: dict) -> str:
+    name = str(row.get("thread_name") or "").strip()
+    if name and not looks_like_id(name):
+        return name
+    period = str(row.get("period") or row.get("day") or "").strip()
+    if period:
+        return period
+    return f"Задача {format_timestamp(row.get('started_at') or row.get('finished_at'))}"
+
+
+def format_timestamp(value) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if "T" in text:
+        date_part, time_part = text.split("T", 1)
+        return f"{date_part} {time_part[:5]}"
+    return text[:16]
+
+
+def format_limit_reset(value) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        reset_at = datetime.fromisoformat(text)
+        local_reset = reset_at.astimezone()
+    except ValueError:
+        return text[:16]
+    now = datetime.now(local_reset.tzinfo)
+    if local_reset.date() == now.date():
+        return local_reset.strftime("%H:%M")
+    return local_reset.strftime("%d.%m %H:%M")
+
+
+def limit_period(row: dict) -> str:
+    label = str(row.get("label") or row.get("key") or "").strip()
+    if label == "weekly":
+        return "week"
+    return label or "-"
+
+
+def usage_limit_name(row: dict) -> str:
+    display_name = str(row.get("display_name") or "Codex").strip()
+    if display_name == "Codex":
+        return "Codex"
+    if "Spark" in display_name:
+        return "Spark"
+    return display_name
+
+
+def usage_limits_text(snapshot: dict | None) -> str:
+    if not isinstance(snapshot, dict):
+        return "Limits: unavailable"
+    if not snapshot.get("ok"):
+        return f"Limits: {snapshot.get('error') or 'unavailable'}"
+    windows = snapshot.get("windows")
+    if not isinstance(windows, list) or not windows:
+        return "Limits: unavailable"
+    lines = []
+    for row in windows:
+        if not isinstance(row, dict):
+            continue
+        remaining = row.get("remaining_percent")
+        reset = format_limit_reset(row.get("reset_at"))
+        suffix = f", reset {reset}" if reset else ""
+        lines.append(f"{usage_limit_name(row)} {limit_period(row)}: {remaining}% left{suffix}")
+    return "\n".join(lines) if lines else "Limits: unavailable"
+
+
 class ApiClient:
     def __init__(self, base_url: str, timeout: float = 4.0):
         self.base_url = base_url.rstrip("/")
@@ -190,6 +268,7 @@ class MiniClientApp:
             value=signal_name if signal_name in SIGNAL_CHOICES else "Exclamation"
         )
         self.status_var = tk.StringVar(value="Loading data")
+        self.limits_var = tk.StringVar(value="Limits loading")
 
         self._build_ui()
         self._bind_settings_persistence()
@@ -199,12 +278,12 @@ class MiniClientApp:
     def _build_ui(self):
         self.root.title("Token Lens Mini")
         self._set_window_icon()
-        self.root.minsize(620, 220)
-        geometry = setting_str(self.settings, "geometry", "720x260")
+        self.root.minsize(760, 260)
+        geometry = setting_str(self.settings, "geometry", "860x300")
         try:
             self.root.geometry(geometry)
         except tk.TclError:
-            self.root.geometry("720x260")
+            self.root.geometry("860x300")
 
         outer = ttk.Frame(self.root, padding=10)
         outer.pack(fill=tk.BOTH, expand=True)
@@ -246,14 +325,23 @@ class MiniClientApp:
         signal_picker.bind("<<ComboboxSelected>>", lambda _event: self.play_signal())
         ttk.Label(toolbar, textvariable=self.status_var, anchor=tk.E).pack(side=tk.RIGHT, fill=tk.X, expand=True)
 
-        columns = ("model", "time", "calls", "per_call", "total")
+        ttk.Label(
+            outer,
+            textvariable=self.limits_var,
+            anchor=tk.W,
+            justify=tk.LEFT,
+        ).pack(fill=tk.X, pady=(0, 8))
+
+        columns = ("task", "models", "time", "calls", "per_call", "total")
         self.table = ttk.Treeview(outer, columns=columns, show="headings", height=self.limit_var.get())
-        self.table.heading("model", text="Model")
+        self.table.heading("task", text="Project / task")
+        self.table.heading("models", text="Models")
         self.table.heading("time", text="Time")
         self.table.heading("calls", text="Calls")
         self.table.heading("per_call", text="Total / Call")
         self.table.heading("total", text="Total")
-        self.table.column("model", width=220, minwidth=150, stretch=True)
+        self.table.column("task", width=260, minwidth=170, stretch=True)
+        self.table.column("models", width=140, minwidth=100, stretch=False)
         self.table.column("time", width=80, minwidth=70, anchor=tk.E, stretch=False)
         self.table.column("calls", width=70, minwidth=60, anchor=tk.E, stretch=False)
         self.table.column("per_call", width=110, minwidth=95, anchor=tk.E, stretch=False)
@@ -375,10 +463,12 @@ class MiniClientApp:
     def _poll_worker(self):
         try:
             state = self.api.get_json("/api/state")
+            limits = self.load_usage_limits()
             if self.data_version is None or state.get("version") != self.data_version:
                 rows = self.load_rows()
-                self._ui(lambda: self.render_rows(rows, state.get("version")))
+                self._ui(lambda: self.render_rows(rows, state.get("version"), limits))
             else:
+                self._ui(lambda: self.render_usage_limits(limits))
                 self._ui(lambda: self.set_checked_status())
         except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError) as error:
             self._ui(lambda: self.set_error(error))
@@ -391,10 +481,12 @@ class MiniClientApp:
                 dashboard = self.api.post_json("/api/refresh", self.query())
                 rows = dashboard.get("tasks", [])
                 version = dashboard.get("state", {}).get("version")
+                limits = dashboard.get("usage_limits")
             else:
                 rows = self.load_rows()
                 version = self.api.get_json("/api/state").get("version")
-            self._ui(lambda: self.render_rows(rows, version))
+                limits = self.load_usage_limits()
+            self._ui(lambda: self.render_rows(rows, version, limits))
         except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError) as error:
             self._ui(lambda: self.set_error(error))
         finally:
@@ -414,6 +506,12 @@ class MiniClientApp:
     def load_rows(self) -> list[dict]:
         return self.api.get_json("/api/tasks", self.query())
 
+    def load_usage_limits(self) -> dict:
+        try:
+            return self.api.get_json("/api/usage-limits")
+        except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError) as error:
+            return {"ok": False, "error": str(error), "windows": []}
+
     def current_limit(self) -> int:
         try:
             value = self.limit_var.get()
@@ -425,8 +523,13 @@ class MiniClientApp:
             self.limit_var.set(value)
         return value
 
-    def render_rows(self, rows: list[dict], version):
+    def render_usage_limits(self, snapshot: dict | None):
+        self.limits_var.set(usage_limits_text(snapshot))
+
+    def render_rows(self, rows: list[dict], version, limits: dict | None = None):
         self.data_version = version
+        if limits is not None:
+            self.render_usage_limits(limits)
         self.table.configure(height=self.current_limit())
         threshold = self.current_signal_threshold()
         for item in self.table.get_children():
@@ -438,6 +541,7 @@ class MiniClientApp:
                 tk.END,
                 tags=("over-limit",) if over_limit else (),
                 values=(
+                    task_name(row),
                     row.get("models") or "",
                     format_duration(row.get("elapsed_seconds")),
                     format_number(row.get("model_calls")),

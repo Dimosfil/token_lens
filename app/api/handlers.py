@@ -110,6 +110,8 @@ class AnalyticsHandler(BaseHTTPRequestHandler):
             send_json(self, analytics_service.summary(range_key, start_ts, end_ts, first(query, "source")))
         elif path == "/api/state":
             send_json(self, analytics_service.data_state())
+        elif path == "/api/usage-limits":
+            send_json(self, analytics_service.usage_limits())
         elif path == "/api/import-status":
             send_json(self, analytics_service.background_import_status())
         elif path == "/api/daily":
