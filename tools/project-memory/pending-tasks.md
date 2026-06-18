@@ -774,4 +774,37 @@ Planned changes:
 - [x] Add `gi manager`/`gi tm` config-service resolution guidance.
 - [x] Record applied migration metadata.
 - [x] Verify diffs and instruction-kit status.
+
+### Instruction Kit Update 2026-06-17
+
+Goal: update the copied `general-instructions` kit from `2026.06.11.5` to
+`2026.06.16.11`.
+
+Planned changes:
+
+- [x] Apply task-manager sync and GI command guidance.
+- [x] Add portable project-memory/RAG structure and helper files.
+- [x] Add semantic retrieval and local Chroma adapter guidance.
+- [x] Record applied migration metadata.
+- [x] Verify diffs, generated artifact ignores, and instruction-kit status.
+- [!] Commit and push blocked by pre-existing unrelated untracked image/icon
+      backup files in the working tree.
 - [!] Commit and push were blocked by pre-existing unrelated untracked files.
+
+### Instruction Kit Update 2026-06-18
+
+Goal: update the copied `general-instructions` kit from `2026.06.16.11` to
+`2026.06.18.4`.
+
+Planned changes:
+
+- [x] Apply contract-based service self-registration guidance.
+- [x] Add post-launch verification requirements for `gi reboot` / `gi restart`.
+- [x] Replace active `gi root rebuild` wording with `gi rebuild` plus
+      `gi tools rebuild` / `gi rag rebuild`.
+- [x] Add thematic, intent-preserving `gi summary` handoff guidance.
+- [x] Update RAG rebuild command metadata to `gi tools rebuild`.
+- [x] Record applied migration metadata.
+- [x] Verify no pending instruction migrations and run `git diff --check`.
+- [x] Commit and push scoped instruction-kit changes after a separate
+      `ги пуш` request, leaving unrelated working-tree files untouched.

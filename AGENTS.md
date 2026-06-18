@@ -53,6 +53,41 @@ project. Use it to restore only the needed context from local instructions,
 handoff summaries, targeted searches, and project memory instead of reading the
 whole repository or printing broad outputs.
 
+Treat RAG as a layered system, not as a synonym for vector search. Use Markdown
+and project memory for reviewable specifications, SQLite/FTS for exact paths,
+commands, symbols, errors, identifiers, and dependency edges, and optional vector
+retrieval only as a complementary semantic layer over curated chunks. Verify
+current source files before editing because generated memory indexes can be
+stale.
+
+`tools/summary/` is compact chat handoff state. `tools/project-memory/` is
+durable product and project knowledge: feature algorithms, business rules,
+workflow contracts, data rules, integration contracts, architecture migration
+history, verification guarantees, and current implementation maps. For
+non-trivial feature, business-rule, data-model, integration, or architecture
+work, update the relevant project-memory specification in the same scoped
+change.
+
+Treat `gi summary` / `gi саммари` as requests to write a thematic handoff
+summary under `tools/summary/`. Summaries should preserve the meaning of the
+thread, not routine terminal or git bookkeeping: break the thread into
+meaningful topic sections, list key theses under each topic, include user
+intent, important decisions, code or architecture changes, business/product
+logic, verification evidence, blockers, and next useful context. Omit routine
+successful commit/push/staging/branch/hash details when they are recoverable
+from git logs or command history. Mention repository state only when it changes
+the next agent's action. If procedural history is important, keep it separate as
+`Thread Timeline`. For architecture or research threads about an external
+project, article, pattern, or tool, preserve the user's integration intent, map
+external concepts to current project components, and distinguish decisions from
+hypotheses.
+
+When answering where a previous thread stopped, treat handoff summaries as
+evidence rather than sole authority. Reconcile them with the latest visible
+thread conclusion, screenshots, direct quotes, or other user-provided evidence,
+and prefer the last explicit architectural/product decision, open question, or
+agreed next direction over incidental caveats or old next-step bullets.
+
 Treat `cached input` as a symptom, not the main optimization target. Keep total
 live context small by starting new sessions for unrelated tasks, using compact
 handoff summaries instead of long investigation history, and splitting multi-step
@@ -134,6 +169,17 @@ Inspect logs:
 - Do not revert user changes unless explicitly requested.
 - Treat dirty worktrees as normal.
 - Keep changes scoped to the current task.
+- Treat requests to periodically clean or trim old raw log bodies as a
+  Token Lens database maintenance task. In `data/analytics.sqlite`, clear only
+  `raw_logs.feedback_log_body` for rows outside the current calendar month,
+  keep current-month bodies, do not delete `raw_logs` rows, and do not alter
+  `turns` or token analytics. After committing the cleanup transaction, run
+  `VACUUM` so SQLite returns freed pages to disk, then verify that non-current
+  months have zero non-empty bodies and current-month bodies remain.
+- Treat `gi help`, `gi хелп`, `ги help`, `ги хелп`, `gi commands`,
+  `gi команды`, and `ги команды` as read-only requests to show the compact local
+  GI command index. Do not run startup restore, resume old work, call services
+  or task managers, mutate files, or execute listed commands for help alone.
 - When a feature has an agreed runtime workflow, loading order, branching state
   flow, background work, or user-visible guarantee, record it in project-local
   docs or project memory. Before changing that feature, read the relevant
@@ -227,13 +273,20 @@ Inspect logs:
   question if no local config location is documented.
 - For web-facing applications that expose a port, HTTP API, web UI,
   task-manager service, or local daemon endpoint, require a live config-service
-  config check on every process startup before publishing or refreshing the
-  app's own service record when self-registration is enabled. On startup, query
-  the app's own `service_id`; if no record exists, create one with the current
-  port and documented endpoints, and if the record exists but the port or
-  endpoints changed, refresh it. If config-service is missing, unreachable, or
-  incomplete, startup should report the blocker and wait instead of guessing or
-  falling back to stale ports. Desktop apps, CLI tools, libraries, scripts, and
+  config check on every process startup before binding or reserving a port when
+  self-registration is enabled. On startup, query the app's own `service_id`.
+  If the service record exists, bind only the port recorded in config-service
+  and use config-service records for neighboring service endpoints. If the
+  service record is missing and the project-local self-registration flag is
+  `on`, read the config-service guide and contract, list current service
+  records, choose a port that is both free on the local host and absent from
+  config-service, bind it, verify the local health endpoint, and create or
+  update the record through the documented config-service operation. If the
+  service record is missing and self-registration is `off`, config-service is
+  unavailable, or the guide/contract lacks documented registration operations,
+  startup should report the blocker and wait instead of guessing, writing
+  directly to config-service storage, reusing stale local runtime config, or
+  binding fallback ports. Desktop apps, CLI tools, libraries, scripts, and
   other non-web applications must not query or publish to config-service during
   normal startup unless local instructions explicitly define a discoverable
   web/API runtime. Use cached config only as an explicit degraded-startup
@@ -247,6 +300,13 @@ Inspect logs:
   missing or mismatched. Do not create raw intake receipts, local checklist
   notes, or a different manager object type as a substitute for the requested
   task, sprint, or cycle.
+- Treat task-manager sync commands as routine integration steps after the user
+  has supplied sprint/task content or selected the workflow. Still follow
+  config-service discovery, service guide, strict contract, documented payloads,
+  lifecycle identifiers, readback, and blocker reporting. Do not replace manager
+  API work with project-memory notes, pending checklists, raw intake receipts,
+  guessed commands, Work Items, or requests for the user to provide a terminal
+  command.
 - Treat `gi add sprint`, `gi create sprint`, `gi добавить спринт`, and
   equivalent add-sprint wording as requests to create a visible executable
   Sprint/Cycle through the configured task manager. Resolve the manager through
@@ -280,6 +340,20 @@ Inspect logs:
   start or restart the current application using project-local run instructions.
   If the app is running, restart it; if it is not running, start it. Launch in
   the background so focus does not jump away from the user's current window.
+  After launch, wait briefly and verify the documented startup success signal:
+  a still-running expected process, visible desktop window when applicable,
+  health/discovery endpoint for web/API apps, and relevant startup or crash logs
+  when documented. Do not report reboot success from a PID alone. If the process
+  exits, no expected window or health signal appears, or a new startup traceback
+  is present, report the reboot as failed or unverified with concrete evidence.
+- Treat `gi first test`, `gi первый тест`, and `ги первый тест` as first-launch
+  verification requests. Read project-local run, cleanup, cache reset, and test
+  instructions before clearing anything. Reset only documented project-owned
+  cache, generated state, temporary first-run profiles, and rebuildable local app
+  settings; never delete user documents, production data, secrets, credentials,
+  external service data, shared system caches, sibling projects, or arbitrary
+  user-home folders. If exact reset paths or commands are missing, ask one
+  concise clarification question.
 - Treat `gi install`, `gi инсталл`, `ги инсталл`, and obvious typo variants
   such as `gi иснтлл` as requests to build the current project and produce an
   installer. Use Inno Setup by default when no installer tool is named. If the
@@ -291,7 +365,9 @@ Inspect logs:
   packaging; update the version in build output, installer metadata, and the
   installer filename or artifact name when the local tooling supports it. Ask a
   short clarification question if the build, installer, or versioning contract
-  is missing instead of inventing one.
+  is missing instead of inventing one. Do not report `gi install` as complete
+  after dependency restore, build, or tests alone; success requires running the
+  packaging command and verifying a current installer artifact.
 - Treat nested checkouts, vendored repositories, cloned examples, and
   third-party source trees as separate scope. Do not inspect them as part of the
   main project unless the user explicitly asks, the task is about that nested
@@ -346,6 +422,12 @@ Inspect logs:
   PowerShell.
 - For verification, count or query HTML elements programmatically instead of
   printing the whole HTML document.
+- When creating or running a test, smoke-check, or verification plan, verify
+  exact commands, CLI flags, ports, routes, health endpoints, request payload
+  fields, and environment variables from current project-local instructions,
+  runbooks, manifests, config entry points, or source code. Treat handoff
+  summaries, task notes, screenshots, and old chat examples as status evidence,
+  not authoritative command contracts.
 - After implementing a frontend, backend, API, or full-stack feature, restart
   the affected dev server or backend process when local run instructions provide
   a restart command or hot reload is uncertain. Refresh the browser, client, or
@@ -417,3 +499,39 @@ Inspect logs:
   kit updates; do not assume they exist locally in this project.
 - When local project rules conflict with shared instructions, the local
   `AGENTS.md`, runbook, and working agreements take precedence.
+- Treat `gi sql` / `gi sqlite` and `gi vector` as read-only project-memory/RAG
+  diagnostics. They report configured sources, counts, readiness, staleness, and
+  recommendations; they do not deploy services, install heavy dependencies,
+  upload data, or index private sources by default.
+- Treat `gi rebuild` and `ги ребилд` as requests to rebuild the current project
+  or application output, such as an executable, package, or other documented
+  artifact. Read project-local build or rebuild instructions, manifests,
+  scripts, and packaging metadata before running the documented command. Do not
+  treat `gi rebuild` as dependency restore, tests-only verification, a RAG-only
+  rebuild, or a combined project-plus-RAG rebuild. If no project rebuild
+  contract exists, ask one short clarification question instead of inventing a
+  command.
+- Treat `gi tools rebuild`, `gi rag rebuild`, `ги тулс ребилд`, and
+  `ги раг ребилд` as heavy full rebuild requests for the configured GI/RAG
+  tooling layer. Ask for explicit confirmation immediately before a full
+  rebuild, after listing source groups, privacy exclusions, generated paths that
+  may be replaced, node commands, status checks, and required external services
+  or dependencies. Node forms for `sql`, `chunks`, `vector`, `manifest`, and
+  `evals` rebuild only that documented node. Keep `gi sql`, `gi sqlite`, and
+  `gi vector` as inspection-only commands.
+- During `gi обновить`, inspect newly applied migrations for RAG-impacting
+  changes. If they change source rules, chunking, embedding metadata,
+  SQLite/vector schemas, retrieval adapters, or project-memory index scripts,
+  compare them with `tools/project-memory/rag-system.json` rebuild state and
+  report stale nodes. Do not mark rebuild state current until rebuild and
+  readback/status checks succeed.
+- Use Context7 or similar external documentation retrieval only when configured
+  or explicitly requested for current public library, framework, SDK, and API
+  documentation. It is not project memory, service discovery, task management,
+  or local source truth. Prefer project-local instructions and service
+  guide/contract endpoints for project behavior, and official OpenAI
+  documentation workflows for OpenAI product questions. Do not send secrets,
+  credentials, private source code, private business rules, user data,
+  production data, telemetry, local paths, or project-memory contents to
+  external documentation services unless explicit private-source configuration
+  exists and the user approves the exact scope.

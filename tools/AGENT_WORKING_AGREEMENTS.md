@@ -48,6 +48,11 @@
   workflow contract, implementation plan, sprint breakdown, task breakdown,
   definitions of done, and verification connected. Tasks do not replace the
   feature contract.
+- Treat `tools/summary/` as compact chat handoff state and
+  `tools/project-memory/` as durable product/project specifications. For
+  non-trivial feature, business-rule, data-model, integration, or architecture
+  work, update the relevant project-memory specification in the same scoped
+  change.
 
 ## Git
 
@@ -189,9 +194,18 @@ or:
 - Use the instruction kit as a token-economy and RAG-startup layer: restore only
   task-relevant context from local instructions, summaries, targeted searches,
   and project memory instead of broad repository reads or large outputs.
+- Treat RAG as layered retrieval: Markdown/project-memory for reviewable specs,
+  SQLite/FTS for exact paths, commands, symbols, identifiers, errors, and
+  dependency edges, and optional vectors only as a complementary semantic layer.
+  Verify current source files before editing because generated indexes can be
+  stale.
 - Keep `gi` command responses scoped to the shared instruction-kit command. Do
   not resume an older product task after a `gi` command unless the user
   explicitly asks.
+- Treat `gi help`, `gi хелп`, `ги help`, `ги хелп`, `gi commands`,
+  `gi команды`, and `ги команды` as read-only command-index requests. Do not run
+  startup restore, call services or task managers, mutate files, or execute
+  listed commands for help alone.
 - For `gi start`, `gi restore`, and title-only startup messages, restore only
   compact orientation for the next turn. Mention remembered plans, stale task
   notes, old refactoring phases, or local commits ahead of a remote only as
@@ -207,6 +221,26 @@ or:
   checking or applying instruction-kit file updates.
 - Treat `gi саммари` and `gi summary` as requests to write a handoff summary
   file under `tools/summary/`, not only as requests to summarize in chat.
+  Summaries should be thematic handoffs, not routine terminal or git ledgers:
+  break the thread into meaningful topic sections, list the key theses under
+  each topic, and include user intent, important decisions, code or architecture
+  changes, business/product logic, verification evidence, blockers, and next
+  useful context. Omit routine command bookkeeping such as successful commits,
+  pushes, staging counts, branch names, push targets, and commit hashes when
+  those facts are recoverable from git logs or command history. Mention
+  repository state only when it changes the next agent's action, such as
+  uncommitted work, conflicts, failed pushes, or a required follow-up. If a
+  thread has detailed procedural history, keep it in a separate `Thread
+  Timeline` section or artifact. For architecture or research threads about an
+  external project, article, pattern, or tool, preserve the user's integration
+  intent, map external concepts to current project components, and distinguish
+  decisions from hypotheses.
+- When answering where a previous thread stopped, treat handoff summaries as
+  evidence rather than the sole authority. Compare them with the latest visible
+  thread conclusion, screenshots, direct quotes, or other user-provided
+  evidence. Prefer the last explicit architectural/product decision, open
+  question, or agreed next direction over incidental caveats or old next-step
+  bullets.
 - Treat `gi гит-обзор` and `gi git summary` as requests to summarize the latest
   git commit in the current project in chat. Include commit metadata, changed
   files, compact stats, inferred purpose, and notable risks or checks. Do not
@@ -235,12 +269,19 @@ or:
   bootstrap config.
 - For web-facing applications that expose a port, HTTP API, web UI,
   task-manager service, or local daemon endpoint, startup must check live
-  config-service config before publishing or refreshing the app's own service
-  record when self-registration is enabled. If config-service is missing,
-  unreachable, or incomplete, startup reports the blocker and waits instead of
-  guessing or falling back to stale ports. Non-web apps do not query or publish
-  to config-service during normal startup unless local instructions define a
-  discoverable web/API runtime.
+  config-service config before binding or reserving a port when
+  self-registration is enabled. If the app's own service record exists, bind
+  only the port recorded in config-service. If the record is missing and
+  project-local self-registration is `on`, read the config-service guide and
+  contract, list current service records, choose a locally free port absent from
+  config-service, bind it, verify the local health endpoint, and create or
+  update the record through the documented operation. If config-service is
+  missing, unreachable, incomplete, lacks a registration contract, or
+  self-registration is `off`, startup reports the blocker and waits instead of
+  guessing, writing storage directly, reusing stale runtime config, or falling
+  back to stale ports. Non-web apps do not query or publish to config-service
+  during normal startup unless local instructions define a discoverable web/API
+  runtime.
 - Treat `gi manager`, `gi tm`, `gi manager test`, `ги менеджер`,
   `ги манагер`, and equivalent task-manager status or test wording as requests
   to inspect the configured task manager through config-service. Read the
@@ -253,6 +294,11 @@ or:
   stale task-manager memory, port scans, sibling projects, or guessed endpoints.
 - Treat `gi reboot`, `ги ребут`, `gi restart`, and `ги рестарт` as requests to
   start or restart the current application using project-local run instructions.
+  After launch, wait briefly and verify a documented startup success signal
+  beyond PID creation: a still-running expected process, visible desktop window
+  when applicable, health/discovery endpoint for web/API apps, and relevant
+  startup or crash logs when documented. If no expected signal appears, report
+  startup as failed or unverified with concrete evidence.
 - Treat `gi ftp`, `ги фтп`, `gi ftp push`, and `ги фтп пуш` as requests to
   upload configured build output to FTP, FTPS, or SFTP. Treat `gi ftp config`
   as FTP/SFTP config setup without uploading, `gi ftp folder` as remote folder
@@ -268,13 +314,28 @@ or:
   project-local metadata, and keep production build, installer metadata, and
   artifact naming aligned when local tooling supports it. Ask one short
   clarification question if build, installer, or versioning contracts are
-  missing or ambiguous.
+  missing or ambiguous. Dependency restore, build, and tests alone are
+  preliminary checks, not completion of `gi install`; success requires running
+  the packaging command and verifying a current installer artifact.
 - Treat `gi тест-план` and `gi test plan` as requests to inspect local project
   test commands and produce a compact verification plan for the current feature,
   bug fix, or release check. Plan first; run checks only when the user asks or
-  when the current task already requires verification.
+  when the current task already requires verification. Verify exact commands,
+  flags, ports, routes, health endpoints, payload fields, and environment
+  variables from current local instructions, runbooks, manifests, config entry
+  points, or source before recommending or running checks.
+- Treat `gi first test`, `gi первый тест`, and `ги первый тест` as first-launch
+  verification requests. Reset only documented project-owned first-run cache,
+  generated state, temporary profiles, and rebuildable app settings; ask one
+  concise question if reset paths or commands are not documented.
 - Treat a first message that points to a shared instruction library as an
   instruction bootstrap, not as a request to add that library as a dependency.
+- Treat `init <source>`, `инит <source>`, `инициализируй <source>`, and
+  `инит правила <source>` as shared-instruction bootstrap/startup requests when
+  the source points to a known `general-instructions` checkout, cache,
+  canonical repository, or `GENERAL_INSTRUCTIONS_HOME`; do not reinterpret those
+  forms as `git init`, project creation, folder creation, package init, or
+  virtualenv setup unless the user explicitly names that action.
 - If the user asks to update from a shared instruction library and this project
   has no `tools/project-memory/instruction-kit.json`, treat that as first-time
   instruction bootstrap/init.
@@ -283,6 +344,28 @@ or:
   normal successful updates. Apply the update, then report a compact summary
   with versions, migration counts/IDs, changed files, checks, commit/push
   result, and blockers if any.
+- During `gi обновить`, inspect newly applied migrations for RAG-impacting
+  changes and compare them with `tools/project-memory/rag-system.json` rebuild
+  state. Report stale nodes and run or offer only documented rebuild nodes.
+  Never commit generated SQLite databases, semantic corpora, vector indexes,
+  logs, secrets, telemetry, or private runtime data.
+- Treat `gi sql` / `gi sqlite` and `gi vector` as read-only diagnostics for
+  project-memory/RAG readiness, counts, staleness, and recommendations.
+- Treat `gi rebuild` and `ги ребилд` as requests to rebuild only the current
+  project/application output through documented local build instructions. Do not
+  reinterpret it as dependency restore, tests-only verification, RAG-only
+  rebuild, or combined project-plus-RAG rebuild. If no project rebuild contract
+  exists, ask one short clarification question instead of inventing a command.
+- Treat `gi tools rebuild`, `gi rag rebuild`, `ги тулс ребилд`, and
+  `ги раг ребилд` as heavy full GI/RAG tooling rebuild requests requiring
+  explicit confirmation immediately before execution. Node forms for `sql`,
+  `chunks`, `vector`, `manifest`, and `evals` rebuild only that documented node.
+- Use Context7 or similar external documentation retrieval only when configured
+  or explicitly requested for public library, framework, SDK, and API docs. Do
+  not send secrets, credentials, private source, business rules, user data,
+  production data, telemetry, local paths, or project-memory contents to
+  external doc services unless explicit private-source configuration exists and
+  the user approves the exact scope.
 - For web applications, assume the user will inspect the UI manually. Do not
   open, browse, screenshot, or visually inspect the UI automatically unless the
   user explicitly asks for that.
