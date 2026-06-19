@@ -26,6 +26,15 @@ DEFAULT_BASE_URL = "http://127.0.0.1:8765"
 DEFAULT_LIMIT = 4
 DEFAULT_REFRESH_MS = 5000
 DEFAULT_SIGNAL_THRESHOLD = 100000
+DEFAULT_SOURCE = "codex"
+SOURCE_CHOICES = (
+    ("Codex", "codex"),
+    ("OpenCode", "opencode"),
+)
+LIMIT_BAR_HEIGHT = 12
+LIMIT_BAR_TRACK_COLOR = "#e7ebef"
+LIMIT_BAR_BORDER_COLOR = "#a8b0b7"
+LIMIT_BAR_MARKER_COLOR = "#2f3a40"
 APP_USER_MODEL_ID = "TokenLens.Mini.CleanLogo"
 FLASHW_STOP = 0
 FLASHW_CAPTION = 0x00000001
@@ -47,6 +56,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
     parser.add_argument("--refresh-ms", type=int, default=DEFAULT_REFRESH_MS)
     parser.add_argument("--range", dest="range_key", default="")
+    parser.add_argument("--source", choices=[value for _label, value in SOURCE_CHOICES], default=DEFAULT_SOURCE)
     parser.add_argument("--signal-threshold", type=int, default=DEFAULT_SIGNAL_THRESHOLD)
     parser.add_argument("--signal", choices=SIGNAL_CHOICES.keys(), default="Exclamation")
     parser.add_argument("--signal-enabled", action=argparse.BooleanOptionalAction, default=True)
@@ -63,6 +73,14 @@ def format_number(value) -> str:
     except (TypeError, ValueError):
         return "0"
     return f"{number:,}".replace(",", " ")
+
+
+def format_cost(value) -> str:
+    try:
+        amount = float(value or 0)
+    except (TypeError, ValueError):
+        amount = 0.0
+    return f"${amount:.4f}"
 
 
 def parse_int(value, default: int = 0) -> int:
@@ -107,6 +125,11 @@ def setting_bool(settings: dict, key: str, default: bool) -> bool:
 def setting_str(settings: dict, key: str, default: str) -> str:
     value = settings.get(key, default)
     return value if isinstance(value, str) else default
+
+
+def normalize_source(value) -> str:
+    text = str(value or "").strip().lower()
+    return text if text in {source for _label, source in SOURCE_CHOICES} else DEFAULT_SOURCE
 
 
 class FLASHWINFO(ctypes.Structure):
@@ -189,6 +212,74 @@ def usage_limit_name(row: dict) -> str:
     return display_name
 
 
+def limit_display_name(item: dict) -> str:
+    display_name = str(
+        item.get("display_name")
+        or item.get("limit_name")
+        or item.get("limit_id")
+        or "Codex"
+    ).strip()
+    return display_name or "Codex"
+
+
+def usage_limit_sort_key(group: dict) -> tuple[int, str]:
+    name = usage_limit_name(group)
+    if name == "Codex":
+        return (0, name)
+    if name == "Spark":
+        return (1, name)
+    return (2, name)
+
+
+def usage_limit_groups(snapshot: dict | None) -> list[dict]:
+    if not isinstance(snapshot, dict) or not snapshot.get("ok"):
+        return []
+
+    source_groups = snapshot.get("groups")
+    groups = []
+    if isinstance(source_groups, list):
+        for group in source_groups:
+            if not isinstance(group, dict):
+                continue
+            source_windows = group.get("windows")
+            windows = [row for row in source_windows if isinstance(row, dict)] if isinstance(source_windows, list) else []
+            if windows:
+                groups.append({**group, "display_name": limit_display_name(group), "windows": windows})
+    if groups:
+        return sorted(groups, key=usage_limit_sort_key)
+
+    windows = snapshot.get("windows")
+    if not isinstance(windows, list):
+        return []
+    buckets: dict[tuple[str, str], dict] = {}
+    for row in windows:
+        if not isinstance(row, dict):
+            continue
+        display_name = limit_display_name(row)
+        key = (str(row.get("limit_id") or ""), display_name)
+        buckets.setdefault(key, {"display_name": display_name, "windows": []})["windows"].append(row)
+    return sorted(buckets.values(), key=usage_limit_sort_key)
+
+
+def limit_remaining_percent(row: dict):
+    try:
+        return clamp(int(row.get("remaining_percent")), 0, 100)
+    except (TypeError, ValueError):
+        return None
+
+
+def limit_bar_fill_color(percent: int | None) -> str:
+    if percent is None:
+        return "#8d989f"
+    if percent >= 100:
+        return "#1d8f45"
+    if percent >= 50:
+        return "#0f7c80"
+    if percent >= 20:
+        return "#c87900"
+    return "#b3261e"
+
+
 def usage_limits_text(snapshot: dict | None) -> str:
     if not isinstance(snapshot, dict):
         return "Limits: unavailable"
@@ -243,6 +334,7 @@ class MiniClientApp:
         limit: int,
         refresh_ms: int,
         range_key: str,
+        source: str,
         signal_threshold: int,
         signal_name: str,
         signal_enabled: bool,
@@ -254,6 +346,7 @@ class MiniClientApp:
         self.refresh_ms = clamp(refresh_ms, 1000, 60000)
         self.range_key = range_key
         self.data_version = None
+        self.active_source = normalize_source(source)
         self.worker_running = False
         self.closed = False
         self.poll_after_id = None
@@ -267,8 +360,10 @@ class MiniClientApp:
         self.signal_name_var = tk.StringVar(
             value=signal_name if signal_name in SIGNAL_CHOICES else "Exclamation"
         )
+        self.source_var = tk.StringVar(value=self.active_source)
         self.status_var = tk.StringVar(value="Loading data")
-        self.limits_var = tk.StringVar(value="Limits loading")
+        self.limits_message_var = tk.StringVar(value="Limits loading")
+        self.limit_bar_canvases: list[tuple[tk.Canvas, int | None]] = []
 
         self._build_ui()
         self._bind_settings_persistence()
@@ -304,6 +399,19 @@ class MiniClientApp:
         rows.bind("<Return>", lambda _event: self.refresh(import_first=False))
         rows.bind("<FocusOut>", lambda _event: self.refresh(import_first=False))
 
+        source_group = ttk.Frame(toolbar)
+        source_group.pack(side=tk.LEFT, padx=(0, 10))
+        for label, value in SOURCE_CHOICES:
+            ttk.Radiobutton(
+                source_group,
+                text=label,
+                value=value,
+                variable=self.source_var,
+                command=self.switch_source,
+                style="Toolbutton",
+                width=9,
+            ).pack(side=tk.LEFT, padx=(0, 2))
+
         ttk.Button(toolbar, text="Refresh", command=lambda: self.refresh(import_first=True)).pack(side=tk.LEFT)
         ttk.Checkbutton(toolbar, text="Signal", variable=self.signal_enabled_var).pack(side=tk.LEFT, padx=(10, 4))
         ttk.Spinbox(
@@ -325,14 +433,15 @@ class MiniClientApp:
         signal_picker.bind("<<ComboboxSelected>>", lambda _event: self.play_signal())
         ttk.Label(toolbar, textvariable=self.status_var, anchor=tk.E).pack(side=tk.RIGHT, fill=tk.X, expand=True)
 
+        self.limits_frame = ttk.Frame(outer)
+        self.limits_frame.pack(fill=tk.X, pady=(0, 8))
         ttk.Label(
-            outer,
-            textvariable=self.limits_var,
+            self.limits_frame,
+            textvariable=self.limits_message_var,
             anchor=tk.W,
-            justify=tk.LEFT,
-        ).pack(fill=tk.X, pady=(0, 8))
+        ).pack(fill=tk.X)
 
-        columns = ("task", "models", "time", "calls", "per_call", "total")
+        columns = ("task", "models", "time", "calls", "per_call", "total", "cost")
         self.table = ttk.Treeview(outer, columns=columns, show="headings", height=self.limit_var.get())
         self.table.heading("task", text="Project / task")
         self.table.heading("models", text="Models")
@@ -340,18 +449,21 @@ class MiniClientApp:
         self.table.heading("calls", text="Calls")
         self.table.heading("per_call", text="Total / Call")
         self.table.heading("total", text="Total")
+        self.table.heading("cost", text="Cost")
         self.table.column("task", width=260, minwidth=170, stretch=True)
         self.table.column("models", width=140, minwidth=100, stretch=False)
         self.table.column("time", width=80, minwidth=70, anchor=tk.E, stretch=False)
         self.table.column("calls", width=70, minwidth=60, anchor=tk.E, stretch=False)
         self.table.column("per_call", width=110, minwidth=95, anchor=tk.E, stretch=False)
         self.table.column("total", width=110, minwidth=90, anchor=tk.E, stretch=False)
+        self.table.column("cost", width=80, minwidth=70, anchor=tk.E, stretch=False)
         self.table.tag_configure("over-limit", background="#fff1b8")
         self.table.pack(fill=tk.BOTH, expand=True)
 
     def _bind_settings_persistence(self):
         for variable in (
             self.limit_var,
+            self.source_var,
             self.signal_enabled_var,
             self.signal_threshold_var,
             self.signal_name_var,
@@ -422,6 +534,7 @@ class MiniClientApp:
             "limit": self.read_int_var(self.limit_var, DEFAULT_LIMIT, 1, 50),
             "refresh_ms": self.refresh_ms,
             "range": self.range_key,
+            "source": self.current_source(),
             "signal_enabled": self.read_bool_var(self.signal_enabled_var, True),
             "signal_threshold": self.read_int_var(
                 self.signal_threshold_var,
@@ -455,6 +568,23 @@ class MiniClientApp:
         signal_name = self.signal_name_var.get()
         return signal_name if signal_name in SIGNAL_CHOICES else "Exclamation"
 
+    def current_source(self) -> str:
+        source = normalize_source(self.source_var.get())
+        if self.source_var.get() != source:
+            self.source_var.set(source)
+        return source
+
+    def switch_source(self):
+        source = self.current_source()
+        if source == self.active_source:
+            return
+        self.active_source = source
+        self.data_version = None
+        self.seen_signal_rows = set()
+        self.signal_seen_initialized = False
+        self.last_signal_key = None
+        self.refresh(import_first=False)
+
     def _run_worker(self, target):
         self.worker_running = True
         thread = threading.Thread(target=target, daemon=True)
@@ -463,12 +593,12 @@ class MiniClientApp:
     def _poll_worker(self):
         try:
             state = self.api.get_json("/api/state")
-            limits = self.load_usage_limits()
+            source_context = self.load_source_context()
             if self.data_version is None or state.get("version") != self.data_version:
                 rows = self.load_rows()
-                self._ui(lambda: self.render_rows(rows, state.get("version"), limits))
+                self._ui(lambda: self.render_rows(rows, state.get("version"), source_context))
             else:
-                self._ui(lambda: self.render_usage_limits(limits))
+                self._ui(lambda: self.render_source_context(source_context))
                 self._ui(lambda: self.set_checked_status())
         except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError) as error:
             self._ui(lambda: self.set_error(error))
@@ -481,12 +611,12 @@ class MiniClientApp:
                 dashboard = self.api.post_json("/api/refresh", self.query())
                 rows = dashboard.get("tasks", [])
                 version = dashboard.get("state", {}).get("version")
-                limits = dashboard.get("usage_limits")
+                source_context = self.source_context_from_dashboard(dashboard)
             else:
                 rows = self.load_rows()
                 version = self.api.get_json("/api/state").get("version")
-                limits = self.load_usage_limits()
-            self._ui(lambda: self.render_rows(rows, version, limits))
+                source_context = self.load_source_context()
+            self._ui(lambda: self.render_rows(rows, version, source_context))
         except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError) as error:
             self._ui(lambda: self.set_error(error))
         finally:
@@ -501,10 +631,33 @@ class MiniClientApp:
             self.root.after(0, callback)
 
     def query(self) -> dict:
-        return {"limit": self.current_limit(), "range": self.range_key}
+        return {"limit": self.current_limit(), "range": self.range_key, "source": self.current_source()}
+
+    def source_query(self) -> dict:
+        return {"range": self.range_key, "source": self.current_source()}
 
     def load_rows(self) -> list[dict]:
         return self.api.get_json("/api/tasks", self.query())
+
+    def load_summary(self) -> dict:
+        payload = self.api.get_json("/api/summary", self.source_query())
+        summary = payload.get("summary") if isinstance(payload, dict) else None
+        return summary if isinstance(summary, dict) else {}
+
+    def load_source_context(self) -> dict:
+        source = self.current_source()
+        if source == "opencode":
+            return {"source": source, "summary": self.load_summary()}
+        return {"source": source, "limits": self.load_usage_limits()}
+
+    def source_context_from_dashboard(self, dashboard: dict) -> dict:
+        source = self.current_source()
+        if source == "opencode":
+            summary_payload = dashboard.get("summary") if isinstance(dashboard, dict) else None
+            summary = summary_payload.get("summary") if isinstance(summary_payload, dict) else None
+            return {"source": source, "summary": summary if isinstance(summary, dict) else {}}
+        limits = dashboard.get("usage_limits") if isinstance(dashboard, dict) else None
+        return {"source": source, "limits": limits}
 
     def load_usage_limits(self) -> dict:
         try:
@@ -523,13 +676,172 @@ class MiniClientApp:
             self.limit_var.set(value)
         return value
 
-    def render_usage_limits(self, snapshot: dict | None):
-        self.limits_var.set(usage_limits_text(snapshot))
+    def render_source_context(self, context: dict | None):
+        context = context if isinstance(context, dict) else {}
+        if context.get("source") == "opencode":
+            self.render_opencode_cost(context.get("summary"))
+            return
+        self.render_usage_limits(context.get("limits"))
 
-    def render_rows(self, rows: list[dict], version, limits: dict | None = None):
+    def clear_source_frame(self):
+        for child in self.limits_frame.winfo_children():
+            child.destroy()
+        self.limit_bar_canvases = []
+
+    def render_opencode_cost(self, summary: dict | None):
+        self.clear_source_frame()
+        summary = summary if isinstance(summary, dict) else {}
+        self.limits_message_var.set("")
+        self.limits_frame.columnconfigure(0, weight=1)
+
+        ttk.Label(
+            self.limits_frame,
+            text="OpenCode spend",
+            font=("TkDefaultFont", 9, "bold"),
+            anchor=tk.W,
+        ).grid(row=0, column=0, sticky="w", padx=(0, 12))
+        ttk.Label(
+            self.limits_frame,
+            text=f"Cost {format_cost(summary.get('estimated_cost'))}",
+            anchor=tk.W,
+        ).grid(row=0, column=1, sticky="w", padx=(0, 12))
+        ttk.Label(
+            self.limits_frame,
+            text=f"Tokens {format_number(summary.get('total_tokens'))}",
+            anchor=tk.W,
+        ).grid(row=0, column=2, sticky="w", padx=(0, 12))
+        ttk.Label(
+            self.limits_frame,
+            text=f"Calls {format_number(summary.get('turns'))}",
+            anchor=tk.W,
+        ).grid(row=0, column=3, sticky="w")
+
+    def render_usage_limits(self, snapshot: dict | None):
+        self.clear_source_frame()
+
+        groups = usage_limit_groups(snapshot)
+        if not groups:
+            self.limits_message_var.set(usage_limits_text(snapshot))
+            ttk.Label(
+                self.limits_frame,
+                textvariable=self.limits_message_var,
+                anchor=tk.W,
+            ).pack(fill=tk.X)
+            return
+
+        self.limits_message_var.set("")
+        for column, group in enumerate(groups):
+            self.limits_frame.columnconfigure(column, weight=1, uniform="limits")
+            group_frame = ttk.Frame(self.limits_frame, padding=(0, 0, 12, 0))
+            group_frame.grid(row=0, column=column, sticky="ew")
+            group_frame.columnconfigure(0, weight=1)
+            ttk.Label(
+                group_frame,
+                text=usage_limit_name(group),
+                font=("TkDefaultFont", 9, "bold"),
+                anchor=tk.W,
+            ).grid(row=0, column=0, sticky="ew", pady=(0, 2))
+
+            for row_index, row in enumerate(group.get("windows", []), start=1):
+                self.add_limit_row(group_frame, row_index, row)
+        self.root.after_idle(self.draw_limit_bars)
+
+    def add_limit_row(self, parent: ttk.Frame, row_index: int, row: dict):
+        remaining = limit_remaining_percent(row)
+        reset = format_limit_reset(row.get("reset_at"))
+        percent_text = "-" if remaining is None else f"{remaining}%"
+        reset_text = f", reset {reset}" if reset else ""
+
+        row_frame = ttk.Frame(parent)
+        row_frame.grid(row=row_index, column=0, sticky="ew", pady=(1, 2))
+        row_frame.columnconfigure(0, weight=1)
+        ttk.Label(
+            row_frame,
+            text=f"{limit_period(row)}: {percent_text} left{reset_text}",
+            anchor=tk.W,
+        ).grid(row=0, column=0, sticky="ew")
+        canvas = tk.Canvas(
+            row_frame,
+            height=LIMIT_BAR_HEIGHT,
+            highlightthickness=0,
+            bg="#f0f0f0",
+        )
+        canvas.grid(row=1, column=0, sticky="ew", pady=(1, 0))
+        canvas.bind("<Configure>", lambda _event: self.draw_limit_bars())
+        self.limit_bar_canvases.append((canvas, remaining))
+
+    def draw_limit_bars(self):
+        for canvas, percent in self.limit_bar_canvases:
+            try:
+                width = max(1, canvas.winfo_width())
+                height = max(1, canvas.winfo_height())
+            except tk.TclError:
+                continue
+            canvas.delete("all")
+            inner_left = 1
+            inner_top = 1
+            inner_right = width - 2
+            inner_bottom = height - 2
+            inner_width = max(1, inner_right - inner_left)
+            canvas.create_rectangle(
+                inner_left,
+                inner_top,
+                inner_right,
+                inner_bottom,
+                fill=LIMIT_BAR_TRACK_COLOR,
+                outline=LIMIT_BAR_BORDER_COLOR,
+                width=1,
+            )
+            canvas.create_line(
+                inner_right,
+                inner_top,
+                inner_right,
+                inner_bottom,
+                fill=LIMIT_BAR_MARKER_COLOR,
+                width=2,
+            )
+            if percent is None:
+                continue
+            fill_width = int(inner_width * percent / 100)
+            fill_right = inner_left + max(1, fill_width)
+            canvas.create_rectangle(
+                inner_left,
+                inner_top,
+                min(fill_right, inner_right),
+                inner_bottom,
+                fill=limit_bar_fill_color(percent),
+                width=0,
+            )
+            canvas.create_rectangle(
+                inner_left,
+                inner_top,
+                inner_right,
+                inner_bottom,
+                outline=LIMIT_BAR_BORDER_COLOR,
+                width=1,
+            )
+            canvas.create_line(
+                inner_right,
+                inner_top,
+                inner_right,
+                inner_bottom,
+                fill=LIMIT_BAR_MARKER_COLOR,
+                width=2,
+            )
+            if percent >= 100 and width >= 72:
+                canvas.create_text(
+                    inner_right - 20,
+                    height // 2,
+                    text="FULL",
+                    anchor=tk.CENTER,
+                    fill="#ffffff",
+                    font=("TkDefaultFont", 7, "bold"),
+                )
+
+    def render_rows(self, rows: list[dict], version, source_context: dict | None = None):
         self.data_version = version
-        if limits is not None:
-            self.render_usage_limits(limits)
+        if source_context is not None:
+            self.render_source_context(source_context)
         self.table.configure(height=self.current_limit())
         threshold = self.current_signal_threshold()
         for item in self.table.get_children():
@@ -547,6 +859,7 @@ class MiniClientApp:
                     format_number(row.get("model_calls")),
                     format_number(row.get("total_tokens_per_call")),
                     format_number(row.get("total_tokens")),
+                    format_cost(row.get("estimated_cost")),
                 ),
             )
         self.maybe_signal(rows, version, threshold)
@@ -657,6 +970,7 @@ def main():
     limit = setting_int(settings, "limit", args.limit, 1, 50)
     refresh_ms = setting_int(settings, "refresh_ms", args.refresh_ms, 1000, 60000)
     range_key = setting_str(settings, "range", args.range_key)
+    source = normalize_source(setting_str(settings, "source", args.source))
     signal_threshold = setting_int(
         settings,
         "signal_threshold",
@@ -679,6 +993,7 @@ def main():
         limit,
         refresh_ms,
         range_key,
+        source,
         signal_threshold,
         signal_name,
         signal_enabled,

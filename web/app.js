@@ -41,7 +41,7 @@ function renderDashboard(dashboard) {
   applyDashboardTaskMode(dashboard);
   syncTaskModeOptions();
   savePageSettings();
-  renderUsageLimits(dashboard.usage_limits);
+  renderUsageLimits(dashboard.usage_limits, activeSource, dashboard.summary.summary);
   renderMetrics(dashboard.summary.summary);
   renderDaily(dashboard.daily, getChartMode(), bucket);
   renderTasks(dashboard.tasks, getTaskMode());

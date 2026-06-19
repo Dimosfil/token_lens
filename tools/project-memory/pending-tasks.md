@@ -126,6 +126,19 @@ Planned changes:
 - [x] Remove the outdated OpenCode placeholder view.
 - [x] Verify frontend syntax and API smoke paths.
 
+### Mini OpenCode Cost Surface
+
+Goal: make Token Lens Mini switch between Codex account-limit context and
+OpenCode pay-per-token cost context without showing Codex limits on OpenCode.
+
+Planned changes:
+
+- [x] Reuse the mini source switcher to decide which top widget to render.
+- [x] Show Codex account limit bars only for the Codex source.
+- [x] Show OpenCode cost, token, and call totals from source-filtered dashboard
+      analytics.
+- [x] Verify desktop helpers, API smoke paths, and app restart.
+
 ### Dashboard Tabs For OpenCode Expansion
 
 Goal: add a tab switcher that preserves the current Codex dashboard as the
