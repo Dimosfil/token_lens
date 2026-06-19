@@ -14,6 +14,18 @@ generated outputs, secrets, credentials, or private production data.
 
 ## Tasks
 
+### Desktop Limit Bar Full Marker 2026-06-19
+
+Goal: make Token Lens Mini account-limit bars clearly show which windows are
+fully available.
+
+Planned changes:
+
+- [x] Inspect the current desktop mini limit-bar drawing.
+- [x] Add a stronger full-state visual treatment and end marker.
+- [x] Run focused syntax and helper tests.
+- [x] Relaunch the desktop mini client.
+
 ### Limit Widget 2026-06-18
 
 Goal: show real Codex account usage limits from `codex app-server` as a compact
@@ -824,3 +836,73 @@ Planned changes:
 - [x] Verify no pending instruction migrations and run `git diff --check`.
 - [x] Commit and push scoped instruction-kit changes after a separate
       `ги пуш` request, leaving unrelated working-tree files untouched.
+
+### Instruction Kit Update 2026-06-19
+
+Goal: update the copied `general-instructions` kit from `2026.06.18.4` to
+`2026.06.19.2`.
+
+Planned changes:
+
+- [x] Apply RAG retrieval eval check guidance.
+- [x] Apply connected-projects register guidance.
+- [x] Apply plain inline checkbox marker guidance for chat selections.
+- [x] Apply default English/Russian unified-language fallback.
+- [x] Apply full project app-set restart guidance.
+- [x] Apply `gi start sprint` task-manager routing guidance.
+- [x] Record applied migration metadata.
+- [x] Verify diffs, RAG impact, and instruction-kit status.
+- [!] Commit and push scoped instruction-kit changes if not blocked by
+      pre-existing unrelated working-tree changes.
+
+### Module Test Expansion 2026-06-19
+
+Goal: add practical regression tests across the Python modules, run the test
+suite, and start the app.
+
+Planned changes:
+
+- [x] Inspect current module boundaries and existing API contract tests.
+- [x] Add focused unit tests for parser, config, storage, API, and service
+      helpers that can run without private local logs.
+- [x] Run compile and unittest checks.
+- [x] Start/restart the app with documented startup command and verify health.
+- [x] Report remaining untested areas or blockers.
+
+### Full App Reboot Contract 2026-06-19
+
+Goal: make `gi reboot` / `gi restart` launch every documented Token Lens app,
+including the web/API server and desktop mini client.
+
+Planned changes:
+
+- [x] Update `start.ps1` to manage server and mini-client processes with
+      separate PID files.
+- [x] Update runbook startup and smoke-check docs for the full app set.
+- [x] Verify compile/tests, then run `.\start.ps1 -Restart`.
+- [x] Verify server API and mini-client process/window signal.
+
+### Instruction Kit Update 2026-06-19.3
+
+Goal: update the copied `general-instructions` kit from `2026.06.19.2` to
+`2026.06.19.3`.
+
+Planned changes:
+
+- [x] Apply per-app accounting requirements for `gi reboot` / `gi restart`.
+- [x] Record applied migration metadata.
+- [x] Verify diffs, RAG impact, and instruction-kit status.
+- [!] Commit and push scoped instruction-kit changes if not blocked by
+      pre-existing unrelated working-tree changes.
+
+### Mini Client Single Window Fix 2026-06-19
+
+Goal: make `gi reboot` / `gi restart` show only the Token Lens Mini window for
+the desktop mini client, without an extra Python console window.
+
+Planned changes:
+
+- [x] Update `start.ps1` to launch the desktop mini client with GUI Python when
+      available.
+- [x] Update runbook startup notes for the single-window expectation.
+- [x] Restart and verify web/API plus mini-client process/window state.
