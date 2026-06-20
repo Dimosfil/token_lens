@@ -91,12 +91,19 @@ def parse_int(value, default: int = 0) -> int:
 
 
 def load_mini_settings() -> dict:
+    settings, _save_enabled = load_mini_settings_with_status()
+    return settings
+
+
+def load_mini_settings_with_status() -> tuple[dict, bool]:
     try:
         with SETTINGS_PATH.open("r", encoding="utf-8") as handle:
             data = json.load(handle)
+    except FileNotFoundError:
+        return {}, True
     except (OSError, json.JSONDecodeError):
-        return {}
-    return data if isinstance(data, dict) else {}
+        return {}, False
+    return (data, True) if isinstance(data, dict) else ({}, False)
 
 
 def save_mini_settings(settings: dict) -> None:
@@ -339,10 +346,13 @@ class MiniClientApp:
         signal_name: str,
         signal_enabled: bool,
         settings: dict | None = None,
+        settings_save_enabled: bool = True,
     ):
         self.root = root
         self.api = api
         self.settings = settings or {}
+        self.settings_save_enabled = settings_save_enabled
+        self.settings_save_ready = False
         self.refresh_ms = clamp(refresh_ms, 1000, 60000)
         self.range_key = range_key
         self.data_version = None
@@ -470,6 +480,10 @@ class MiniClientApp:
         ):
             variable.trace_add("write", lambda *_args: self.schedule_settings_save())
         self.root.bind("<Configure>", lambda _event: self.schedule_settings_save(), add="+")
+        self.root.after_idle(self.enable_settings_save)
+
+    def enable_settings_save(self):
+        self.settings_save_ready = True
 
     def _set_window_icon(self):
         if ICON_PATH.exists():
@@ -520,7 +534,7 @@ class MiniClientApp:
         self._run_worker(lambda: self._refresh_worker(import_first))
 
     def schedule_settings_save(self):
-        if self.closed:
+        if self.closed or not self.settings_save_enabled or not self.settings_save_ready:
             return
         if self.settings_after_id is not None:
             self.root.after_cancel(self.settings_after_id)
@@ -528,6 +542,8 @@ class MiniClientApp:
 
     def save_settings_now(self):
         self.settings_after_id = None
+        if not self.settings_save_enabled or not self.settings_save_ready:
+            return
         snapshot = {
             **self.settings,
             "base_url": self.api.base_url,
@@ -965,7 +981,7 @@ class MiniClientApp:
 
 def main():
     args = parse_args()
-    settings = load_mini_settings()
+    settings, settings_save_enabled = load_mini_settings_with_status()
     base_url = setting_str(settings, "base_url", args.base_url)
     limit = setting_int(settings, "limit", args.limit, 1, 50)
     refresh_ms = setting_int(settings, "refresh_ms", args.refresh_ms, 1000, 60000)
@@ -998,6 +1014,7 @@ def main():
         signal_name,
         signal_enabled,
         settings,
+        settings_save_enabled,
     )
     root.mainloop()
     return app

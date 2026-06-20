@@ -14,6 +14,18 @@ generated outputs, secrets, credentials, or private production data.
 
 ## Tasks
 
+### Mini Settings Startup Guard 2026-06-20
+
+Goal: prevent Token Lens Mini from overwriting saved settings with startup
+defaults when settings cannot be loaded or the UI is still initializing.
+
+Planned changes:
+
+- [x] Inspect current mini settings load/save behavior.
+- [x] Add a startup guard around automatic settings persistence.
+- [x] Add focused tests for settings load status and overwrite protection.
+- [x] Run syntax and helper tests, then restart the affected app set.
+
 ### Desktop Limit Bar Full Marker 2026-06-19
 
 Goal: make Token Lens Mini account-limit bars clearly show which windows are
