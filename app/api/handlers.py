@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
@@ -10,6 +11,9 @@ from app.services.background import run_import
 from app.services.opencode_ingest import ingest_event
 from app.static_server import serve_static
 from app.storage import queries
+
+
+LOGGER = logging.getLogger("token_lens.api")
 
 
 def first(query: dict, key: str, default: str = "") -> str:
@@ -53,43 +57,55 @@ class AnalyticsHandler(BaseHTTPRequestHandler):
     server_version = "TokenLens/0.1"
 
     def do_GET(self):
-        parsed = urlparse(self.path)
-        if parsed.path.startswith("/api/"):
-            self.handle_api(parsed.path, parse_qs(parsed.query))
-            return
-        serve_static(self, parsed.path)
+        try:
+            parsed = urlparse(self.path)
+            if parsed.path.startswith("/api/"):
+                self.handle_api(parsed.path, parse_qs(parsed.query))
+                return
+            serve_static(self, parsed.path)
+        except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
+            LOGGER.info("client disconnected method=GET path=%s", self.path)
+        except Exception:
+            LOGGER.exception("request failed method=GET path=%s", self.path)
+            raise
 
     def do_POST(self):
-        parsed = urlparse(self.path)
-        query = parse_qs(parsed.query)
-        start_ts = parse_ts(query, "start_ts")
-        end_ts = parse_ts(query, "end_ts")
-        if parsed.path == "/api/import":
-            stats = run_import()
-            send_json(self, stats.__dict__)
-            return
-        if parsed.path == "/api/refresh":
-            stats = run_import()
-            payload = analytics_service.dashboard(
-                first(query, "model"),
-                first(query, "range"),
-                first(query, "bucket", "day"),
-                first(query, "task_mode"),
-                start_ts,
-                end_ts,
-                first(query, "source"),
-            )
-            payload["import_stats"] = stats.__dict__
-            send_json(self, payload)
-            return
-        if parsed.path == "/api/ingest/opencode":
-            payload = read_json_body(self)
-            if payload is None:
-                self.send_error(400, "valid JSON object body is required")
+        try:
+            parsed = urlparse(self.path)
+            query = parse_qs(parsed.query)
+            start_ts = parse_ts(query, "start_ts")
+            end_ts = parse_ts(query, "end_ts")
+            if parsed.path == "/api/import":
+                stats = run_import()
+                send_json(self, stats.__dict__)
                 return
-            send_json(self, ingest_event(payload))
-            return
-        self.send_error(404)
+            if parsed.path == "/api/refresh":
+                stats = run_import()
+                payload = analytics_service.dashboard(
+                    first(query, "model"),
+                    first(query, "range"),
+                    first(query, "bucket", "day"),
+                    first(query, "task_mode"),
+                    start_ts,
+                    end_ts,
+                    first(query, "source"),
+                )
+                payload["import_stats"] = stats.__dict__
+                send_json(self, payload)
+                return
+            if parsed.path == "/api/ingest/opencode":
+                payload = read_json_body(self)
+                if payload is None:
+                    self.send_error(400, "valid JSON object body is required")
+                    return
+                send_json(self, ingest_event(payload))
+                return
+            self.send_error(404)
+        except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
+            LOGGER.info("client disconnected method=POST path=%s", self.path)
+        except Exception:
+            LOGGER.exception("request failed method=POST path=%s", self.path)
+            raise
 
     def handle_api(self, path: str, query: dict):
         range_key = first(query, "range")
@@ -171,4 +187,31 @@ class AnalyticsHandler(BaseHTTPRequestHandler):
         return queries.data_state(con)
 
     def log_message(self, format, *args):
-        return
+        LOGGER.debug(
+            "http client=%s request=%s",
+            self.address_string(),
+            format % args,
+        )
+
+    def log_request(self, code="-", size="-"):
+        try:
+            status_code = int(code)
+        except (TypeError, ValueError):
+            status_code = 0
+        level = logging.INFO if status_code >= 400 else logging.DEBUG
+        LOGGER.log(
+            level,
+            "http client=%s method=%s path=%s status=%s size=%s",
+            self.address_string(),
+            self.command,
+            self.path,
+            code,
+            size,
+        )
+
+    def log_error(self, format, *args):
+        LOGGER.warning(
+            "http error client=%s request=%s",
+            self.address_string(),
+            format % args,
+        )

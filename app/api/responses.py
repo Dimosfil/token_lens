@@ -10,4 +10,7 @@ def send_json(handler: BaseHTTPRequestHandler, payload) -> None:
     handler.send_header("Content-Type", "application/json; charset=utf-8")
     handler.send_header("Content-Length", str(len(data)))
     handler.end_headers()
-    handler.wfile.write(data)
+    try:
+        handler.wfile.write(data)
+    except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
+        pass

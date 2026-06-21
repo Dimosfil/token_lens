@@ -43,6 +43,27 @@ for summaries, daily trends, model calls, and grouped tasks.
 - Configuration: JSON file at `config.json`.
 - Agent memory: local/generated SQLite at `tools/project-memory/project_memory.sqlite`.
 
+## Runtime Resilience
+
+`start.ps1` launches the web/API server and desktop mini client as separate
+processes and records their PIDs under `data/`. Server stdout and stderr are
+captured in `data/server.out.log` and `data/server.err.log` so future unexpected
+exits have local diagnostic evidence.
+
+The Python runtime configures standard `logging` with a rotating UTF-8 log file.
+By default it writes `data/token-lens.log`, keeps five backups, and rotates at
+5 MB. `config.local.json` may override `log_file`, `log_level`,
+`log_max_bytes`, and `log_backup_count`. At the default `INFO` level, the log
+records server startup and shutdown, import start/success/failure stats, HTTP
+warnings/errors, client disconnects, and desktop mini self-heal attempts. Set
+`log_level` to `DEBUG` to include routine HTTP access lines.
+
+The desktop mini client treats a refused connection to a local API URL as a
+recoverable local-runtime failure. It starts `run_server.py`, waits for
+`/api/state`, then retries the failed poll or refresh. Recovery is limited to
+localhost-style URLs and rate-limited so remote or misconfigured API endpoints
+are not masked by spawning local processes repeatedly.
+
 ## Main Paths
 
 - `app/core/config.py`: loads `config.json` and resolves local paths.

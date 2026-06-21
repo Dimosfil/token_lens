@@ -154,7 +154,9 @@ function Start-TokenLensApp(
   [string[]]$SourcePaths,
   [string[]]$Arguments,
   [string]$FilePath = "",
-  [System.Diagnostics.ProcessWindowStyle]$WindowStyle
+  [System.Diagnostics.ProcessWindowStyle]$WindowStyle,
+  [string]$StandardOutputPath = "",
+  [string]$StandardErrorPath = ""
 ) {
   $existingProcess = Get-PidFileProcess $PidFile
   $matchingProcesses = @(Find-TokenLensPythonProcesses $Markers)
@@ -187,7 +189,22 @@ function Start-TokenLensApp(
   }
 
   $launchFilePath = if ([string]::IsNullOrWhiteSpace($FilePath)) { $script:python } else { $FilePath }
-  $proc = Start-Process -FilePath $launchFilePath -ArgumentList $Arguments -WorkingDirectory $root -WindowStyle $WindowStyle -PassThru
+  $startArgs = @{
+    FilePath = $launchFilePath
+    ArgumentList = $Arguments
+    WorkingDirectory = $root
+    WindowStyle = $WindowStyle
+    PassThru = $true
+  }
+  if (-not [string]::IsNullOrWhiteSpace($StandardOutputPath)) {
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $StandardOutputPath) | Out-Null
+    $startArgs.RedirectStandardOutput = $StandardOutputPath
+  }
+  if (-not [string]::IsNullOrWhiteSpace($StandardErrorPath)) {
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $StandardErrorPath) | Out-Null
+    $startArgs.RedirectStandardError = $StandardErrorPath
+  }
+  $proc = Start-Process @startArgs
   Set-Content -Path $PidFile -Value $proc.Id -Encoding ASCII
   Write-Host "$Name started. PID: $($proc.Id)"
   return $proc
@@ -271,7 +288,9 @@ $server = Start-TokenLensApp `
   -Markers @("run_server.py") `
   -SourcePaths @((Join-Path $root "app"), (Join-Path $root "run_server.py")) `
   -Arguments @("run_server.py") `
-  -WindowStyle Hidden
+  -WindowStyle Hidden `
+  -StandardOutputPath (Join-Path $dataDir "server.out.log") `
+  -StandardErrorPath (Join-Path $dataDir "server.err.log")
 
 $state = Wait-TokenLensApi $url
 if (-not $state) {
@@ -290,7 +309,9 @@ if (-not $NoMini) {
     -SourcePaths @((Join-Path $root "desktop\mini_client.py")) `
     -Arguments @("desktop\mini_client.py", "--base-url", $url) `
     -FilePath $script:pythonw `
-    -WindowStyle Normal
+    -WindowStyle Normal `
+    -StandardOutputPath (Join-Path $dataDir "mini-client.out.log") `
+    -StandardErrorPath (Join-Path $dataDir "mini-client.err.log")
 
   $miniWindowProcess = Wait-TokenLensWindowProcess -ProcessId $mini.Id -Markers $miniMarkers
   if ($miniWindowProcess) {

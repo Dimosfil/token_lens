@@ -4,7 +4,10 @@ import argparse
 import ctypes
 from datetime import datetime
 import json
+import logging
 from pathlib import Path
+import subprocess
+import sys
 import threading
 import time
 import tkinter as tk
@@ -14,14 +17,22 @@ try:
 except ImportError:
     winsound = None
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from app.core.logging_config import configure_logging
 LOGO_PATH = ROOT / "Logo.png"
 ICON_PATH = ROOT / "Logo.ico"
 SETTINGS_PATH = ROOT / "data" / "mini_settings.json"
+SERVER_SCRIPT_PATH = ROOT / "run_server.py"
+SERVER_PID_PATH = ROOT / "data" / "server.pid"
+SERVER_OUT_LOG_PATH = ROOT / "data" / "server.out.log"
+SERVER_ERR_LOG_PATH = ROOT / "data" / "server.err.log"
 DEFAULT_BASE_URL = "http://127.0.0.1:8765"
 DEFAULT_LIMIT = 4
 DEFAULT_REFRESH_MS = 5000
@@ -48,6 +59,10 @@ SIGNAL_CHOICES = {
     "Hand": 0x00000010,
     "Question": 0x00000020,
 }
+LOCAL_API_HOSTS = {"127.0.0.1", "localhost", "::1"}
+SERVER_START_TIMEOUT_SECONDS = 15
+SERVER_START_RETRY_SECONDS = 20
+LOGGER = logging.getLogger("token_lens.mini")
 
 
 def parse_args() -> argparse.Namespace:
@@ -137,6 +152,79 @@ def setting_str(settings: dict, key: str, default: str) -> str:
 def normalize_source(value) -> str:
     text = str(value or "").strip().lower()
     return text if text in {source for _label, source in SOURCE_CHOICES} else DEFAULT_SOURCE
+
+
+def is_local_api_url(base_url: str) -> bool:
+    try:
+        parsed = urlparse(base_url)
+    except ValueError:
+        return False
+    return parsed.scheme in {"http", "https"} and (parsed.hostname or "").lower() in LOCAL_API_HOSTS
+
+
+def is_connection_refused(error: Exception) -> bool:
+    candidates = [error]
+    reason = getattr(error, "reason", None)
+    if isinstance(reason, BaseException):
+        candidates.append(reason)
+    context = getattr(error, "__context__", None)
+    if isinstance(context, BaseException):
+        candidates.append(context)
+
+    for candidate in candidates:
+        if getattr(candidate, "winerror", None) == 10061:
+            return True
+        if getattr(candidate, "errno", None) in {61, 111, 10061}:
+            return True
+        text = str(candidate).lower()
+        if "10061" in text or "connection refused" in text or "подключение не установлено" in text:
+            return True
+    return False
+
+
+def python_for_server() -> str:
+    executable = Path(sys.executable)
+    if executable.name.lower() == "pythonw.exe":
+        python_exe = executable.with_name("python.exe")
+        if python_exe.exists():
+            return str(python_exe)
+    return str(executable)
+
+
+def start_local_server_process() -> subprocess.Popen:
+    if not SERVER_SCRIPT_PATH.exists():
+        raise FileNotFoundError(f"Cannot find {SERVER_SCRIPT_PATH}")
+    SERVER_PID_PATH.parent.mkdir(parents=True, exist_ok=True)
+    creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    stdout = SERVER_OUT_LOG_PATH.open("ab")
+    stderr = SERVER_ERR_LOG_PATH.open("ab")
+    try:
+        process = subprocess.Popen(
+            [python_for_server(), str(SERVER_SCRIPT_PATH)],
+            cwd=str(ROOT),
+            stdout=stdout,
+            stderr=stderr,
+            stdin=subprocess.DEVNULL,
+            close_fds=False,
+            creationflags=creationflags,
+        )
+    finally:
+        stdout.close()
+        stderr.close()
+    SERVER_PID_PATH.write_text(str(process.pid), encoding="ascii")
+    LOGGER.info("local server process started pid=%s", process.pid)
+    return process
+
+
+def wait_for_api(api: "ApiClient", timeout_seconds: int = SERVER_START_TIMEOUT_SECONDS) -> bool:
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        try:
+            api.get_json("/api/state")
+            return True
+        except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError):
+            time.sleep(0.5)
+    return False
 
 
 class FLASHWINFO(ctypes.Structure):
@@ -361,6 +449,7 @@ class MiniClientApp:
         self.closed = False
         self.poll_after_id = None
         self.settings_after_id = None
+        self.last_server_start_attempt = 0.0
         self.seen_signal_rows = set()
         self.signal_seen_initialized = False
         self.last_signal_key = None
@@ -608,14 +697,7 @@ class MiniClientApp:
 
     def _poll_worker(self):
         try:
-            state = self.api.get_json("/api/state")
-            source_context = self.load_source_context()
-            if self.data_version is None or state.get("version") != self.data_version:
-                rows = self.load_rows()
-                self._ui(lambda: self.render_rows(rows, state.get("version"), source_context))
-            else:
-                self._ui(lambda: self.render_source_context(source_context))
-                self._ui(lambda: self.set_checked_status())
+            self.run_with_api_recovery(self.poll_once)
         except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError) as error:
             self._ui(lambda: self.set_error(error))
         finally:
@@ -623,20 +705,63 @@ class MiniClientApp:
 
     def _refresh_worker(self, import_first: bool):
         try:
-            if import_first:
-                dashboard = self.api.post_json("/api/refresh", self.query())
-                rows = dashboard.get("tasks", [])
-                version = dashboard.get("state", {}).get("version")
-                source_context = self.source_context_from_dashboard(dashboard)
-            else:
-                rows = self.load_rows()
-                version = self.api.get_json("/api/state").get("version")
-                source_context = self.load_source_context()
-            self._ui(lambda: self.render_rows(rows, version, source_context))
+            self.run_with_api_recovery(lambda: self.refresh_once(import_first))
         except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError) as error:
             self._ui(lambda: self.set_error(error))
         finally:
             self._ui(self._finish_worker)
+
+    def poll_once(self):
+        state = self.api.get_json("/api/state")
+        source_context = self.load_source_context()
+        if self.data_version is None or state.get("version") != self.data_version:
+            rows = self.load_rows()
+            self._ui(lambda: self.render_rows(rows, state.get("version"), source_context))
+        else:
+            self._ui(lambda: self.render_source_context(source_context))
+            self._ui(lambda: self.set_checked_status())
+
+    def refresh_once(self, import_first: bool):
+        if import_first:
+            dashboard = self.api.post_json("/api/refresh", self.query())
+            rows = dashboard.get("tasks", [])
+            version = dashboard.get("state", {}).get("version")
+            source_context = self.source_context_from_dashboard(dashboard)
+        else:
+            rows = self.load_rows()
+            version = self.api.get_json("/api/state").get("version")
+            source_context = self.load_source_context()
+        self._ui(lambda: self.render_rows(rows, version, source_context))
+
+    def run_with_api_recovery(self, operation):
+        try:
+            return operation()
+        except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError) as error:
+            if not self.try_recover_local_server(error):
+                raise
+            return operation()
+
+    def try_recover_local_server(self, error: Exception) -> bool:
+        if not is_local_api_url(self.api.base_url) or not is_connection_refused(error):
+            return False
+        now = time.monotonic()
+        if now - self.last_server_start_attempt < SERVER_START_RETRY_SECONDS:
+            LOGGER.warning("local server recovery skipped retry_window_seconds=%s error=%s", SERVER_START_RETRY_SECONDS, error)
+            return False
+        self.last_server_start_attempt = now
+        self._ui(lambda: self.status_var.set("Starting local server"))
+        LOGGER.warning("local server connection refused; attempting recovery base_url=%s error=%s", self.api.base_url, error)
+        try:
+            start_local_server_process()
+        except OSError:
+            LOGGER.exception("local server recovery failed during process start")
+            return False
+        if not wait_for_api(self.api):
+            LOGGER.error("local server recovery failed waiting for api base_url=%s", self.api.base_url)
+            return False
+        self._ui(lambda: self.status_var.set("Local server restarted"))
+        LOGGER.info("local server recovery succeeded base_url=%s", self.api.base_url)
+        return True
 
     def _finish_worker(self):
         self.worker_running = False
@@ -982,6 +1107,7 @@ class MiniClientApp:
 def main():
     args = parse_args()
     settings, settings_save_enabled = load_mini_settings_with_status()
+    configure_logging()
     base_url = setting_str(settings, "base_url", args.base_url)
     limit = setting_int(settings, "limit", args.limit, 1, 50)
     refresh_ms = setting_int(settings, "refresh_ms", args.refresh_ms, 1000, 60000)
@@ -1002,6 +1128,7 @@ def main():
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_USER_MODEL_ID)
     except (AttributeError, OSError):
         pass
+    LOGGER.info("mini client starting base_url=%s refresh_ms=%s source=%s", base_url, refresh_ms, source)
     root = tk.Tk()
     app = MiniClientApp(
         root,
