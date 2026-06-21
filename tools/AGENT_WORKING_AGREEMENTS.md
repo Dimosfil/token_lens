@@ -53,6 +53,14 @@
   non-trivial feature, business-rule, data-model, integration, or architecture
   work, update the relevant project-memory specification in the same scoped
   change.
+- When this project depends on, researches, vendors, or regularly interacts with
+  external repositories, cloned examples, services, libraries, documentation
+  sites, or upstream tools, keep
+  `tools/project-memory/specs/integration-contracts/connected-projects.md` as
+  the connected-projects register. Read it before touching integrations,
+  nested repositories, cloned examples, or external project folders, and update
+  it when a connected project is added, removed, replaced, relocated, or
+  materially changes role.
 
 ## Git
 
@@ -86,10 +94,13 @@
   checklist showing `English` as always selected and current additional
   languages as checked. Explain that `English` is the required primary
   commit-message language and cannot be disabled. Ask the user to reply with
-  language names or numbers. Render each option as a task-list bullet with the
-  number inside the label, such as `- [x] 1. English`; do not use
-  `1. [x] English`, because some chat renderers split the checkbox and label
-  onto separate lines.
+  language names or numbers. Render each option as a plain inline checkbox
+  marker with the number and label on the same physical line, such as
+  `[x] 1. English` or `[ ] 2. Russian`. Do not use Markdown task-list syntax
+  such as `- [x] 1. English` or ordered-task syntax such as `1. [x] English`,
+  because some chat renderers split the checkbox control and label onto
+  separate lines. Never emit a standalone checkbox line followed by a separate
+  numbered label line.
 - When reporting this change, mention the plain
   `tools/project-memory/git-preferences.json` path instead of malformed or
   placeholder markdown links.
@@ -127,9 +138,12 @@ or:
   as requests to configure three ordered language sequences: project working
   environment, commit messages, and tasks.
 - If the unified project-language command does not include explicit languages,
-  ask in three numbered steps. For each step, show a concise numbered Markdown
-  checklist with the available languages and the current selection, then accept
-  the user's next answer as numbers or language names for that step.
+  ask in three numbered steps. For each step, show a concise plain inline
+  numbered checkbox marker checklist with the available languages and the
+  current selection, then accept the user's next answer as numbers or language
+  names for that step.
+- When a unified project-language step has no current selection, default it to
+  `1 2`: `English`, then `Russian`.
 - If the user replies with only numbers, such as `1 2`, map them to the most
   recent checklist and preserve that order. Do not ask what those numbers mean
   after showing the checklist.
@@ -211,6 +225,10 @@ or:
   notes, old refactoring phases, or local commits ahead of a remote only as
   context when relevant. Do not offer to continue, run, finish, or push
   remembered work unless the user explicitly asks for that action.
+- Treat `gi start sprint`, `gi sprint start`, and equivalent active-sprint
+  wording as more specific than plain `gi start`: continue through the
+  configured task-manager workflow instead of stopping after generic startup
+  restore.
 - Run `gi` commands against this project root. Do not switch to another
   repository, the shared instruction library, or a path from an older task unless
   the user explicitly asks.
@@ -293,12 +311,21 @@ or:
   guide/contract lacks the requested capability. Do not fall back to `base_url`,
   stale task-manager memory, port scans, sibling projects, or guessed endpoints.
 - Treat `gi reboot`, `ги ребут`, `gi restart`, and `ги рестарт` as requests to
-  start or restart the current application using project-local run instructions.
-  After launch, wait briefly and verify a documented startup success signal
-  beyond PID creation: a still-running expected process, visible desktop window
-  when applicable, health/discovery endpoint for web/API apps, and relevant
-  startup or crash logs when documented. If no expected signal appears, report
-  startup as failed or unverified with concrete evidence.
+  start or restart all documented applications in the current project using
+  project-local run instructions. If local instructions define a preferred
+  start/restart command that launches the full app set, use it. Otherwise
+  enumerate every documented app or runtime, such as desktop app, web/API app,
+  and background workers, then restart each running app and start each missing
+  app in the background. After launch, wait briefly and verify a documented
+  startup success signal for each app beyond PID creation: still-running
+  expected processes, visible desktop windows when applicable, health/discovery
+  endpoints for web/API apps, worker readiness signals, and relevant startup or
+  crash logs when documented. The final report must account for each app by name
+  or role with started/restarted/skipped status and verification evidence. Do not
+  report success from a PID alone, from a web health check alone, or while any
+  expected desktop app, web/API app, or worker is unlaunched or unverified. If
+  any expected signal is missing, report startup as failed or partially
+  unverified with concrete evidence.
 - Treat `gi ftp`, `ги фтп`, `gi ftp push`, and `ги фтп пуш` as requests to
   upload configured build output to FTP, FTPS, or SFTP. Treat `gi ftp config`
   as FTP/SFTP config setup without uploading, `gi ftp folder` as remote folder
@@ -360,6 +387,14 @@ or:
   `ги раг ребилд` as heavy full GI/RAG tooling rebuild requests requiring
   explicit confirmation immediately before execution. Node forms for `sql`,
   `chunks`, `vector`, `manifest`, and `evals` rebuild only that documented node.
+  For `evals`, prefer machine-checkable retrieval checks that verify index
+  health, count consistency, generated-index ignore rules, and expected source
+  paths in top keyword, semantic, or hybrid results; do not treat an answer's
+  wording as the primary eval target.
+- During `gi обновить`, migrations that change RAG source rules, indexers,
+  chunking, embedding metadata, vector schemas, retrieval adapters, or eval
+  scripts leave affected rebuild state stale until documented rebuild and
+  status checks succeed.
 - Use Context7 or similar external documentation retrieval only when configured
   or explicitly requested for public library, framework, SDK, and API docs. Do
   not send secrets, credentials, private source, business rules, user data,

@@ -68,6 +68,19 @@ non-trivial feature, business-rule, data-model, integration, or architecture
 work, update the relevant project-memory specification in the same scoped
 change.
 
+When this project depends on, researches, vendors, or regularly interacts with
+other local repositories, cloned examples, services, libraries, documentation
+sites, or upstream tools, keep a connected-projects register in project memory,
+preferably
+`tools/project-memory/specs/integration-contracts/connected-projects.md`.
+Record each connected project's purpose, business or architectural role, local
+folder when applicable, canonical Git/package/docs URLs, service IDs or runtime
+endpoints, source of truth, data/API contract, setup/update commands, privacy
+boundaries, status, and why the dependency still exists. Read this register
+before touching integrations, nested repositories, cloned examples, or external
+project folders, and update it when adding, removing, replacing, relocating, or
+materially changing a connected project.
+
 Treat `gi summary` / `gi саммари` as requests to write a thematic handoff
 summary under `tools/summary/`. Summaries should preserve the meaning of the
 thread, not routine terminal or git bookkeeping: break the thread into
@@ -300,6 +313,14 @@ Inspect logs:
   missing or mismatched. Do not create raw intake receipts, local checklist
   notes, or a different manager object type as a substitute for the requested
   task, sprint, or cycle.
+- Treat `gi start sprint`, `gi sprint start`, and equivalent active-sprint
+  wording as requests to take the active Sprint/Cycle into work through the
+  configured task manager. Resolve the manager through config-service, read the
+  guide when present and then the contract, request the active sprint/cycle or
+  next task through the documented operation, move work through documented
+  lifecycle states, and submit completion through the manager contract. Stop
+  with the exact blocker instead of falling back to generic `gi start`, local
+  task notes, raw intake, guessed endpoints, or filesystem task edits.
 - Treat task-manager sync commands as routine integration steps after the user
   has supplied sprint/task content or selected the workflow. Still follow
   config-service discovery, service guide, strict contract, documented payloads,
@@ -337,15 +358,23 @@ Inspect logs:
   shape. Do not commit hostnames, usernames, passwords, tokens, private keys, or
   private remote paths unless project policy explicitly marks them non-secret.
 - Treat `gi reboot`, `ги ребут`, `gi restart`, and `ги рестарт` as requests to
-  start or restart the current application using project-local run instructions.
-  If the app is running, restart it; if it is not running, start it. Launch in
-  the background so focus does not jump away from the user's current window.
-  After launch, wait briefly and verify the documented startup success signal:
-  a still-running expected process, visible desktop window when applicable,
-  health/discovery endpoint for web/API apps, and relevant startup or crash logs
-  when documented. Do not report reboot success from a PID alone. If the process
-  exits, no expected window or health signal appears, or a new startup traceback
-  is present, report the reboot as failed or unverified with concrete evidence.
+  start or restart all documented applications in the current project using
+  project-local run instructions. If local instructions define a preferred
+  start/restart command that launches the full app set, use it. Otherwise
+  enumerate every documented app or runtime, such as desktop app, web/API app,
+  and background workers, then restart each running app and start each missing
+  app. Launch in the background so focus does not jump away from the user's
+  current window. After launch, wait briefly and verify the documented startup
+  success signal for each app: still-running expected processes, visible
+  desktop windows when applicable, health/discovery endpoints for web/API apps,
+  worker readiness signals, and relevant startup or crash logs when documented.
+  The final report must account for each app by name or role with
+  started/restarted/skipped status and verification evidence. Do not report
+  reboot success from a PID alone, from a web health check alone, or while any
+  expected desktop app, web/API app, or worker is unlaunched or unverified. If
+  any app exits, no expected window or health signal appears, or a new startup
+  traceback is present, report the reboot as failed or partially unverified with
+  concrete evidence.
 - Treat `gi first test`, `gi первый тест`, and `ги первый тест` as first-launch
   verification requests. Read project-local run, cleanup, cache reset, and test
   instructions before clearing anything. Reset only documented project-owned
@@ -408,6 +437,8 @@ Inspect logs:
   of Done text from another configured language into the main-language text.
 - For each `gi язык` choice, preserve the user's selected order. The first
   selected language in each choice is primary for that surface.
+- When no current selection exists for a unified project-language surface, use
+  `1 2` as the default ordered selection: `English`, then `Russian`.
 - Do not commit secrets, credentials, local databases, logs, or generated caches.
 - Do not print full `git diff` output by default. Prefer `git diff --stat` and
   targeted queries for relevant files or patterns.
@@ -454,6 +485,10 @@ Inspect logs:
 - `gi start` and `gi restore` must not promote remembered plans, old task notes,
   or local commits ahead of a remote into suggested next actions unless the user
   explicitly asks to continue, run, push, or finish them.
+- Treat `gi start sprint`, `gi sprint start`, and equivalent active-sprint
+  wording as more specific than plain `gi start`: restore only the startup
+  context required for task-manager work, then route through the configured
+  manager workflow instead of generic startup restore.
 - Treat short greetings, thanks, acknowledgements, and status-neutral messages
   as no-ops unless they include an explicit task, path, command, error, or
   project question. Do not run startup restore for those messages.
@@ -469,10 +504,13 @@ Inspect logs:
   free-form line. At each step, show the same numbered Markdown checklist of
   available languages with the current selection checked, name the current
   surface, and tell the user they may reply with numbers or language names.
-  Render each option as a task-list bullet with the number inside the label,
-  such as `- [x] 1. English`; do not use ordered-task syntax such as
-  `1. [x] English`, because some chat renderers split the checkbox and label
-  onto separate lines.
+  Render each option as a plain inline checkbox marker with the number and
+  label on the same physical line, such as `[x] 1. English` or
+  `[ ] 2. Russian`. Do not use Markdown task-list syntax such as
+  `- [x] 1. English` or ordered-task syntax such as `1. [x] English`, because
+  some chat renderers split the checkbox control and label onto separate lines.
+  Never emit a standalone checkbox line followed by a separate numbered label
+  line.
 - When the user replies to that flow with a numeric-only answer such as `1 2`,
   interpret the numbers against the most recent language checklist and apply the
   resulting ordered languages to the current step. Do not ask which languages
@@ -517,8 +555,12 @@ Inspect logs:
   rebuild, after listing source groups, privacy exclusions, generated paths that
   may be replaced, node commands, status checks, and required external services
   or dependencies. Node forms for `sql`, `chunks`, `vector`, `manifest`, and
-  `evals` rebuild only that documented node. Keep `gi sql`, `gi sqlite`, and
-  `gi vector` as inspection-only commands.
+  `evals` rebuild only that documented node. For an `evals` node, prefer
+  machine-checkable retrieval checks that verify index health, count
+  consistency, generated-index ignore rules, and expected source paths in top
+  keyword, semantic, or hybrid results; do not treat an answer's wording as the
+  primary eval target. Keep `gi sql`, `gi sqlite`, and `gi vector` as
+  inspection-only commands.
 - During `gi обновить`, inspect newly applied migrations for RAG-impacting
   changes. If they change source rules, chunking, embedding metadata,
   SQLite/vector schemas, retrieval adapters, or project-memory index scripts,

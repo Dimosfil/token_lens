@@ -1,4 +1,4 @@
-# Token Lens GI Commands
+﻿# Token Lens GI Commands
 
 This is the compact local command index for agent chat commands. These are not
 PowerShell commands unless a command explicitly points to a script path.
@@ -26,11 +26,11 @@ files, or executing any listed command.
 | `gi tools rebuild chunks`, `gi rag rebuild chunks` | Rebuild only semantic chunk exports. |
 | `gi tools rebuild vector`, `gi rag rebuild vector` | Rebuild only the vector retrieval node. |
 | `gi tools rebuild manifest`, `gi rag rebuild manifest` | Rebuild only source manifest/inventory metadata. |
-| `gi tools rebuild evals`, `gi rag rebuild evals` | Run or rebuild retrieval eval artifacts only. |
+| `gi tools rebuild evals`, `gi rag rebuild evals` | Run configured RAG health and retrieval eval checks only. |
 | `gi config`, `gi config service` | Inspect config/discovery service settings. |
 | `gi config service url=<url>` | Set the config-service URL after validation. |
 | `gi config service on`, `gi config service off` | Toggle this app's config-service self-registration flag. |
-| `gi reboot`, `gi restart`, `ги ребут`, `ги рестарт` | Start or restart Token Lens using project-local run instructions. |
+| `gi reboot`, `gi restart`, `ги ребут`, `ги рестарт` | Start or restart all documented Token Lens apps using project-local run instructions. |
 | `gi first test`, `gi первый тест` | Reset documented first-run state and verify first-launch behavior. |
 | `gi install`, `gi инсталл`, `ги инсталл` | Build/package the project and verify an installer artifact when packaging is configured. |
 | `gi ftp config`, `gi ftp service`, `gi ftp folder` | Inspect or configure FTP/SFTP deployment settings without uploading. |
@@ -40,7 +40,7 @@ files, or executing any listed command.
 | `gi active task`, `gi next task`, `gi get task` | Get executable work from the configured task manager. |
 | `gi add sprint`, `gi create sprint` | Create a visible Sprint/Cycle through the configured task manager. |
 | `gi plan`, `gi план`, `gi post plan` | Send the current plan to the configured task manager. |
-| `gi start sprint`, `gi старт спринт` | Take the active Sprint/Cycle into work. |
+| `gi start sprint`, `gi старт спринт` | Take the active Sprint/Cycle into work through the configured task manager. |
 | `gi test plan`, `gi тест-план` | Build a verification plan from current project contracts. |
 | `gi git summary`, `gi гит-обзор` | Summarize recent git state without printing a full diff. |
 | `gi commit`, `gi коммит` | Commit scoped changes. |

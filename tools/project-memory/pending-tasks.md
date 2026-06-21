@@ -26,6 +26,18 @@ Planned changes:
 - [x] Add focused tests for settings load status and overwrite protection.
 - [x] Run syntax and helper tests, then restart the affected app set.
 
+### Windows Desktop Autostart 2026-06-20
+
+Goal: add Windows startup autostart for the Token Lens desktop app through the
+standard project launcher.
+
+Planned changes:
+
+- [x] Inspect current autostart and desktop launch scripts.
+- [x] Point the hidden Startup launcher at `start.ps1`.
+- [x] Install or refresh the Windows Startup shortcut.
+- [x] Verify shortcut target and app startup.
+
 ### Desktop Limit Bar Full Marker 2026-06-19
 
 Goal: make Token Lens Mini account-limit bars clearly show which windows are
@@ -931,3 +943,26 @@ Planned changes:
       available.
 - [x] Update runbook startup notes for the single-window expectation.
 - [x] Restart and verify web/API plus mini-client process/window state.
+
+### Mini Client Server Self-Heal 2026-06-21
+
+Goal: keep Token Lens Mini connected when the local API server exits and preserve enough logs to diagnose future exits.
+
+Planned changes:
+
+- [x] Add local API restart/retry behavior in the mini client for refused local connections.
+- [x] Capture server stdout/stderr from project startup scripts.
+- [x] Avoid noisy broken-client tracebacks from JSON responses.
+- [x] Run focused tests and restart verification.
+
+### Full Runtime Logging 2026-06-21
+
+Goal: add production-style local logging for Token Lens server, imports, API failures, and mini-client recovery.
+
+Planned changes:
+
+- [x] Add shared rotating-file logging configuration.
+- [x] Log server startup, import lifecycle, API errors, and client disconnects.
+- [x] Log mini-client local server recovery events.
+- [x] Document runtime logging behavior in project memory.
+- [x] Run tests, restart, and verify log output.

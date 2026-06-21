@@ -40,11 +40,28 @@ tools/project-memory/
     business-rules/
     data-model/
     integration-contracts/
+      connected-projects.md
 ```
 
 Split documents by meaning. Keep feature behavior, business logic, architecture
 history, and implementation mapping searchable as separate focused files instead
 of one giant document.
+
+Keep a connected-projects register when this project depends on, researches,
+vendors, or regularly interacts with external repositories, cloned examples,
+services, libraries, documentation sites, upstream tools, or sibling
+workspaces:
+
+```text
+tools/project-memory/specs/integration-contracts/connected-projects.md
+```
+
+For each connected project, record its purpose, business or architectural role,
+approved local folder when applicable, canonical Git/package/docs URLs, service
+IDs or endpoints, source of truth, data/API contract, safe setup or update
+commands, privacy boundaries, status, and why the dependency still exists.
+Agents should read the register before touching integrations, nested
+repositories, cloned examples, or external project folders.
 
 For each non-trivial feature or workflow, record:
 
@@ -168,6 +185,19 @@ python .\tools\project-memory\build_project_memory_index.py export-chunks
 uv run --with chromadb python .\tools\project-memory\build_chroma_index.py rebuild
 ```
 
+Run local RAG health checks and retrieval evals when an eval runner is present:
+
+```powershell
+python .\tools\project-memory\rag_check.py health
+python .\tools\project-memory\rag_check.py run
+```
+
+These checks should verify configured RAG files are readable and free of obvious
+secret-path risks, generated indexes are ignored when rebuildable, SQLite chunk
+counts match semantic corpus counts, vector records match the semantic corpus
+when vector retrieval is enabled, and reviewable eval cases in
+`retrieval-evals.json` return expected source paths.
+
 ## Activation Limits And Diagnostics
 
 Start with Markdown specifications and targeted search. Use generated databases
@@ -215,6 +245,9 @@ count, index path, freshness caveats, and readiness.
   retrieval quality.
 - `build_chroma_index.py`: optional local Chroma adapter when semantic
   retrieval is enabled.
+- `rag_check.py`: optional local RAG health and retrieval eval runner.
+- `retrieval-evals.json`: reviewable retrieval eval cases for keyword,
+  semantic, or hybrid evidence checks.
 - `NOTES.md`: reviewable export of durable notes from local agent memory.
 - `architecture.md`: verified architecture notes.
 - `decisions.md`: durable decisions and rationale.

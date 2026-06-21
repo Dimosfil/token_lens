@@ -127,8 +127,8 @@
         "status_command": "uv run --with chromadb python .\\tools\\project-memory\\build_chroma_index.py status"
       },
       "evals": {
-        "command": "",
-        "status_command": ""
+        "command": "python .\\tools\\project-memory\\rag_check.py run",
+        "status_command": "python .\\tools\\project-memory\\rag_check.py health"
       }
     },
     "state": {

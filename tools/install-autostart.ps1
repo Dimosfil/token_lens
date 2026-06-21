@@ -18,10 +18,10 @@ if ($Uninstall) {
   exit 0
 }
 
-$desktopLauncher = Join-Path $root "desktop-mini.vbs"
-$startScript = Join-Path $root "desktop-mini.ps1"
-if (-not (Test-Path $desktopLauncher)) {
-  throw "Cannot find desktop launcher: $desktopLauncher"
+$hiddenLauncher = Join-Path $root "desktop-mini.vbs"
+$startScript = Join-Path $root "start.ps1"
+if (-not (Test-Path $hiddenLauncher)) {
+  throw "Cannot find hidden launcher: $hiddenLauncher"
 }
 if (-not (Test-Path $startScript)) {
   throw "Cannot find desktop start script: $startScript"
@@ -31,7 +31,7 @@ $wscript = Join-Path $env:SystemRoot "System32\wscript.exe"
 $shell = New-Object -ComObject WScript.Shell
 $shortcut = $shell.CreateShortcut($shortcutPath)
 $shortcut.TargetPath = $wscript
-$shortcut.Arguments = "`"$desktopLauncher`""
+$shortcut.Arguments = "`"$hiddenLauncher`""
 $shortcut.WorkingDirectory = $root
 $shortcut.Description = "Start Token Lens web server and desktop mini client"
 $shortcut.WindowStyle = 7

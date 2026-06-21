@@ -5,8 +5,17 @@ description: Read, write, import, export, test, and reconcile project plans with
 
 # Task Manager Plans
 
-Use this skill to move plans between project memory and one or more
-configured task managers.
+Use this skill to move plans between project memory and one or more configured
+task managers, and to execute routine task-manager sync commands.
+
+Task-manager sync is an execution/integration layer, not open-ended planning.
+After the user has supplied the sprint/task content or selected the workflow, a
+fast or weaker model may run it, but it must follow the manager guide and
+contract exactly. Do not substitute `project-memory`, `pending-tasks.md`, raw
+intake receipts, guessed commands, local checklists, Work Items, or "tell me the
+exact command" fallback for manager API operations. If discovery, auth,
+contract, capability, payload shape, lifecycle identifiers, or readback is
+missing, stop and report the exact blocker.
 
 ## Core Workflow
 
@@ -34,8 +43,10 @@ configured task managers.
    updating existing tasks.
 11. Treat task-manager data as an external system: preview destructive changes
    and ask before deleting, closing, or bulk-changing remote tasks.
-12. Record sync results in the project memory file or user-facing response,
-   including what changed and what still needs manual follow-up.
+12. Record sync results in the project memory file or user-facing response only
+   after the manager operation has been attempted through the documented API.
+   Local notes are audit/supporting context, not a substitute for manager
+   readback or lifecycle identifiers.
 13. Describe roles precisely: the agent takes and executes tasks through the
    manager; the manager stores the queue, assignment, ordering, and lifecycle
    metadata.
@@ -116,11 +127,14 @@ When the user runs `gi tm`:
 3. If enabled managers exist, update the project task-manager skill/config from
    the shared instruction kit when a newer migration is available, then report
    the connected managers and next available sync action.
-4. If no enabled manager exists, show a short numbered Markdown checklist with
-   checkbox items for available adapters plus `none`, and ask which to connect.
-   Render each option as a task-list bullet with the number inside the label,
-   such as `- [ ] 1. WorkNest`; do not use ordered-task syntax such as
-   `1. [ ] WorkNest`.
+4. If no enabled manager exists, show a short plain inline numbered checkbox
+   marker checklist with available adapters plus `none`, and ask which to connect.
+   Render each option as a plain inline checkbox marker with the number and
+   label on the same physical line, such as `[ ] 1. WorkNest`. Do not use
+   Markdown task-list syntax such as `- [ ] 1. WorkNest` or ordered-task syntax
+   such as `1. [ ] WorkNest`, because some chat renderers split the checkbox
+   control and label onto separate lines. Never emit a standalone checkbox line
+   followed by a separate numbered label line.
 5. After the user chooses managers, create or update
    `tools/project-memory/task-managers.json` from the shared template.
 6. Do not finish manager setup with required project fields left as `TODO`. Ask
@@ -135,8 +149,8 @@ Example checklist:
 ```markdown
 Choose task-manager adapters for plan sync:
 
-- [ ] 1. WorkNest - send plans to WorkNest raw intake.
-- [ ] 2. none - do not connect a task manager now.
+[ ] 1. WorkNest - send plans to WorkNest raw intake.
+[ ] 2. none - do not connect a task manager now.
 ```
 
 ## `gi план` / `gi post plan`
@@ -263,25 +277,28 @@ When the user runs `gi старт спринт`, `gi start sprint`, or an equiva
 start-active-sprint command:
 
 1. Restore project context as for `gi старт`.
-2. Read configured task managers from
+2. Treat this command as more specific than plain `gi старт` / `gi start`;
+   continue through the configured task-manager workflow instead of stopping
+   after generic startup restore.
+3. Read configured task managers from
    `tools/project-memory/task-managers.json`.
-3. Use the enabled manager's sprint workflow to find the active sprint.
-4. Verify the manager supports active sprint lookup and task completion for the
+4. Use the enabled manager's sprint workflow to find the active sprint.
+5. Verify the manager supports active sprint lookup and task completion for the
    requested workflow. If those capabilities are missing, report the endpoint
    mismatch and stop.
-5. When a manager endpoint returns an unexpected method, parameter, or routing
+6. When a manager endpoint returns an unexpected method, parameter, or routing
    error, re-read the adapter's endpoint contract before trying a workaround.
-6. If an intake receipt lacks the identifiers required for next-task,
+7. If an intake receipt lacks the identifiers required for next-task,
    task-completed, archive, or close flows, report the task-manager contract gap
    and stop instead of inventing a replacement plan.
-7. If exactly one active sprint exists, the agent takes it in work through the
+8. If exactly one active sprint exists, the agent takes it in work through the
    manager. If none or many exist, ask the user to choose.
-8. Execute sprint tasks in manager-defined order until no `todo` or `ready`
+9. Execute sprint tasks in manager-defined order until no `todo` or `ready`
    tasks remain or a blocker requires user input.
-9. Update task status, progress, blocker notes, and completion notes according
+10. Update task status, progress, blocker notes, and completion notes according
    to the manager adapter after each task.
-10. Keep normal safety rules: ask before destructive actions, credential changes,
-    broad rewrites, or irreversible external changes.
+11. Keep normal safety rules: ask before destructive actions, credential changes,
+   broad rewrites, or irreversible external changes.
 
 ## Task-Manager Role
 

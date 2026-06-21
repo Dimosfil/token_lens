@@ -1,5 +1,5 @@
 ﻿{
-    "instruction_kit_version":  "2026.06.18.4",
+    "instruction_kit_version":  "2026.06.19.3",
     "source":  "https://github.com/Dimosfil/general-instructions.git",
     "installed_at":  "2026-05-19T23:11:04+03:00",
     "update_check":  {
@@ -20,9 +20,12 @@
                          "tools/project-memory/system-preferences.json",
                          "tools/project-memory/build_project_memory_index.py",
                          "tools/project-memory/build_chroma_index.py",
+                         "tools/project-memory/rag_check.py",
+                         "tools/project-memory/retrieval-evals.json",
                          "tools/project-memory/rag-system.json",
                          "tools/project-memory/architecture-migrations.md",
                          "tools/project-memory/semantic-retrieval-evals.md",
+                         "tools/project-memory/specs/integration-contracts/connected-projects.md",
                          "tools/select-project-language.ps1",
                          "tools/select-git-commit-languages.ps1",
                          "tools/select-system-language.ps1",
@@ -127,7 +130,15 @@
                                "2026.06.18.1__keep_handoff_summaries_substance_focused",
                                "2026.06.18.2__reconcile_handoff_with_thread_conclusion",
                                "2026.06.18.3__make_gi_summary_thematic_and_thesis_based",
-                               "2026.06.18.4__preserve_summary_intent_and_integration_mapping"
+                               "2026.06.18.4__preserve_summary_intent_and_integration_mapping",
+                               "2026.06.18.5__add_rag_retrieval_eval_checks",
+                               "2026.06.18.6__add_connected_projects_register",
+                               "2026.06.18.7__keep_checkboxes_and_labels_on_one_line",
+                               "2026.06.18.8__use_plain_inline_checkbox_markers",
+                               "2026.06.18.9__default_unified_language_to_english_russian",
+                               "2026.06.19.1__restart_all_project_apps",
+                               "2026.06.19.2__prioritize_gi_start_sprint_manager_workflow",
+                               "2026.06.19.3__require_gi_reboot_per_app_accounting"
                            ],
-    "last_update_check_at":  "2026-06-18T16:10:20+03:00"
+    "last_update_check_at":  "2026-06-19T13:37:56+03:00"
 }
