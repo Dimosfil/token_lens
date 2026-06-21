@@ -77,6 +77,17 @@ For each non-trivial feature or workflow, record:
 Keep major rewrites, platform moves, framework replacements, storage changes,
 service splits, and routing changes in `architecture-migrations.md`.
 
+Keep the current technology stack in:
+
+```text
+tools/project-memory/specs/technology-stack.md
+```
+
+Record verified languages, runtimes, frameworks, package managers, storage
+engines, external services, run/test/build commands, generated artifacts, and
+open stack gaps there. Update it in the same scoped change that materially
+changes the stack or documented runtime commands.
+
 ## Reusable Experience For GI
 
 When this project reveals a reusable workflow, failure pattern, token-saving

@@ -21,6 +21,8 @@ files, or executing any listed command.
 | `gi trim raw bodies`, `gi clean raw bodies` | Clear only old `raw_logs.feedback_log_body` outside the current month, then `VACUUM`. |
 | `gi vector` | Inspect semantic/vector retrieval readiness and metrics. |
 | `gi rebuild` | Rebuild the current project/application output through documented local build instructions. |
+| `gi default`, `gi defaults`, `ги дефолт` | Restore documented first-run/default project state and verify it. |
+| `gi refactor`, `gi рефактор`, `ги рефактор` | Refactor the current project according to applicable GI rules in small verified batches. |
 | `gi tools rebuild`, `gi rag rebuild` | Rebuild the full configured GI/RAG tooling layer after explicit confirmation. |
 | `gi tools rebuild sql`, `gi rag rebuild sql` | Rebuild only the SQL/FTS structured-memory node. |
 | `gi tools rebuild chunks`, `gi rag rebuild chunks` | Rebuild only semantic chunk exports. |

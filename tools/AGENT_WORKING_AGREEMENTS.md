@@ -404,6 +404,35 @@ or:
 - For web applications, assume the user will inspect the UI manually. Do not
   open, browse, screenshot, or visually inspect the UI automatically unless the
   user explicitly asks for that.
+- Treat `gi default`, `gi defaults`, and `ги дефолт` as requests to restore the
+  documented first-run/default state. Use only documented reset targets and
+  stop for clarification if reset targets are missing or data removal could be
+  irreversible.
+- Treat `gi refactor`, `gi рефактор`, and `ги рефактор` as approval for a
+  current-project refactor according to applicable GI rules. Work in small
+  verified batches, preserve user-visible behavior unless explicitly changed,
+  and stop before destructive, data-affecting, external, or contract-breaking
+  actions.
+- Keep developer tools, orchestrators, task managers, agent harnesses, and code
+  generators separate from generated products and selected task data. Product,
+  customer, demo, stack, and workflow-run specifics belong in payloads,
+  manifests, fixtures, adapters, project-local config, service discovery, or
+  user-selected state.
+- Keep reusable GI rule explanations project-agnostic unless the user asks for
+  a concrete comparison.
+- Keep query interpretation, translation, prompt normalization, provider
+  prompts, model names, budgets, fallbacks, timeouts, and privacy policy behind
+  a module, resource, service, pipeline, or adapter boundary. Preserve original
+  user text separately from interpreted intent and model-facing queries.
+- Build and review application code against
+  `patterns/ARCHITECTURE_AND_CODE_QUALITY.md`.
+- Finish meaningful batches with
+  `patterns/COHERENT_BATCH_VERIFICATION.md`: source-of-truth consistency,
+  durable spec writeback when behavior or architecture changes, scoped diff
+  inspection, and evidence-backed checks.
+- Keep the durable stack inventory at
+  `tools/project-memory/specs/technology-stack.md` current when stack facts or
+  commands change.
 
 ## Editing
 

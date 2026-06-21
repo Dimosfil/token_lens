@@ -241,6 +241,42 @@ Inspect logs:
   clearly if a value is missing, unsafe, or outside the allowed workspace/data
   root. Internal constants belong in code only when they are true algorithmic or
   protocol invariants.
+- Keep developer tools, orchestrators, task managers, agent harnesses, and code
+  generators separate from the products they build. Do not hard-code one demo,
+  customer, project type, selected run, product name, UI label, folder slug,
+  stack, or task contract as a runtime concept. Treat generated applications,
+  sites, bots, dashboards, libraries, and other artifacts as task data or
+  output, not as the tool's identity.
+- When explaining, documenting, or adding a shared GI rule, keep the explanation
+  project-agnostic. Do not anchor a reusable rule in the current project, a
+  recent bug, one demo, one product name, or one repository unless the user
+  explicitly asks for that concrete comparison. Use neutral terms and mark any
+  necessary examples as illustrative.
+- Do not hard-code translation maps, synonym dictionaries, stemming rules,
+  prompt expansions, model compatibility hacks, intent-interpretation rules,
+  score thresholds, ranking weights, or provider-specific LLM calls in request
+  handlers, UI glue, command handlers, or one-off feature code. Keep query
+  interpretation, translation, and prompt normalization in a dedicated module,
+  documented config, resource files, curated data assets, locale packs, model
+  adapter modules, provider-swappable LLM adapters, or search/ranking pipeline
+  components with tests. Preserve the original user query separately from
+  interpreted intent and model-facing queries.
+- Build applications with clear architecture and code-quality boundaries. Apply
+  OOP, SOLID, DRY, clean-code, maintainability, and extensibility principles
+  where they fit the stack. Keep domain/product logic, orchestration, UI,
+  persistence, filesystem, external services, and configuration in separate
+  layers with explicit contracts. Follow
+  `patterns/ARCHITECTURE_AND_CODE_QUALITY.md`.
+- After meaningful implementation, refactor, migration, or configuration cleanup
+  batches, follow `patterns/COHERENT_BATCH_VERIFICATION.md`: check
+  source-of-truth consistency across touched layers, update durable
+  project-memory specs for meaningful behavior or architecture changes, inspect
+  the changed-file list for unrelated noise, and run evidence-backed checks.
+- Keep the current technology stack recorded in
+  `tools/project-memory/specs/technology-stack.md`. Update it when a runtime,
+  framework, package manager, storage engine, external service, build tool, test
+  runner, deployment target, or materially relevant command changes. Follow
+  `patterns/TECHNOLOGY_STACK_INVENTORY.md`.
 - Treat `gi config`, `gi конфиг`, `ги конфиг`, `gi config service`,
   `ги конфиг сервис`, `ги конфиг сервис url=<url>`, and
   `ги конфиг сервис урл=<url>` as requests to get or set the bootstrap config
@@ -383,6 +419,17 @@ Inspect logs:
   external service data, shared system caches, sibling projects, or arbitrary
   user-home folders. If exact reset paths or commands are missing, ask one
   concise clarification question.
+- Treat `gi default`, `gi defaults`, and `ги дефолт` as default-state reset
+  requests for the current project. Read project-local reset, cleanup,
+  first-run, run, backup, and test instructions before clearing anything. Use
+  only documented reset scripts, paths, keys, or contracts for project-owned
+  app state, generated caches, local settings, onboarding flags, temporary
+  profiles, and other rebuildable first-run/default state. Do not delete source
+  files, project-memory specifications, instruction-kit files, user documents,
+  production data, secrets, credentials, external service data, shared system
+  caches, sibling projects, or arbitrary user-home folders. If reset targets
+  are not documented, ask one concise clarification question instead of
+  guessing.
 - Treat `gi install`, `gi инсталл`, `ги инсталл`, and obvious typo variants
   such as `gi иснтлл` as requests to build the current project and produce an
   installer. Use Inno Setup by default when no installer tool is named. If the
@@ -397,6 +444,17 @@ Inspect logs:
   is missing instead of inventing one. Do not report `gi install` as complete
   after dependency restore, build, or tests alone; success requires running the
   packaging command and verifying a current installer artifact.
+- Treat `gi refactor`, `gi рефактор`, `ги рефактор`, and equivalent
+  full-project refactor wording as requests to refactor the entire current
+  project according to all applicable GI rules. Treat the command as approval
+  for implementation, while still stopping for destructive, data-affecting,
+  external, or contract-breaking actions. Before editing, read project-local
+  instructions, README, manifests, architecture/runbooks, project-memory
+  specifications, connected-project registers, and relevant tests or build
+  contracts. Create a concise refactor plan, execute in small verifiable
+  batches, preserve user-visible behavior unless explicitly changed, update
+  durable project-memory specs for meaningful architecture or behavior changes,
+  and report remaining risks or continuation batches.
 - Treat nested checkouts, vendored repositories, cloned examples, and
   third-party source trees as separate scope. Do not inspect them as part of the
   main project unless the user explicitly asks, the task is about that nested
