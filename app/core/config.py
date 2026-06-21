@@ -14,7 +14,7 @@ def load_config() -> dict:
     if LOCAL_CONFIG_PATH.exists():
         config.update(_read_json(LOCAL_CONFIG_PATH))
 
-    for key in ("analytics_db", "codex_logs_db", "codex_session_index"):
+    for key in ("analytics_db", "codex_logs_db", "codex_session_index", "opencode_db", "opencode_tokens_jsonl"):
         if config.get(key):
             config[key] = str(_resolve_config_path(config[key]))
 

@@ -223,6 +223,7 @@ class BackgroundImportTests(unittest.TestCase):
 
         with (
             mock.patch.object(background, "import_codex_logs", return_value=Stats(2)),
+            mock.patch.object(background, "import_opencode_sources", return_value=Stats(0)),
             mock.patch.object(background, "LOGGER"),
         ):
             stats = background.run_import()
@@ -235,6 +236,7 @@ class BackgroundImportTests(unittest.TestCase):
 
         with (
             mock.patch.object(background, "import_codex_logs", side_effect=RuntimeError("boom")),
+            mock.patch.object(background, "import_opencode_sources", return_value=Stats(0)),
             mock.patch.object(background, "LOGGER"),
         ):
             with self.assertRaises(RuntimeError):

@@ -14,6 +14,19 @@ generated outputs, secrets, credentials, or private production data.
 
 ## Tasks
 
+### OpenCode Pull Import 2026-06-21
+
+Goal: bring in the friend's OpenCode/DeepSeek file-based usage import without
+regressing the existing OpenCode dashboard UI or background import logging.
+
+Planned changes:
+
+- [x] Compare the copied OpenCode implementation with current local behavior.
+- [x] Add OpenCode DB/JSONL import state, parsers, and import orchestration.
+- [x] Preserve current Codex import logging while adding OpenCode background import.
+- [x] Add focused tests for OpenCode parser/state behavior.
+- [x] Run compile and unittest checks.
+
 ### Mini Settings Startup Guard 2026-06-20
 
 Goal: prevent Token Lens Mini from overwriting saved settings with startup

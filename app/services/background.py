@@ -6,7 +6,8 @@ import logging
 import threading
 import time
 
-from app.services.import_service import import_codex_logs
+from app.core.types import ImportStats
+from app.services.import_service import import_codex_logs, import_opencode_sources
 
 
 LOGGER = logging.getLogger("token_lens.import")
@@ -47,23 +48,46 @@ def run_import():
             IMPORT_STATE.duration_seconds = None
             IMPORT_STATE.stats = None
             IMPORT_STATE.error = None
+
+        errors = []
+        codex_stats = ImportStats()
+        opencode_stats = ImportStats()
         try:
-            stats = import_codex_logs()
+            codex_stats = import_codex_logs()
         except Exception as exc:
-            duration = round(time.monotonic() - start, 3)
-            with STATE_LOCK:
-                IMPORT_STATE.status = "failed"
-                IMPORT_STATE.completed_at = _utc_now()
-                IMPORT_STATE.duration_seconds = duration
-                IMPORT_STATE.error = f"{type(exc).__name__}: {exc}"
-            LOGGER.exception("import failed duration_seconds=%s", duration)
-            raise
+            errors.append(f"codex: {type(exc).__name__}: {exc}")
+            LOGGER.exception("codex import failed")
+
+        try:
+            opencode_stats = import_opencode_sources()
+        except Exception as exc:
+            errors.append(f"opencode: {type(exc).__name__}: {exc}")
+            LOGGER.exception("opencode import failed")
+
+        stats = ImportStats(
+            scanned=codex_stats.scanned + opencode_stats.scanned,
+            imported=codex_stats.imported + opencode_stats.imported,
+            skipped=codex_stats.skipped + opencode_stats.skipped,
+            archived=codex_stats.archived + opencode_stats.archived,
+        )
         duration = round(time.monotonic() - start, 3)
         with STATE_LOCK:
-            IMPORT_STATE.status = "succeeded"
+            IMPORT_STATE.status = "failed" if errors else "succeeded"
             IMPORT_STATE.completed_at = _utc_now()
             IMPORT_STATE.duration_seconds = duration
             IMPORT_STATE.stats = stats.__dict__
+            IMPORT_STATE.error = "; ".join(errors) if errors else None
+        if errors:
+            LOGGER.error(
+                "import failed duration_seconds=%s scanned=%s imported=%s skipped=%s archived=%s errors=%s",
+                duration,
+                stats.scanned,
+                stats.imported,
+                stats.skipped,
+                stats.archived,
+                "; ".join(errors),
+            )
+            raise RuntimeError("; ".join(errors))
         LOGGER.info(
             "import succeeded duration_seconds=%s scanned=%s imported=%s skipped=%s archived=%s",
             duration,

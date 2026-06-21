@@ -156,3 +156,141 @@ def parse_opencode_event(payload: dict, prices: dict) -> dict | None:
     }
     row["estimated_cost"] = estimate_cost(row, prices)
     return row
+
+
+def parse_opencode_db_message(msg: dict, prices: dict) -> dict | None:
+    data_str = msg.get("data")
+    if not data_str:
+        return None
+    try:
+        data = json.loads(data_str)
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+    if data.get("role") != "assistant":
+        return None
+
+    tokens = data.get("tokens")
+    if not isinstance(tokens, dict):
+        return None
+
+    input_tokens = int_value(tokens.get("input"))
+    output_tokens = int_value(tokens.get("output"))
+    total_tokens = int_value(tokens.get("total"), input_tokens + output_tokens)
+    if total_tokens == 0 and input_tokens == 0 and output_tokens == 0:
+        return None
+
+    reasoning_tokens = int_value(tokens.get("reasoning"))
+    cache = tokens.get("cache") or {}
+    cached_tokens = int_value(cache.get("read"))
+
+    message_id = msg["id"]
+    session_id = msg["session_id"]
+
+    time_info = data.get("time") or {}
+    ts_ms = time_info.get("created") or msg.get("time_created") or 0
+    ts = int(ts_ms / 1000) if ts_ms > 10_000_000_000 else int(ts_ms)
+    dt = datetime.fromtimestamp(ts, timezone.utc)
+
+    model = data.get("modelID") or "opencode/unknown"
+
+    row = {
+        "source_log_id": stable_source_log_id({
+            "source": "opencode",
+            "session": session_id,
+            "message": message_id,
+        }),
+        "source": "opencode",
+        "response_id": f"opencode:{message_id}",
+        "status": data.get("finish") or "completed",
+        "ts": ts,
+        "ts_iso": dt.isoformat(),
+        "day": dt.date().isoformat(),
+        "thread_id": str(session_id),
+        "thread_name": msg.get("session_title") or msg.get("session_directory") or "OpenCode session",
+        "turn_id": str(message_id),
+        "submission_id": None,
+        "model": str(model),
+        "reasoning_effort": data.get("variant"),
+        "input_tokens": input_tokens,
+        "cached_input_tokens": cached_tokens,
+        "non_cached_input_tokens": max(input_tokens - cached_tokens, 0),
+        "output_tokens": output_tokens,
+        "reasoning_output_tokens": reasoning_tokens,
+        "total_tokens": total_tokens,
+        "request_json": None,
+        "response_json": None,
+        "event_json": None,
+        "imported_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    provider_cost = data.get("cost")
+    if isinstance(provider_cost, (int, float)) and provider_cost > 0:
+        row["estimated_cost"] = float(provider_cost)
+    else:
+        row["estimated_cost"] = estimate_cost(row, prices)
+
+    return row
+
+
+def parse_opencode_jsonl_record(record: dict, prices: dict) -> dict | None:
+    if record.get("type") != "tokens":
+        return None
+
+    message_id = record.get("messageId")
+    session_id = record.get("sessionId")
+    if not message_id or not session_id:
+        return None
+
+    input_tokens = int_value(record.get("input"))
+    output_tokens = int_value(record.get("output"))
+    total_tokens = input_tokens + output_tokens
+    if total_tokens == 0:
+        return None
+
+    reasoning_tokens = int_value(record.get("reasoning"))
+    cached_tokens = int_value(record.get("cacheRead"))
+
+    ts_ms = record.get("_ts") or 0
+    ts = int(ts_ms / 1000) if ts_ms > 10_000_000_000 else int(ts_ms)
+    dt = datetime.fromtimestamp(ts, timezone.utc)
+
+    model = record.get("model") or "opencode/unknown"
+
+    row = {
+        "source_log_id": stable_source_log_id({
+            "source": "opencode",
+            "session": session_id,
+            "message": message_id,
+        }),
+        "source": "opencode",
+        "response_id": f"opencode:{message_id}",
+        "status": "completed",
+        "ts": ts,
+        "ts_iso": dt.isoformat(),
+        "day": dt.date().isoformat(),
+        "thread_id": str(session_id),
+        "thread_name": "OpenCode session",
+        "turn_id": str(message_id),
+        "submission_id": None,
+        "model": str(model),
+        "reasoning_effort": None,
+        "input_tokens": input_tokens,
+        "cached_input_tokens": cached_tokens,
+        "non_cached_input_tokens": max(input_tokens - cached_tokens, 0),
+        "output_tokens": output_tokens,
+        "reasoning_output_tokens": reasoning_tokens,
+        "total_tokens": total_tokens,
+        "request_json": None,
+        "response_json": None,
+        "event_json": None,
+        "imported_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    provider_cost = record.get("cost")
+    if isinstance(provider_cost, (int, float)) and provider_cost > 0:
+        row["estimated_cost"] = float(provider_cost)
+    else:
+        row["estimated_cost"] = estimate_cost(row, prices)
+
+    return row

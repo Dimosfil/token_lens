@@ -54,6 +54,14 @@ create table if not exists raw_log_archive_state (
   last_source_log_id integer not null default 0,
   updated_at text not null
 );
+
+create table if not exists opencode_import_state (
+  id integer primary key check (id = 1),
+  last_rowid integer not null default 0,
+  last_jsonl_offset integer not null default 0,
+  last_jsonl_size integer not null default 0,
+  updated_at text not null
+);
 """
 
 

@@ -1,14 +1,24 @@
 from __future__ import annotations
 
 import json
+import os
 
 from app.core.config import load_config
 from app.core.types import ImportStats
 from app.sources.base import UsageSource
 from app.sources.codex.adapter import CodexUsageSource
 from app.sources.codex.parser import parse_response_event, parse_usage_row
+from app.sources.opencode.parser import parse_opencode_db_message, parse_opencode_jsonl_record
+from app.sources.opencode.reader import iter_messages_after, jsonl_file_size, read_jsonl_after
 from app.storage.connection import connect
-from app.storage.repositories import insert_raw_log, latest_raw_log_id, set_latest_raw_log_id, upsert_turn
+from app.storage.repositories import (
+    get_opencode_import_state,
+    insert_raw_log,
+    latest_raw_log_id,
+    set_latest_raw_log_id,
+    set_opencode_import_state,
+    upsert_turn,
+)
 from app.storage.schema import init_db
 
 
@@ -67,6 +77,65 @@ def import_codex_logs() -> ImportStats:
     source = CodexUsageSource(config["codex_logs_db"], config["codex_session_index"])
     prices = config.get("model_prices_per_million", {})
     return import_usage_source(source, config["analytics_db"], prices)
+
+
+def import_opencode_sources() -> ImportStats:
+    config = load_config()
+    analytics_db = config["analytics_db"]
+    prices = config.get("model_prices_per_million", {})
+    stats = ImportStats()
+
+    opencode_db = config.get("opencode_db", "")
+    jsonl_path = config.get("opencode_tokens_jsonl", "")
+    db_exists = bool(opencode_db) and os.path.isfile(opencode_db)
+    jsonl_exists = bool(jsonl_path) and os.path.isfile(jsonl_path)
+    if not db_exists and not jsonl_exists:
+        return stats
+
+    init_db(analytics_db)
+    target = connect(analytics_db)
+    try:
+        state = get_opencode_import_state(target)
+        last_rowid = state["last_rowid"]
+        last_jsonl_offset = state["last_jsonl_offset"]
+        last_jsonl_size = state["last_jsonl_size"]
+
+        if db_exists:
+            max_rowid = last_rowid
+            for msg in iter_messages_after(opencode_db, last_rowid):
+                stats.scanned += 1
+                row = parse_opencode_db_message(msg, prices)
+                if not row:
+                    stats.skipped += 1
+                    continue
+                upsert_turn(target, row)
+                stats.imported += 1
+                max_rowid = msg["_rowid"]
+            last_rowid = max_rowid
+
+        if jsonl_exists:
+            current_size = jsonl_file_size(jsonl_path)
+            if current_size < last_jsonl_offset:
+                last_jsonl_offset = 0
+            new_offset = last_jsonl_offset
+            for record, offset in read_jsonl_after(jsonl_path, last_jsonl_offset):
+                new_offset = offset
+                stats.scanned += 1
+                row = parse_opencode_jsonl_record(record, prices)
+                if not row:
+                    stats.skipped += 1
+                    continue
+                upsert_turn(target, row)
+                stats.imported += 1
+            last_jsonl_offset = new_offset
+            last_jsonl_size = current_size
+
+        set_opencode_import_state(target, last_rowid, last_jsonl_offset, last_jsonl_size)
+        target.commit()
+    finally:
+        target.close()
+
+    return stats
 
 
 def main() -> None:

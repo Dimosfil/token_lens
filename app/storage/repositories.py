@@ -133,3 +133,32 @@ def insert_raw_log(con: sqlite3.Connection, row: dict) -> bool:
     if cursor.rowcount > 0:
         set_latest_raw_log_id(con, row["id"])
     return cursor.rowcount > 0
+
+
+def get_opencode_import_state(con: sqlite3.Connection) -> dict:
+    row = con.execute(
+        "select last_rowid, last_jsonl_offset, last_jsonl_size from opencode_import_state where id = 1"
+    ).fetchone()
+    if row:
+        return dict(row)
+    return {"last_rowid": 0, "last_jsonl_offset": 0, "last_jsonl_size": 0}
+
+
+def set_opencode_import_state(
+    con: sqlite3.Connection,
+    last_rowid: int,
+    last_jsonl_offset: int,
+    last_jsonl_size: int = 0,
+) -> None:
+    con.execute(
+        """
+        insert into opencode_import_state (id, last_rowid, last_jsonl_offset, last_jsonl_size, updated_at)
+        values (1, ?, ?, ?, ?)
+        on conflict(id) do update set
+          last_rowid = excluded.last_rowid,
+          last_jsonl_offset = excluded.last_jsonl_offset,
+          last_jsonl_size = excluded.last_jsonl_size,
+          updated_at = excluded.updated_at
+        """,
+        [int(last_rowid), int(last_jsonl_offset), int(last_jsonl_size), datetime.now(timezone.utc).isoformat()],
+    )
