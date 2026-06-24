@@ -65,6 +65,8 @@ Planned changes:
 - [x] Document the local configuration contract and add focused tests.
 - [x] Support Codex session names from a JSONL file, sessions directory, or glob.
 - [x] Auto-discover standard Codex source locations when local config is blank.
+- [x] Persist discovered blank or stale source paths to ignored `config.local.json`.
+- [x] Auto-discover standard OpenCode DB and token-tracker source locations.
 - [x] Auto-discover the Codex CLI command for live account-limit reads.
 
 ### Mini Settings Corruption Recovery 2026-06-24
@@ -1044,3 +1046,18 @@ Planned changes:
 - [x] Log mini-client local server recovery events.
 - [x] Document runtime logging behavior in project memory.
 - [x] Run tests, restart, and verify log output.
+
+### Codex Usage Import Format Fix 2026-06-24
+
+Goal: make Codex usage import include the current token usage log format and
+avoid double-counting duplicate usage rows.
+
+Planned changes:
+
+- [x] Compare dashboard totals with imported SQLite rows and source Codex log
+      patterns.
+- [x] Extend Codex reader/parser for token usage rows without
+      `instrument_name`.
+- [x] Deduplicate parsed token usage rows with a stable synthetic response id.
+- [x] Add regression coverage and run focused verification.
+- [x] Reimport and recheck 2026-06-24 totals.

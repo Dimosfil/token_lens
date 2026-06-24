@@ -12,7 +12,7 @@ from unittest import mock
 from app.api.handlers import first, parse_limit, parse_ts, read_json_body
 from app.api.responses import send_json
 from app.core import config as core_config
-from app.core.codex_discovery import discover_codex_command, discover_codex_paths
+from app.core.codex_discovery import discover_codex_command, discover_codex_paths, discover_opencode_paths
 from app.core.logging_config import configure_logging
 from app.services import background
 from app.sources.codex.reader import iter_log_rows_after, iter_usage_log_rows, latest_log_id
@@ -132,9 +132,45 @@ class ConfigAndPayloadTests(unittest.TestCase):
                  mock.patch.object(core_config, "LOCAL_CONFIG_PATH", local_path), \
                  mock.patch.dict(core_config.os.environ, {"USERPROFILE": str(home)}, clear=True):
                 config = core_config.load_config()
+                local_config = json.loads(local_path.read_text(encoding="utf-8"))
 
         self.assertEqual(config["codex_logs_db"], str(logs_db))
         self.assertEqual(config["codex_session_index"], str(sessions))
+        self.assertEqual(local_config["codex_logs_db"], str(logs_db))
+        self.assertEqual(local_config["codex_session_index"], str(sessions))
+
+    def test_load_config_auto_discovers_opencode_paths_when_blank(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "home"
+            db_path = home / ".local" / "share" / "opencode" / "opencode.db"
+            tokens_path = home / ".config" / "opencode" / "logs" / "token-tracker" / "tokens.jsonl"
+            db_path.parent.mkdir(parents=True)
+            tokens_path.parent.mkdir(parents=True)
+            db_path.write_text("", encoding="utf-8")
+            tokens_path.write_text("", encoding="utf-8")
+            config_path = root / "config.json"
+            local_path = root / "config.local.json"
+            config_path.write_text(
+                json.dumps({
+                    "analytics_db": "data/analytics.sqlite",
+                    "opencode_db": "",
+                    "opencode_tokens_jsonl": "",
+                }),
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(core_config, "ROOT", root), \
+                 mock.patch.object(core_config, "CONFIG_PATH", config_path), \
+                 mock.patch.object(core_config, "LOCAL_CONFIG_PATH", local_path), \
+                 mock.patch.dict(core_config.os.environ, {"USERPROFILE": str(home)}, clear=True):
+                config = core_config.load_config()
+                local_config = json.loads(local_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(config["opencode_db"], str(db_path))
+        self.assertEqual(config["opencode_tokens_jsonl"], str(tokens_path))
+        self.assertEqual(local_config["opencode_db"], str(db_path))
+        self.assertEqual(local_config["opencode_tokens_jsonl"], str(tokens_path))
 
     def test_load_config_keeps_explicit_local_codex_paths(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -171,6 +207,21 @@ class ConfigAndPayloadTests(unittest.TestCase):
 
         self.assertEqual(discovered["codex_logs_db"], str(logs_db))
         self.assertEqual(discovered["codex_session_index"], str(sessions))
+
+    def test_discover_opencode_paths_checks_standard_user_locations(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            db_path = home / ".local" / "share" / "opencode" / "opencode.db"
+            tokens_path = home / ".config" / "opencode" / "logs" / "token-tracker" / "tokens.jsonl"
+            db_path.parent.mkdir(parents=True)
+            tokens_path.parent.mkdir(parents=True)
+            db_path.write_text("", encoding="utf-8")
+            tokens_path.write_text("", encoding="utf-8")
+
+            discovered = discover_opencode_paths({"USERPROFILE": str(home)})
+
+        self.assertEqual(discovered["opencode_db"], str(db_path))
+        self.assertEqual(discovered["opencode_tokens_jsonl"], str(tokens_path))
 
     def test_discover_codex_command_checks_codex_bin(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -321,6 +372,8 @@ class CodexSourceHelperTests(unittest.TestCase):
                         (1, 100, "thread-1", "noise"),
                         (2, 101, "thread-1", 'instrument_name="codex.turn.token_usage" codex.turn.token_usage.total_tokens=1'),
                         (3, 102, "thread-2", '{"type":"response.completed","response":{"id":"resp-1"}}'),
+                        (4, 103, "thread-3", "turn.id=turn-3 model=gpt-5 codex.turn.token_usage.total_tokens=2"),
+                        (5, 104, "thread-4", "event.name=\"codex.sse_event\" event.kind=response.completed"),
                     ],
                 )
                 con.commit()
@@ -331,9 +384,9 @@ class CodexSourceHelperTests(unittest.TestCase):
             after_rows = list(iter_log_rows_after(str(db_path), 1))
             latest = latest_log_id(str(db_path))
 
-        self.assertEqual([row["id"] for row in usage_rows], [2, 3])
-        self.assertEqual([row["id"] for row in after_rows], [2, 3])
-        self.assertEqual(latest, 3)
+        self.assertEqual([row["id"] for row in usage_rows], [2, 3, 4, 5])
+        self.assertEqual([row["id"] for row in after_rows], [2, 3, 4, 5])
+        self.assertEqual(latest, 5)
 
 
 class BackgroundImportTests(unittest.TestCase):

@@ -150,6 +150,26 @@ function Get-CodexRoots {
   return $result
 }
 
+function Get-UserHomeRoots {
+  $roots = New-Object System.Collections.Generic.List[string]
+  foreach ($value in @($env:USERPROFILE, $env:HOME)) {
+    if (-not [string]::IsNullOrWhiteSpace($value)) {
+      $roots.Add($value)
+    }
+  }
+
+  $seen = @{}
+  $result = @()
+  foreach ($rootValue in $roots) {
+    $key = [string]$rootValue
+    if (-not $seen.ContainsKey($key)) {
+      $seen[$key] = $true
+      $result += $rootValue
+    }
+  }
+  return $result
+}
+
 function Find-FirstExistingFile {
   param([string[]]$Paths)
   foreach ($pathValue in $Paths) {
@@ -195,6 +215,36 @@ function Find-CodexSessionIndex {
   return Find-FirstExistingPath $paths
 }
 
+function Find-OpenCodeDb {
+  $paths = @()
+  if (-not [string]::IsNullOrWhiteSpace($env:XDG_DATA_HOME)) {
+    $paths += (Join-Path $env:XDG_DATA_HOME "opencode\opencode.db")
+  }
+  if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+    $paths += (Join-Path $env:LOCALAPPDATA "opencode\opencode.db")
+  }
+  foreach ($homeRoot in (Get-UserHomeRoots)) {
+    $paths += (Join-Path $homeRoot ".local\share\opencode\opencode.db")
+    $paths += (Join-Path $homeRoot "AppData\Local\opencode\opencode.db")
+  }
+  return Find-FirstExistingFile $paths
+}
+
+function Find-OpenCodeTokensJsonl {
+  $paths = @()
+  if (-not [string]::IsNullOrWhiteSpace($env:XDG_CONFIG_HOME)) {
+    $paths += (Join-Path $env:XDG_CONFIG_HOME "opencode\logs\token-tracker\tokens.jsonl")
+  }
+  if (-not [string]::IsNullOrWhiteSpace($env:APPDATA)) {
+    $paths += (Join-Path $env:APPDATA "opencode\logs\token-tracker\tokens.jsonl")
+  }
+  foreach ($homeRoot in (Get-UserHomeRoots)) {
+    $paths += (Join-Path $homeRoot ".config\opencode\logs\token-tracker\tokens.jsonl")
+    $paths += (Join-Path $homeRoot "AppData\Roaming\opencode\logs\token-tracker\tokens.jsonl")
+  }
+  return Find-FirstExistingFile $paths
+}
+
 $root = Resolve-ProjectRoot
 $localPath = Join-Path $root "config.local.json"
 $config = Read-JsonObject $localPath
@@ -207,6 +257,8 @@ $suggestedSessionIndex = Find-CodexSessionIndex
 if (-not $suggestedSessionIndex) {
   $suggestedSessionIndex = Join-Path $env:USERPROFILE ".codex\sessions"
 }
+$suggestedOpenCodeDb = Find-OpenCodeDb
+$suggestedOpenCodeTokensJsonl = Find-OpenCodeTokensJsonl
 
 if (-not $CodexLogsDb) {
   $CodexLogsDb = Read-OptionalPath `
@@ -227,14 +279,14 @@ if (-not $OpenCodeDb) {
   $OpenCodeDb = Read-OptionalPath `
     -Prompt "OpenCode SQLite path (optional)" `
     -CurrentValue (Config-String $config "opencode_db") `
-    -SuggestedValue ""
+    -SuggestedValue $suggestedOpenCodeDb
 }
 
 if (-not $OpenCodeTokensJsonl) {
   $OpenCodeTokensJsonl = Read-OptionalPath `
     -Prompt "OpenCode token tracker JSONL path (optional)" `
     -CurrentValue (Config-String $config "opencode_tokens_jsonl") `
-    -SuggestedValue ""
+    -SuggestedValue $suggestedOpenCodeTokensJsonl
 }
 
 $config["codex_logs_db"] = $CodexLogsDb

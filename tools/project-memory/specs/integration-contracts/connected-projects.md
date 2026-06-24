@@ -42,10 +42,12 @@ access.
   Codex paths or ignored `config.local.json` overrides and stores analytics in
   `data/analytics.sqlite`; raw log bodies are private maintenance data.
   Discovery checks `CODEX_HOME`, `CODEX_CONFIG_HOME`, and the current user's
-  `.codex` folder for known layouts. `codex_logs_db` is a SQLite file;
-  `codex_session_index` may be a JSONL file, sessions directory, or glob over
-  session JSONL files. If the local Codex source is not configured or readable,
-  import is skipped with a logged warning and no source fallback is guessed.
+  `.codex` folder for known layouts. When a discovered source path is blank or
+  stale in the loaded config, startup writes the fresh value to ignored
+  `config.local.json`. `codex_logs_db` is a SQLite file; `codex_session_index`
+  may be a JSONL file, sessions directory, or glob over session JSONL files. If
+  the local Codex source is not configured or readable, import is skipped with a
+  logged warning and no source fallback is guessed.
 - Safe commands: use `.\tools\configure-local-sources.ps1` to set local paths,
   then project-local import, maintenance, and cleanup workflows documented in
   `AGENTS.md`, `README.md`, and runbook files.
@@ -69,7 +71,9 @@ access.
   code in `app/sources/opencode/`, `app/services/import_service.py`, and
   `app/api/handlers.py`.
 - Data/API contract: imports usage metadata read-only from local files when
-  they exist; `/api/ingest/opencode` accepts a JSON event payload for ingest.
+  they exist; startup auto-discovers standard OpenCode user data/config paths
+  and writes blank or stale discovered paths to ignored `config.local.json`.
+  `/api/ingest/opencode` accepts a JSON event payload for ingest.
 - Safe commands: use project-local import and API workflows documented in
   `README.md`, `tools/AGENT_RUNBOOK.md`, and source tests.
 - Privacy boundaries: never commit local OpenCode data, telemetry, prompts,

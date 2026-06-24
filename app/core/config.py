@@ -5,7 +5,7 @@ import os
 import glob
 from pathlib import Path
 
-from app.core.codex_discovery import discover_codex_paths
+from app.core.codex_discovery import discover_codex_paths, discover_opencode_paths
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -21,17 +21,35 @@ PATH_KEYS = (
     "logging_file",
 )
 REQUIRED_CODEX_KEYS = ("codex_logs_db",)
+DISCOVERED_SOURCE_KEYS = (
+    "codex_logs_db",
+    "codex_session_index",
+    "opencode_db",
+    "opencode_tokens_jsonl",
+)
 
 
 def load_config() -> dict:
     config = _read_json(CONFIG_PATH)
+    local_config = {}
     if LOCAL_CONFIG_PATH.exists():
-        config.update(_read_json(LOCAL_CONFIG_PATH))
+        local_config = _read_json(LOCAL_CONFIG_PATH)
+        config.update(local_config)
 
+    discovered: dict[str, str] = {}
     if config.get("auto_discover_codex_sources", True):
-        for key, value in discover_codex_paths().items():
-            if not str(config.get(key) or "").strip():
-                config[key] = value
+        discovered.update(discover_codex_paths())
+    if config.get("auto_discover_opencode_sources", True):
+        discovered.update(discover_opencode_paths())
+
+    local_updates: dict[str, str] = {}
+    for key, value in discovered.items():
+        if _should_use_discovered_path(key, config):
+            config[key] = value
+            local_updates[key] = value
+
+    if local_updates:
+        _write_local_source_updates(local_config, local_updates)
 
     for key in PATH_KEYS:
         if config.get(key):
@@ -63,6 +81,24 @@ def _read_json(path: Path) -> dict:
         return json.load(f)
 
 
+def _write_local_source_updates(local_config: dict, updates: dict[str, str]) -> None:
+    local_config = dict(local_config)
+    for key, value in updates.items():
+        if key in DISCOVERED_SOURCE_KEYS:
+            local_config[key] = value
+    LOCAL_CONFIG_PATH.write_text(
+        json.dumps(local_config, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _should_use_discovered_path(key: str, config: dict) -> bool:
+    value = str(config.get(key) or "").strip()
+    if not value:
+        return True
+    return not _configured_path_exists(value)
+
+
 def _resolve_config_path(value: str) -> Path:
     path = Path(value).expanduser()
     if not path.is_absolute():
@@ -79,6 +115,15 @@ def _validate_readable_file(key: str, value: str) -> list[str]:
     if not os.access(path, os.R_OK):
         return [f"{key} is not readable: {path}"]
     return []
+
+
+def _configured_path_exists(value: str) -> bool:
+    if _has_glob(value):
+        return any(Path(item).is_file() for item in glob.glob(value, recursive=True))
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        path = ROOT / path
+    return path.exists()
 
 
 def _validate_readable_path_set(key: str, value: str) -> list[str]:

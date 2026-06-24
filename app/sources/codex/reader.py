@@ -14,13 +14,14 @@ def iter_usage_log_rows(source_path: str) -> Iterator[sqlite3.Row]:
             from logs
             where (
               feedback_log_body like '%codex.turn.token_usage%'
-              and feedback_log_body like '%instrument_name="codex.turn.token_usage"%'
             ) or (
               feedback_log_body like '%"type":"response.created"%'
             ) or (
               feedback_log_body like '%"type":"response.in_progress"%'
             ) or (
               feedback_log_body like '%"type":"response.completed"%'
+            ) or (
+              feedback_log_body like '%response.completed%'
             )
             order by id
             """

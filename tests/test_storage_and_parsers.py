@@ -105,6 +105,56 @@ class CodexParserUnitTests(unittest.TestCase):
         self.assertEqual(row["cached_input_tokens"], 70)
         self.assertEqual(row["non_cached_input_tokens"], 30)
         self.assertEqual(row["thread_name"], "Thread")
+        self.assertEqual(row["response_id"], "codex-usage:thread-1:turn-1:gpt-5")
+
+    def test_usage_parser_accepts_current_rows_without_instrument_name(self):
+        body = (
+            "session_loop{thread_id=thread-1}: "
+            "turn.id=turn-1 model=gpt-5.5 "
+            "codex.turn.reasoning_effort=medium "
+            "codex.turn.token_usage.input_tokens=742224 "
+            "codex.turn.token_usage.cached_input_tokens=570880 "
+            "codex.turn.token_usage.non_cached_input_tokens=171344 "
+            "codex.turn.token_usage.output_tokens=1320 "
+            "codex.turn.token_usage.reasoning_output_tokens=512 "
+            "codex.turn.token_usage.total_tokens=743544"
+        )
+
+        row = parse_usage_row(1, 1_700_000_000, "thread-1", body, {}, {})
+
+        self.assertIsNotNone(row)
+        self.assertEqual(row["model"], "gpt-5.5")
+        self.assertEqual(row["input_tokens"], 742224)
+        self.assertEqual(row["cached_input_tokens"], 570880)
+        self.assertEqual(row["non_cached_input_tokens"], 171344)
+        self.assertEqual(row["response_id"], "codex-usage:thread-1:turn-1:gpt-5.5")
+
+    def test_synthetic_usage_response_id_deduplicates_reimported_rows(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = str(Path(tmp) / "analytics.sqlite")
+            init_db(db_path)
+            con = connect(db_path)
+            try:
+                first = row_fixture(
+                    source_log_id=10,
+                    response_id="codex-usage:thread-1:turn-1:gpt-5",
+                    total_tokens=100,
+                )
+                second = row_fixture(
+                    source_log_id=11,
+                    response_id="codex-usage:thread-1:turn-1:gpt-5",
+                    total_tokens=100,
+                )
+                upsert_turn(con, first)
+                upsert_turn(con, second)
+                con.commit()
+                rows = con.execute("select source_log_id, total_tokens from turns").fetchall()
+            finally:
+                con.close()
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["source_log_id"], 11)
+        self.assertEqual(rows[0]["total_tokens"], 100)
 
     def test_response_event_parser_requires_thread_turn_and_model(self):
         valid = (

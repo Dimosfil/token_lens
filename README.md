@@ -107,14 +107,17 @@ application code or committed defaults. On a new machine, run:
 The script asks for the local Codex/OpenCode files and writes only
 `config.local.json`. Use `config.local.example.json` as the redacted shape.
 By default, Token Lens auto-discovers Codex sources from `CODEX_HOME`,
-`CODEX_CONFIG_HOME`, and the current user's `.codex` folder. `codex_logs_db`
-must point to the Codex SQLite file, commonly
-`~\.codex\sqlite\logs_2.sqlite`. `codex_session_index` may point to one JSONL
-file, a sessions folder, or a glob such as
-`~\.codex\sessions\2026\06\24\rollout-*.jsonl`. Values in
-`config.local.json` override auto-discovery. If Codex paths are blank, missing,
-or unreadable, Token Lens still starts and keeps the analytics database
-available, but the Codex import is skipped until the local source is configured.
+`CODEX_CONFIG_HOME`, and the current user's `.codex` folder, and OpenCode
+sources from standard user data/config locations. When discovered source paths
+are blank or stale in the loaded config, Token Lens writes the fresh values to
+ignored `config.local.json` during startup. `codex_logs_db` must point to the
+Codex SQLite file, commonly `~\.codex\sqlite\logs_2.sqlite`.
+`codex_session_index` may point to one JSONL file, a sessions folder, or a glob
+such as `~\.codex\sessions\2026\06\24\rollout-*.jsonl`. Existing readable
+values in `config.local.json` override auto-discovery. If Codex paths remain
+blank, missing, or unreadable, Token Lens still starts and keeps the analytics
+database available, but the Codex import is skipped until the local source is
+configured.
 Live account limits use `codex app-server --stdio`; the Codex command is
 auto-discovered from `.codex\bin`, user npm bin folders, or PATH. Set
 `codex_app_server_command` in `config.local.json` only when a machine uses a

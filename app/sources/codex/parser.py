@@ -102,6 +102,10 @@ def build_turn_row(
     return row
 
 
+def usage_response_id(thread_id: str, turn_id: str, model: str) -> str:
+    return f"codex-usage:{thread_id}:{turn_id}:{model}"
+
+
 def parse_usage_row(
     source_log_id: int,
     ts: int,
@@ -110,7 +114,7 @@ def parse_usage_row(
     thread_names: dict[str, str],
     prices: dict,
 ) -> dict | None:
-    if 'instrument_name="codex.turn.token_usage"' not in body:
+    if "codex.turn.token_usage" not in body:
         return None
 
     token_pairs = {name: int(value) for name, value in TOKEN_RE.findall(body)}
@@ -131,7 +135,7 @@ def parse_usage_row(
 
     return build_turn_row(
         source_log_id=source_log_id,
-        response_id=None,
+        response_id=usage_response_id(resolved_thread_id, turn_id, model),
         status="completed",
         ts=ts,
         thread_id=resolved_thread_id,
