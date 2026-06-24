@@ -38,10 +38,14 @@ access.
 - Canonical URLs: none; local application data is the source.
 - Service IDs or runtime endpoints: none.
 - Source of truth: local Codex runtime logs and Token Lens import code.
-- Data/API contract: imports usage metadata read-only and stores analytics in
-  `data/analytics.sqlite`; raw log bodies are private maintenance data.
-- Safe commands: use project-local import, maintenance, and cleanup workflows
-  documented in `AGENTS.md`, `README.md`, and runbook files.
+- Data/API contract: imports usage metadata read-only from paths configured in
+  ignored `config.local.json` and stores analytics in `data/analytics.sqlite`;
+  raw log bodies are private maintenance data. If the local Codex source is not
+  configured or readable, import is skipped with a logged warning and no source
+  fallback is guessed.
+- Safe commands: use `.\tools\configure-local-sources.ps1` to set local paths,
+  then project-local import, maintenance, and cleanup workflows documented in
+  `AGENTS.md`, `README.md`, and runbook files.
 - Privacy boundaries: never commit logs, raw bodies, user telemetry, secrets,
   credentials, or generated local databases.
 - Status: active.
@@ -54,7 +58,8 @@ access.
   OpenCode SQLite DB messages and token-tracker JSONL records into the
   project-owned SQLite analytics database.
 - Local folder: user-private OpenCode data locations outside this repository;
-  current config keys are `opencode_db` and `opencode_tokens_jsonl`.
+  current config keys are `opencode_db` and `opencode_tokens_jsonl`, configured
+  through ignored `config.local.json` when used.
 - Canonical URLs: none; local application data is the source.
 - Service IDs or runtime endpoints: none.
 - Source of truth: local OpenCode runtime data and Token Lens import/parsing

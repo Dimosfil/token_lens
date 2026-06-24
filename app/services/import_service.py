@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+import logging
 
-from app.core.config import load_config
+from app.core.config import load_config, validate_codex_source_config
 from app.core.types import ImportStats
 from app.sources.base import UsageSource
 from app.sources.codex.adapter import CodexUsageSource
@@ -20,6 +21,9 @@ from app.storage.repositories import (
     upsert_turn,
 )
 from app.storage.schema import init_db
+
+
+LOGGER = logging.getLogger("token_lens.import")
 
 
 def archive_raw_logs(source: UsageSource, target) -> int:
@@ -74,6 +78,13 @@ def import_usage_source(source: UsageSource, analytics_db: str, prices: dict) ->
 
 def import_codex_logs() -> ImportStats:
     config = load_config()
+    issues = validate_codex_source_config(config)
+    if issues:
+        LOGGER.warning(
+            "codex import skipped because local source config is incomplete: %s",
+            "; ".join(issues),
+        )
+        return ImportStats()
     source = CodexUsageSource(config["codex_logs_db"], config["codex_session_index"])
     prices = config.get("model_prices_per_million", {})
     return import_usage_source(source, config["analytics_db"], prices)

@@ -104,6 +104,16 @@ class ConfigAndPayloadTests(unittest.TestCase):
         self.assertEqual(config["analytics_db"], str(root / "data" / "analytics.sqlite"))
         self.assertTrue(Path(config["codex_logs_db"]).is_absolute())
 
+    def test_codex_source_validation_reports_missing_or_unreadable_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            missing_path = str(Path(tmp) / "missing.sqlite")
+            issues = core_config.validate_codex_source_config({"codex_logs_db": missing_path})
+
+        self.assertTrue(any("codex_logs_db does not exist" in issue for issue in issues))
+
+        issues = core_config.validate_codex_source_config({"codex_logs_db": ""})
+        self.assertIn("codex_logs_db is not configured", issues)
+
     def test_configure_logging_writes_rotating_log_file(self):
         original_handlers = logging.getLogger().handlers[:]
         original_level = logging.getLogger().level

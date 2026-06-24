@@ -95,6 +95,21 @@ tools/AGENT_RUNBOOK.md
 
 ## Project Structure
 
+## Local Source Setup
+
+Machine-specific source paths must live in ignored `config.local.json`, not in
+application code or committed defaults. On a new machine, run:
+
+```powershell
+.\tools\configure-local-sources.ps1
+```
+
+The script asks for the local Codex/OpenCode files and writes only
+`config.local.json`. Use `config.local.example.json` as the redacted shape. If
+Codex paths are blank, missing, or unreadable, Token Lens still starts and keeps
+the analytics database available, but the Codex import is skipped until the
+local source is configured.
+
 The app is split into small standard-library Python modules and static browser
 modules:
 

@@ -5,9 +5,10 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from app.api.handlers import parse_limit
-from app.services import analytics_service, codex_account_service
+from app.services import analytics_service, codex_account_service, import_service
 from app.services.import_service import import_usage_source
 from app.sources.opencode.parser import parse_opencode_event
 from app.sources.codex.parser import parse_response_event, parse_usage_row
@@ -425,6 +426,27 @@ class ApiContractTests(unittest.TestCase):
         self.assertTrue(detail["calls"][0]["raw_event_captured"])
         self.assertEqual(detail["calls"][0]["response_id"], "resp-merge")
         self.assertIn("inspect", str(detail["calls"][0]["request"]))
+
+
+class ImportConfigurationTests(unittest.TestCase):
+    def test_codex_import_is_skipped_when_source_is_not_configured(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            analytics_db = str(Path(tmp) / "analytics.sqlite")
+            with mock.patch.object(
+                import_service,
+                "load_config",
+                return_value={
+                    "analytics_db": analytics_db,
+                    "codex_logs_db": "",
+                    "codex_session_index": "",
+                    "model_prices_per_million": {},
+                },
+            ), mock.patch.object(import_service.LOGGER, "warning") as warning:
+                stats = import_service.import_codex_logs()
+
+        self.assertEqual(stats.scanned, 0)
+        self.assertEqual(stats.imported, 0)
+        warning.assert_called_once()
 
 
 class ParserContractTests(unittest.TestCase):

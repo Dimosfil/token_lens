@@ -1,0 +1,10 @@
+{
+  "codex_logs_db": "C:\\Users\\<you>\\.codex\\logs_2.sqlite",
+  "codex_session_index": "C:\\Users\\<you>\\.codex\\session_index.jsonl",
+  "opencode_db": "",
+  "opencode_tokens_jsonl": "",
+  "analytics_db": "data\\analytics.sqlite",
+  "host": "127.0.0.1",
+  "port": 8765,
+  "auto_import_seconds": 30
+}
