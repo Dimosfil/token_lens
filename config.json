@@ -3,6 +3,7 @@
   "codex_session_index": "",
   "opencode_db": "",
   "opencode_tokens_jsonl": "",
+  "auto_discover_codex_sources": true,
   "analytics_db": "data\\analytics.sqlite",
   "host": "127.0.0.1",
   "port": 8765,

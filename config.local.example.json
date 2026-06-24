@@ -1,6 +1,7 @@
 {
-  "codex_logs_db": "C:\\Users\\<you>\\.codex\\logs_2.sqlite",
-  "codex_session_index": "C:\\Users\\<you>\\.codex\\session_index.jsonl",
+  "codex_logs_db": "C:\\Users\\<you>\\.codex\\sqlite\\logs_2.sqlite",
+  "codex_session_index": "C:\\Users\\<you>\\.codex\\sessions",
+  "auto_discover_codex_sources": true,
   "opencode_db": "",
   "opencode_tokens_jsonl": "",
   "analytics_db": "data\\analytics.sqlite",

@@ -12,6 +12,7 @@ from unittest import mock
 from app.api.handlers import first, parse_limit, parse_ts, read_json_body
 from app.api.responses import send_json
 from app.core import config as core_config
+from app.core.codex_discovery import discover_codex_paths
 from app.core.logging_config import configure_logging
 from app.services import background
 from app.sources.codex.reader import iter_log_rows_after, iter_usage_log_rows, latest_log_id
@@ -104,6 +105,73 @@ class ConfigAndPayloadTests(unittest.TestCase):
         self.assertEqual(config["analytics_db"], str(root / "data" / "analytics.sqlite"))
         self.assertTrue(Path(config["codex_logs_db"]).is_absolute())
 
+    def test_load_config_auto_discovers_codex_paths_when_blank(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "home"
+            codex_root = home / ".codex"
+            logs_db = codex_root / "sqlite" / "logs_2.sqlite"
+            sessions = codex_root / "sessions"
+            logs_db.parent.mkdir(parents=True)
+            sessions.mkdir()
+            logs_db.write_text("", encoding="utf-8")
+            config_path = root / "config.json"
+            local_path = root / "config.local.json"
+            config_path.write_text(
+                json.dumps({
+                    "analytics_db": "data/analytics.sqlite",
+                    "codex_logs_db": "",
+                    "codex_session_index": "",
+                    "auto_discover_codex_sources": True,
+                }),
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(core_config, "ROOT", root), \
+                 mock.patch.object(core_config, "CONFIG_PATH", config_path), \
+                 mock.patch.object(core_config, "LOCAL_CONFIG_PATH", local_path), \
+                 mock.patch.dict(core_config.os.environ, {"USERPROFILE": str(home)}, clear=True):
+                config = core_config.load_config()
+
+        self.assertEqual(config["codex_logs_db"], str(logs_db))
+        self.assertEqual(config["codex_session_index"], str(sessions))
+
+    def test_load_config_keeps_explicit_local_codex_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            explicit = root / "explicit.sqlite"
+            explicit.write_text("", encoding="utf-8")
+            home = root / "home"
+            discovered = home / ".codex" / "sqlite" / "logs_2.sqlite"
+            discovered.parent.mkdir(parents=True)
+            discovered.write_text("", encoding="utf-8")
+            config_path = root / "config.json"
+            local_path = root / "config.local.json"
+            config_path.write_text(json.dumps({"analytics_db": "data/analytics.sqlite"}), encoding="utf-8")
+            local_path.write_text(json.dumps({"codex_logs_db": str(explicit)}), encoding="utf-8")
+
+            with mock.patch.object(core_config, "ROOT", root), \
+                 mock.patch.object(core_config, "CONFIG_PATH", config_path), \
+                 mock.patch.object(core_config, "LOCAL_CONFIG_PATH", local_path), \
+                 mock.patch.dict(core_config.os.environ, {"USERPROFILE": str(home)}, clear=True):
+                config = core_config.load_config()
+
+        self.assertEqual(config["codex_logs_db"], str(explicit))
+
+    def test_discover_codex_paths_prefers_current_layout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            logs_db = home / ".codex" / "sqlite" / "logs_2.sqlite"
+            sessions = home / ".codex" / "sessions"
+            logs_db.parent.mkdir(parents=True)
+            sessions.mkdir()
+            logs_db.write_text("", encoding="utf-8")
+
+            discovered = discover_codex_paths({"USERPROFILE": str(home)})
+
+        self.assertEqual(discovered["codex_logs_db"], str(logs_db))
+        self.assertEqual(discovered["codex_session_index"], str(sessions))
+
     def test_codex_source_validation_reports_missing_or_unreadable_paths(self):
         with tempfile.TemporaryDirectory() as tmp:
             missing_path = str(Path(tmp) / "missing.sqlite")
@@ -113,6 +181,21 @@ class ConfigAndPayloadTests(unittest.TestCase):
 
         issues = core_config.validate_codex_source_config({"codex_logs_db": ""})
         self.assertIn("codex_logs_db is not configured", issues)
+
+    def test_codex_source_validation_accepts_session_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            logs_db = root / "logs.sqlite"
+            sessions = root / "sessions"
+            logs_db.write_text("", encoding="utf-8")
+            sessions.mkdir()
+
+            issues = core_config.validate_codex_source_config({
+                "codex_logs_db": str(logs_db),
+                "codex_session_index": str(sessions),
+            })
+
+        self.assertEqual(issues, [])
 
     def test_configure_logging_writes_rotating_log_file(self):
         original_handlers = logging.getLogger().handlers[:]
@@ -194,6 +277,26 @@ class CodexSourceHelperTests(unittest.TestCase):
 
         self.assertEqual(names, {"thread-1": "First", "thread-3": "Third"})
         self.assertEqual(load_thread_names("missing-file.jsonl"), {})
+
+    def test_thread_names_loads_directory_and_glob_sources(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            day = root / "sessions" / "2026" / "06" / "24"
+            day.mkdir(parents=True)
+            (day / "rollout-a.jsonl").write_text(
+                json.dumps({"id": "thread-a", "thread_name": "Alpha"}) + "\n",
+                encoding="utf-8",
+            )
+            (day / "rollout-b.jsonl").write_text(
+                json.dumps({"id": "thread-b", "thread_name": "Beta"}) + "\n",
+                encoding="utf-8",
+            )
+
+            directory_names = load_thread_names(str(root / "sessions"))
+            glob_names = load_thread_names(str(day / "rollout-*.jsonl"))
+
+        self.assertEqual(directory_names, {"thread-a": "Alpha", "thread-b": "Beta"})
+        self.assertEqual(glob_names, {"thread-a": "Alpha", "thread-b": "Beta"})
 
     def test_codex_reader_filters_usage_and_response_rows(self):
         with tempfile.TemporaryDirectory() as tmp:

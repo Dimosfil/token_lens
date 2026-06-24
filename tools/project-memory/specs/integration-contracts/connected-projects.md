@@ -38,11 +38,14 @@ access.
 - Canonical URLs: none; local application data is the source.
 - Service IDs or runtime endpoints: none.
 - Source of truth: local Codex runtime logs and Token Lens import code.
-- Data/API contract: imports usage metadata read-only from paths configured in
-  ignored `config.local.json` and stores analytics in `data/analytics.sqlite`;
-  raw log bodies are private maintenance data. If the local Codex source is not
-  configured or readable, import is skipped with a logged warning and no source
-  fallback is guessed.
+- Data/API contract: imports usage metadata read-only from auto-discovered
+  Codex paths or ignored `config.local.json` overrides and stores analytics in
+  `data/analytics.sqlite`; raw log bodies are private maintenance data.
+  Discovery checks `CODEX_HOME`, `CODEX_CONFIG_HOME`, and the current user's
+  `.codex` folder for known layouts. `codex_logs_db` is a SQLite file;
+  `codex_session_index` may be a JSONL file, sessions directory, or glob over
+  session JSONL files. If the local Codex source is not configured or readable,
+  import is skipped with a logged warning and no source fallback is guessed.
 - Safe commands: use `.\tools\configure-local-sources.ps1` to set local paths,
   then project-local import, maintenance, and cleanup workflows documented in
   `AGENTS.md`, `README.md`, and runbook files.

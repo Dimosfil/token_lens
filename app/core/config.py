@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import json
 import os
+import glob
 from pathlib import Path
+
+from app.core.codex_discovery import discover_codex_paths
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -25,6 +28,11 @@ def load_config() -> dict:
     if LOCAL_CONFIG_PATH.exists():
         config.update(_read_json(LOCAL_CONFIG_PATH))
 
+    if config.get("auto_discover_codex_sources", True):
+        for key, value in discover_codex_paths().items():
+            if not str(config.get(key) or "").strip():
+                config[key] = value
+
     for key in PATH_KEYS:
         if config.get(key):
             config[key] = str(_resolve_config_path(config[key]))
@@ -45,7 +53,7 @@ def validate_codex_source_config(config: dict) -> list[str]:
 
     session_index = str(config.get("codex_session_index") or "").strip()
     if session_index:
-        issues.extend(_validate_readable_file("codex_session_index", session_index))
+        issues.extend(_validate_readable_path_set("codex_session_index", session_index))
 
     return issues
 
@@ -71,3 +79,26 @@ def _validate_readable_file(key: str, value: str) -> list[str]:
     if not os.access(path, os.R_OK):
         return [f"{key} is not readable: {path}"]
     return []
+
+
+def _validate_readable_path_set(key: str, value: str) -> list[str]:
+    if _has_glob(value):
+        matches = [Path(item) for item in glob.glob(value, recursive=True)]
+        files = [path for path in matches if path.is_file()]
+        if not files:
+            return [f"{key} glob does not match any files: {value}"]
+        unreadable = [path for path in files if not os.access(path, os.R_OK)]
+        if unreadable:
+            return [f"{key} has unreadable files: {unreadable[0]}"]
+        return []
+
+    path = Path(value)
+    if path.is_dir():
+        if not os.access(path, os.R_OK):
+            return [f"{key} directory is not readable: {path}"]
+        return []
+    return _validate_readable_file(key, value)
+
+
+def _has_glob(value: str) -> bool:
+    return any(char in value for char in ("*", "?", "["))

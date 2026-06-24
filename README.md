@@ -105,10 +105,16 @@ application code or committed defaults. On a new machine, run:
 ```
 
 The script asks for the local Codex/OpenCode files and writes only
-`config.local.json`. Use `config.local.example.json` as the redacted shape. If
-Codex paths are blank, missing, or unreadable, Token Lens still starts and keeps
-the analytics database available, but the Codex import is skipped until the
-local source is configured.
+`config.local.json`. Use `config.local.example.json` as the redacted shape.
+By default, Token Lens auto-discovers Codex sources from `CODEX_HOME`,
+`CODEX_CONFIG_HOME`, and the current user's `.codex` folder. `codex_logs_db`
+must point to the Codex SQLite file, commonly
+`~\.codex\sqlite\logs_2.sqlite`. `codex_session_index` may point to one JSONL
+file, a sessions folder, or a glob such as
+`~\.codex\sessions\2026\06\24\rollout-*.jsonl`. Values in
+`config.local.json` override auto-discovery. If Codex paths are blank, missing,
+or unreadable, Token Lens still starts and keeps the analytics database
+available, but the Codex import is skipped until the local source is configured.
 
 The app is split into small standard-library Python modules and static browser
 modules:
