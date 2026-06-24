@@ -12,7 +12,7 @@ from unittest import mock
 from app.api.handlers import first, parse_limit, parse_ts, read_json_body
 from app.api.responses import send_json
 from app.core import config as core_config
-from app.core.codex_discovery import discover_codex_paths
+from app.core.codex_discovery import discover_codex_command, discover_codex_paths
 from app.core.logging_config import configure_logging
 from app.services import background
 from app.sources.codex.reader import iter_log_rows_after, iter_usage_log_rows, latest_log_id
@@ -171,6 +171,17 @@ class ConfigAndPayloadTests(unittest.TestCase):
 
         self.assertEqual(discovered["codex_logs_db"], str(logs_db))
         self.assertEqual(discovered["codex_session_index"], str(sessions))
+
+    def test_discover_codex_command_checks_codex_bin(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            command = home / ".codex" / "bin" / "codex.cmd"
+            command.parent.mkdir(parents=True)
+            command.write_text("@echo off\n", encoding="utf-8")
+
+            discovered = discover_codex_command({"USERPROFILE": str(home)})
+
+        self.assertEqual(discovered, str(command))
 
     def test_codex_source_validation_reports_missing_or_unreadable_paths(self):
         with tempfile.TemporaryDirectory() as tmp:

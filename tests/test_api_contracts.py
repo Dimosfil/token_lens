@@ -170,6 +170,12 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(payload["windows"][2]["display_name"], "GPT-5.3-Codex-Spark")
         self.assertEqual(payload["windows"][2]["remaining_percent"], 100)
 
+    def test_codex_account_command_prefers_configured_override(self):
+        self.assertEqual(
+            codex_account_service._resolve_codex_command({"codex_app_server_command": "C:\\tools\\codex.cmd"}),
+            "C:\\tools\\codex.cmd",
+        )
+
     def test_task_detail_returns_calls_and_payloads(self):
         con = connect(self.db_path)
         try:

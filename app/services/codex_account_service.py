@@ -8,6 +8,8 @@ import subprocess
 import threading
 import time
 
+from app.core.codex_discovery import discover_codex_command
+
 
 DEFAULT_CACHE_SECONDS = 30
 DEFAULT_TIMEOUT_SECONDS = 20
@@ -52,7 +54,7 @@ def _resolve_codex_command(config: dict) -> str | None:
     configured = str(config.get("codex_app_server_command") or "").strip()
     if configured:
         return configured
-    return shutil.which("codex.cmd") or shutil.which("codex")
+    return discover_codex_command() or shutil.which("codex.cmd") or shutil.which("codex")
 
 
 def _request_rate_limits(command: str, timeout_seconds: int) -> dict:

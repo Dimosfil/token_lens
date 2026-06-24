@@ -115,6 +115,10 @@ file, a sessions folder, or a glob such as
 `config.local.json` override auto-discovery. If Codex paths are blank, missing,
 or unreadable, Token Lens still starts and keeps the analytics database
 available, but the Codex import is skipped until the local source is configured.
+Live account limits use `codex app-server --stdio`; the Codex command is
+auto-discovered from `.codex\bin`, user npm bin folders, or PATH. Set
+`codex_app_server_command` in `config.local.json` only when a machine uses a
+custom command path.
 
 The app is split into small standard-library Python modules and static browser
 modules:
