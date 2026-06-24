@@ -18,15 +18,30 @@ class MiniSettingsStartupGuardTests(unittest.TestCase):
         self.assertEqual(loaded, {})
         self.assertTrue(save_enabled)
 
-    def test_invalid_mini_settings_disables_overwrite(self):
+    def test_invalid_mini_settings_recovers_from_backup(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            settings_path = Path(tmp) / "mini_settings.json"
+            settings_path.write_text("{broken", encoding="utf-8")
+            settings_path.with_name("mini_settings.json.bak").write_text('{"limit": 3}', encoding="utf-8")
+            with mock.patch.object(mini_client, "SETTINGS_PATH", settings_path):
+                loaded, save_enabled = mini_client.load_mini_settings_with_status()
+                repaired = mini_client.json.loads(settings_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(loaded, {"limit": 3})
+        self.assertTrue(save_enabled)
+        self.assertEqual(repaired, {"limit": 3})
+
+    def test_invalid_mini_settings_without_backup_allows_new_save(self):
         with tempfile.TemporaryDirectory() as tmp:
             settings_path = Path(tmp) / "mini_settings.json"
             settings_path.write_text("{broken", encoding="utf-8")
             with mock.patch.object(mini_client, "SETTINGS_PATH", settings_path):
                 loaded, save_enabled = mini_client.load_mini_settings_with_status()
+                corrupt_files = list(Path(tmp).glob("mini_settings.json.corrupt-*"))
 
         self.assertEqual(loaded, {})
-        self.assertFalse(save_enabled)
+        self.assertTrue(save_enabled)
+        self.assertEqual(len(corrupt_files), 1)
 
     def test_disabled_settings_save_does_not_overwrite(self):
         app = mini_client.MiniClientApp.__new__(mini_client.MiniClientApp)

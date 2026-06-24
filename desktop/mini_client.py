@@ -112,23 +112,71 @@ def load_mini_settings() -> dict:
 
 def load_mini_settings_with_status() -> tuple[dict, bool]:
     try:
-        with SETTINGS_PATH.open("r", encoding="utf-8") as handle:
-            data = json.load(handle)
+        return _read_mini_settings_file(SETTINGS_PATH), True
     except FileNotFoundError:
         return {}, True
-    except (OSError, json.JSONDecodeError):
-        return {}, False
-    return (data, True) if isinstance(data, dict) else ({}, False)
+    except OSError:
+        settings = _load_backup_mini_settings()
+        return (settings, True) if settings is not None else ({}, False)
+    except (json.JSONDecodeError, ValueError):
+        settings = _load_backup_mini_settings()
+        if settings is not None:
+            _repair_mini_settings(settings)
+            return settings, True
+        _preserve_corrupt_mini_settings()
+        return {}, True
+
+
+def _read_mini_settings_file(path: Path) -> dict:
+    with path.open("r", encoding="utf-8") as handle:
+        data = json.load(handle)
+    if not isinstance(data, dict):
+        raise ValueError("mini settings root must be an object")
+    return data
+
+
+def _mini_settings_backup_path() -> Path:
+    return SETTINGS_PATH.with_name(f"{SETTINGS_PATH.name}.bak")
+
+
+def _load_backup_mini_settings() -> dict | None:
+    try:
+        return _read_mini_settings_file(_mini_settings_backup_path())
+    except (FileNotFoundError, OSError, json.JSONDecodeError, ValueError):
+        return None
+
+
+def _repair_mini_settings(settings: dict) -> None:
+    try:
+        save_mini_settings(settings)
+    except OSError:
+        pass
+
+
+def _preserve_corrupt_mini_settings() -> None:
+    if not SETTINGS_PATH.exists():
+        return
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    corrupt_path = SETTINGS_PATH.with_name(f"{SETTINGS_PATH.name}.corrupt-{timestamp}")
+    try:
+        SETTINGS_PATH.replace(corrupt_path)
+    except OSError:
+        pass
 
 
 def save_mini_settings(settings: dict) -> None:
     SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    temp_path = SETTINGS_PATH.with_suffix(".json.tmp")
+    _write_json_atomic(SETTINGS_PATH, settings)
+    _write_json_atomic(_mini_settings_backup_path(), settings)
+
+
+def _write_json_atomic(path: Path, settings: dict) -> None:
+    temp_path = path.with_name(f"{path.name}.tmp")
     temp_path.write_text(
-        json.dumps(settings, indent=2, sort_keys=True),
+        json.dumps(settings, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-    temp_path.replace(SETTINGS_PATH)
+    temp_path.replace(path)
 
 
 def setting_int(settings: dict, key: str, default: int, minimum: int, maximum: int) -> int:
@@ -260,6 +308,10 @@ def task_name(row: dict) -> str:
     name = str(row.get("thread_name") or "").strip()
     if name and not looks_like_id(name):
         return name
+    return fallback_task_name(row)
+
+
+def fallback_task_name(row: dict) -> str:
     period = str(row.get("period") or row.get("day") or "").strip()
     if period:
         return period

@@ -29,6 +29,14 @@ class MiniClientHelperTests(unittest.TestCase):
         self.assertFalse(mini_client.looks_like_id("Human task"))
         self.assertEqual(mini_client.task_name({"thread_name": "Investigate costs"}), "Investigate costs")
         self.assertEqual(mini_client.task_name({"thread_name": "thread_abcdefghijkl", "period": "2026-06-19"}), "2026-06-19")
+        self.assertEqual(
+            mini_client.task_name({
+                "source": "opencode",
+                "thread_name": "One OpenCode chat",
+                "started_at": "2026-06-23T14:26:30+00:00",
+            }),
+            "One OpenCode chat",
+        )
         self.assertEqual(mini_client.format_duration(3661), "1:01:01")
         self.assertEqual(mini_client.format_duration("bad"), "0:00")
         self.assertEqual(mini_client.format_timestamp("2026-06-19T10:25:30+00:00"), "2026-06-19 10:25")
@@ -69,6 +77,18 @@ class MiniClientHelperTests(unittest.TestCase):
         self.assertEqual(loaded, {"limit": 5, "range": "24h"})
         self.assertEqual(loaded_with_status, ({"limit": 5, "range": "24h"}, True))
 
+    def test_mini_settings_writes_backup(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            settings_path = Path(tmp) / "mini_settings.json"
+            with mock.patch.object(mini_client, "SETTINGS_PATH", settings_path):
+                mini_client.save_mini_settings({"limit": 7})
+                backup = mini_client._mini_settings_backup_path()
+                backup_exists = backup.exists()
+                backup_text = backup.read_text(encoding="utf-8").strip()
+
+        self.assertTrue(backup_exists)
+        self.assertEqual(backup_text, '{\n  "limit": 7\n}')
+
     def test_missing_mini_settings_allows_first_save(self):
         with tempfile.TemporaryDirectory() as tmp:
             settings_path = Path(tmp) / "mini_settings.json"
@@ -78,15 +98,30 @@ class MiniClientHelperTests(unittest.TestCase):
         self.assertEqual(loaded, {})
         self.assertTrue(save_enabled)
 
-    def test_invalid_mini_settings_disables_overwrite(self):
+    def test_invalid_mini_settings_recovers_from_backup(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            settings_path = Path(tmp) / "mini_settings.json"
+            settings_path.write_text("{broken", encoding="utf-8")
+            settings_path.with_name("mini_settings.json.bak").write_text('{"limit": 9}', encoding="utf-8")
+            with mock.patch.object(mini_client, "SETTINGS_PATH", settings_path):
+                loaded, save_enabled = mini_client.load_mini_settings_with_status()
+                repaired = mini_client.json.loads(settings_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(loaded, {"limit": 9})
+        self.assertTrue(save_enabled)
+        self.assertEqual(repaired, {"limit": 9})
+
+    def test_invalid_mini_settings_without_backup_allows_new_save(self):
         with tempfile.TemporaryDirectory() as tmp:
             settings_path = Path(tmp) / "mini_settings.json"
             settings_path.write_text("{broken", encoding="utf-8")
             with mock.patch.object(mini_client, "SETTINGS_PATH", settings_path):
                 loaded, save_enabled = mini_client.load_mini_settings_with_status()
+                corrupt_files = list(Path(tmp).glob("mini_settings.json.corrupt-*"))
 
         self.assertEqual(loaded, {})
-        self.assertFalse(save_enabled)
+        self.assertTrue(save_enabled)
+        self.assertEqual(len(corrupt_files), 1)
 
     def test_local_api_and_refused_connection_detection(self):
         self.assertTrue(mini_client.is_local_api_url("http://127.0.0.1:8765"))

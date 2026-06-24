@@ -14,6 +14,59 @@ generated outputs, secrets, credentials, or private production data.
 
 ## Tasks
 
+### OpenCode Cumulative Chat Rows 2026-06-24
+
+Goal: show OpenCode cumulative usage as one chat/task row per session instead
+of one row per message snapshot with repeatedly accumulated token totals.
+
+Planned changes:
+
+- [x] Inspect current OpenCode rows and confirm totals are cumulative per
+      `thread_id`.
+- [x] Add OpenCode-specific task aggregation that uses the latest chat snapshot.
+- [x] Add regression coverage for OpenCode task rows.
+- [x] Run focused verification and restart the app set.
+
+### Mini OpenCode Chat Labels 2026-06-24
+
+Goal: make Token Lens Mini show useful OpenCode chat labels after cumulative
+chat rows are grouped correctly.
+
+Planned changes:
+
+- [x] Inspect current mini label selection and OpenCode task rows.
+- [x] Preserve meaningful OpenCode chat titles and use timestamp fallback only
+      when no human title is available.
+- [x] Add focused helper tests.
+- [x] Run focused verification.
+
+### Local Source Path Configuration 2026-06-24
+
+Goal: make Token Lens portable to new machines without hard-coded Codex/OpenCode
+source paths in code or committed defaults.
+
+Planned changes:
+
+- [x] Move committed external source defaults to blank portable config values.
+- [x] Add runtime Codex source validation and skip unavailable sources cleanly.
+- [x] Add an interactive local source configuration script for `config.local.json`.
+- [x] Document the local configuration contract and add focused tests.
+- [x] Support Codex session names from a JSONL file, sessions directory, or glob.
+- [x] Auto-discover standard Codex source locations when local config is blank.
+- [x] Auto-discover the Codex CLI command for live account-limit reads.
+
+### Mini Settings Corruption Recovery 2026-06-24
+
+Goal: keep Token Lens Mini UI settings durable even when the primary settings
+file is corrupted or partially written.
+
+Planned changes:
+
+- [x] Inspect the current settings file and load/save behavior.
+- [x] Add backup-based settings recovery and repair.
+- [x] Add focused tests for corrupted primary settings recovery.
+- [x] Restore a valid local settings file and verify restart behavior.
+
 ### OpenCode Pull Import 2026-06-21
 
 Goal: bring in the friend's OpenCode/DeepSeek file-based usage import without

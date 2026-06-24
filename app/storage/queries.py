@@ -122,6 +122,9 @@ def _fill_bucket_rows(rows: list[dict], range_key: str, bucket: str) -> list[dic
 
 
 def summary(con: sqlite3.Connection, range_key: str = "", start_ts: int | None = None, end_ts: int | None = None, source: str = ""):
+    if source == "opencode":
+        return opencode_summary(con, range_key, start_ts, end_ts)
+
     where, params = _range_clause(range_key, start_ts, end_ts)
     where, params = _source_clause(where, params, source)
     row = con.execute(
@@ -146,6 +149,56 @@ def summary(con: sqlite3.Connection, range_key: str = "", start_ts: int | None =
                input_tokens, output_tokens, reasoning_output_tokens
         from turns
         {where}
+        order by total_tokens desc
+        limit 10
+        """,
+        params,
+    ).fetchall()
+    return {"summary": dict(row), "top_turns": rows_to_dicts(top)}
+
+
+def opencode_summary(
+    con: sqlite3.Connection,
+    range_key: str = "",
+    start_ts: int | None = None,
+    end_ts: int | None = None,
+):
+    where, params = _range_clause(range_key, start_ts, end_ts)
+    where, params = _source_clause(where, params, "opencode")
+    scoped_latest = f"""
+        with ranked as (
+            select turns.*,
+                   row_number() over (
+                       partition by thread_id
+                       order by ts desc, source_log_id desc
+                   ) as row_rank
+            from turns
+            {where}
+        )
+        select *
+        from ranked
+        where row_rank = 1
+    """
+    row = con.execute(
+        f"""
+        select count(*) as turns,
+               count(distinct thread_id) as threads,
+               coalesce(sum(input_tokens), 0) as input_tokens,
+               coalesce(sum(output_tokens), 0) as output_tokens,
+               coalesce(sum(cached_input_tokens), 0) as cached_input_tokens,
+               coalesce(sum(reasoning_output_tokens), 0) as reasoning_output_tokens,
+               coalesce(sum(total_tokens), 0) as total_tokens,
+               coalesce(sum(estimated_cost), 0) as estimated_cost,
+               max(ts_iso) as latest_turn
+        from ({scoped_latest})
+        """,
+        params,
+    ).fetchone()
+    top = con.execute(
+        f"""
+        select source, ts_iso, thread_id, thread_name, turn_id, response_id, status, model, total_tokens,
+               input_tokens, output_tokens, reasoning_output_tokens
+        from ({scoped_latest})
         order by total_tokens desc
         limit 10
         """,
@@ -206,6 +259,9 @@ def turns(con: sqlite3.Connection, limit: int, model: str = "", range_key: str =
 
 
 def tasks(con: sqlite3.Connection, limit: int | None, range_key: str = "", start_ts: int | None = None, end_ts: int | None = None, source: str = ""):
+    if source == "opencode":
+        return opencode_tasks(con, limit, range_key, start_ts, end_ts)
+
     where, params = _range_clause(range_key, start_ts, end_ts)
     where, params = _source_clause(where, params, source)
     limit_clause = ""
@@ -240,6 +296,82 @@ def tasks(con: sqlite3.Connection, limit: int | None, range_key: str = "", start
         {where}
         group by thread_id, turn_id
         order by max(ts) desc
+        {limit_clause}
+        """,
+        params,
+    ).fetchall())
+
+
+def opencode_tasks(
+    con: sqlite3.Connection,
+    limit: int | None,
+    range_key: str = "",
+    start_ts: int | None = None,
+    end_ts: int | None = None,
+):
+    where, params = _range_clause(range_key, start_ts, end_ts)
+    where, params = _source_clause(where, params, "opencode")
+    limit_clause = ""
+    if limit is not None:
+        limit_clause = "limit ?"
+        params.append(limit)
+    return rows_to_dicts(con.execute(
+        f"""
+        with scoped as (
+            select *
+            from turns
+            {where}
+        ),
+        ranked as (
+            select scoped.*,
+                   row_number() over (
+                       partition by thread_id
+                       order by ts desc, source_log_id desc
+                   ) as row_rank
+            from scoped
+        ),
+        aggregates as (
+            select min(ts_iso) as started_at,
+                   max(ts_iso) as finished_at,
+                   max(ts) - min(ts) as elapsed_seconds,
+                   min(source_log_id) as first_source_log_id,
+                   max(source_log_id) as last_source_log_id,
+                   thread_id,
+                   group_concat(distinct submission_id) as submission_ids,
+                   group_concat(distinct response_id) as response_ids,
+                   group_concat(distinct model) as models,
+                   group_concat(distinct status) as statuses,
+                   group_concat(distinct reasoning_effort) as efforts,
+                   count(*) as model_calls
+            from scoped
+            group by thread_id
+        )
+        select aggregates.started_at,
+               aggregates.finished_at,
+               aggregates.elapsed_seconds,
+               'opencode' as source,
+               aggregates.first_source_log_id,
+               aggregates.last_source_log_id,
+               aggregates.thread_id,
+               ranked.thread_name,
+               ranked.turn_id,
+               aggregates.submission_ids,
+               aggregates.response_ids,
+               aggregates.models,
+               aggregates.statuses,
+               aggregates.efforts,
+               aggregates.model_calls,
+               ranked.input_tokens,
+               ranked.cached_input_tokens,
+               ranked.non_cached_input_tokens,
+               ranked.output_tokens,
+               ranked.reasoning_output_tokens,
+               ranked.total_tokens,
+               cast(round(ranked.total_tokens * 1.0 / aggregates.model_calls, 0) as integer) as total_tokens_per_call,
+               ranked.estimated_cost
+        from aggregates
+        join ranked on ranked.thread_id = aggregates.thread_id and ranked.row_rank = 1
+        order by ranked.ts desc
         {limit_clause}
         """,
         params,

@@ -308,6 +308,47 @@ class ApiContractTests(unittest.TestCase):
         self.assertFalse(forced_aggregate["task_modes"]["separate_available"])
         self.assertIn("period", forced_aggregate["tasks"][0])
 
+    def test_opencode_tasks_use_latest_cumulative_snapshot_per_chat(self):
+        now = int(time.time())
+        con = connect(self.db_path)
+        try:
+            for index, total_tokens in enumerate((1000, 1600, 2500), start=1):
+                upsert_turn(con, sample_turn(
+                    source_log_id=-100 - index,
+                    source="opencode",
+                    response_id=f"opencode:message-{index}",
+                    ts=now + index,
+                    ts_iso=f"2026-06-19T14:0{index}:00+00:00",
+                    day="2026-06-19",
+                    thread_id="opencode-session-1",
+                    thread_name="One OpenCode chat",
+                    turn_id=f"message-{index}",
+                    model="deepseek-v4-pro",
+                    input_tokens=10 * index,
+                    cached_input_tokens=total_tokens - 100,
+                    non_cached_input_tokens=10 * index,
+                    output_tokens=70,
+                    reasoning_output_tokens=30,
+                    total_tokens=total_tokens,
+                    estimated_cost=0.001 * index,
+                ))
+            con.commit()
+
+            rows = queries.tasks(con, 10, source="opencode")
+            summary = queries.summary(con, source="opencode")["summary"]
+        finally:
+            con.close()
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["thread_id"], "opencode-session-1")
+        self.assertEqual(rows[0]["thread_name"], "One OpenCode chat")
+        self.assertEqual(rows[0]["model_calls"], 3)
+        self.assertEqual(rows[0]["total_tokens"], 2500)
+        self.assertEqual(rows[0]["total_tokens_per_call"], 833)
+        self.assertEqual(summary["turns"], 1)
+        self.assertEqual(summary["threads"], 1)
+        self.assertEqual(summary["total_tokens"], 2500)
+
     def test_bucket_tasks_returns_tasks_for_selected_period(self):
         con = connect(self.db_path)
         try:

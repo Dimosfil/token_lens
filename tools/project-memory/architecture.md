@@ -40,7 +40,8 @@ for summaries, daily trends, model calls, and grouped tasks.
 - Product database: SQLite via Python `sqlite3`, stored at `data/analytics.sqlite`.
 - Frontend: vanilla HTML, CSS, and JavaScript ES modules under `web/`.
 - Runtime scripts: PowerShell `start.ps1` and `stop.ps1`.
-- Configuration: JSON file at `config.json`.
+- Configuration: portable JSON defaults at `config.json` plus ignored
+  machine-local overrides at `config.local.json`.
 - Agent memory: local/generated SQLite at `tools/project-memory/project_memory.sqlite`.
 
 ## Runtime Resilience
@@ -64,9 +65,36 @@ recoverable local-runtime failure. It starts `run_server.py`, waits for
 localhost-style URLs and rate-limited so remote or misconfigured API endpoints
 are not masked by spawning local processes repeatedly.
 
+The desktop mini client stores user UI settings in
+`data/mini_settings.json` and keeps a matching
+`data/mini_settings.json.bak`. On startup it loads the primary settings file,
+falls back to the backup if the primary file is corrupt or unreadable, and
+repairs the primary file from the backup when possible. If no valid backup
+exists, the corrupt primary file is preserved as `mini_settings.json.corrupt-*`
+and new settings saves are allowed so the UI does not stay permanently reset.
+
+Codex and OpenCode source paths are machine-local runtime configuration. The
+tracked `config.json` keeps these external source paths blank; users or agents
+may configure them with `tools/configure-local-sources.ps1`, which writes
+ignored `config.local.json`. When config values are blank and
+`auto_discover_codex_sources` is true, `app.core.codex_discovery` searches
+`CODEX_HOME`, `CODEX_CONFIG_HOME`, and the current user's `.codex` folder for
+known Codex layouts such as `.codex\sqlite\logs_2.sqlite` and
+`.codex\sessions`. Explicit `config.local.json` values override discovery.
+`app.core.config` resolves configured paths and validates Codex sources at the
+import boundary. `codex_logs_db` must be a readable SQLite file.
+`codex_session_index` may be a single JSONL file, a sessions directory, or a
+glob pattern such as `~\.codex\sessions\2026\06\24\rollout-*.jsonl`. If the
+Codex SQLite path is blank, missing, or unreadable,
+`app.services.import_service.import_codex_logs` logs a clear warning and returns
+empty import stats instead of crashing startup or hard-coding a fallback path.
+
 ## Main Paths
 
-- `app/core/config.py`: loads `config.json` and resolves local paths.
+- `app/core/config.py`: loads `config.json`, merges `config.local.json`,
+  resolves local paths, and validates source paths at runtime boundaries.
+- `app/core/codex_discovery.py`: discovers standard Codex local source layouts
+  from environment and user-profile roots when config paths are blank.
 - `app/core/types.py`: shared dataclasses such as `ImportStats`.
 - `app/storage/connection.py`: SQLite connection helper.
 - `app/storage/schema.py`: analytics schema and lightweight schema updates.
@@ -116,12 +144,16 @@ from app-server `usedPercent`, reset timestamps, plan type, and available limit
 ids. `usage_limits.groups` keeps per-limit buckets such as the main `codex`
 bucket and `codex_bengalfox` / GPT-5.3-Codex-Spark, while
 `usage_limits.windows` is a flattened list for simple UI rendering. This is
-separate from the SQLite analytics data used by tables and charts.
+separate from the SQLite analytics data used by tables and charts. The Codex
+command is resolved from `codex_app_server_command` when configured, then from
+standard user-local locations such as `.codex\bin`, user npm bin folders, and
+PATH.
 
 ## Data Flow
 
-1. `app.services.import_service` reads configured Codex log sources read-only
-   through the `UsageSource` protocol and current `CodexUsageSource`.
+1. `app.services.import_service` validates configured Codex log sources and
+   reads them read-only through the `UsageSource` protocol and current
+   `CodexUsageSource` when configured.
 2. `app.sources.codex.parser` extracts response and token-usage metadata, not
    prompt or response bodies.
 3. `app.storage.repositories` writes parsed usage rows into the `turns` table in
