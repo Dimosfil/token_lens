@@ -15,9 +15,11 @@ from app.storage.query_params import (
     SEPARATE_TASK_RANGES,
     TASK_MODE_AGGREGATE,
     TASK_MODE_SEPARATE,
+    TIME_MODE_LOCAL,
     normalize_bucket,
     normalize_range,
     normalize_task_mode,
+    normalize_time_mode,
 )
 
 
@@ -48,8 +50,15 @@ def _source_clause(where: str, params: list, source: str = "") -> tuple[str, lis
     return where, params
 
 
-def _bucket_expr(bucket: str = "day") -> str:
-    return BUCKETS.get(bucket, BUCKETS["day"])
+def _bucket_expr(bucket: str = "day", time_mode: str = TIME_MODE_LOCAL) -> str:
+    normalized_time_mode = normalize_time_mode(time_mode)
+    return BUCKETS[normalized_time_mode].get(bucket, BUCKETS[normalized_time_mode]["day"])
+
+
+def _bucket_day_expr(bucket: str, period_expr: str) -> str:
+    if bucket == "month":
+        return f"{period_expr} || '-01'"
+    return f"substr({period_expr}, 1, 10)"
 
 
 def _trim_bucket_rows(rows: list[dict], range_key: str, bucket: str) -> list[dict]:
@@ -67,7 +76,7 @@ def _shift_month(dt: datetime, months: int) -> datetime:
     return dt.replace(year=year, month=month)
 
 
-def _expected_periods(range_key: str, bucket: str) -> list[str]:
+def _expected_periods(range_key: str, bucket: str, time_mode: str = TIME_MODE_LOCAL) -> list[str]:
     if normalize_range(range_key) == CUSTOM_RANGE:
         return []
     count = MAX_BUCKETS.get((normalize_range(range_key), bucket))
@@ -75,20 +84,21 @@ def _expected_periods(range_key: str, bucket: str) -> list[str]:
         return []
 
     now = time.time()
+    tz = timezone.utc if normalize_time_mode(time_mode) == "utc" else None
     if bucket == "hour":
-        end = datetime.fromtimestamp(now).replace(minute=0, second=0, microsecond=0)
+        end = datetime.fromtimestamp(now, tz).replace(minute=0, second=0, microsecond=0)
         return [
             (end - timedelta(hours=offset)).strftime("%Y-%m-%d %H:00")
             for offset in range(count - 1, -1, -1)
         ]
     if bucket == "day":
-        end = datetime.fromtimestamp(now, timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        end = datetime.fromtimestamp(now, tz).replace(hour=0, minute=0, second=0, microsecond=0)
         return [
             (end - timedelta(days=offset)).date().isoformat()
             for offset in range(count - 1, -1, -1)
         ]
     if bucket == "month":
-        end = datetime.fromtimestamp(now, timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        end = datetime.fromtimestamp(now, tz).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         return [
             _shift_month(end, -offset).strftime("%Y-%m")
             for offset in range(count - 1, -1, -1)
@@ -112,8 +122,8 @@ def _empty_bucket_row(period: str, bucket: str) -> dict:
     }
 
 
-def _fill_bucket_rows(rows: list[dict], range_key: str, bucket: str) -> list[dict]:
-    periods = _expected_periods(range_key, bucket)
+def _fill_bucket_rows(rows: list[dict], range_key: str, bucket: str, time_mode: str = TIME_MODE_LOCAL) -> list[dict]:
+    periods = _expected_periods(range_key, bucket, time_mode)
     if not periods:
         return _trim_bucket_rows(rows, range_key, bucket)
 
@@ -207,15 +217,24 @@ def opencode_summary(
     return {"summary": dict(row), "top_turns": rows_to_dicts(top)}
 
 
-def daily(con: sqlite3.Connection, range_key: str = "", bucket: str = "day", start_ts: int | None = None, end_ts: int | None = None, source: str = ""):
+def daily(
+    con: sqlite3.Connection,
+    range_key: str = "",
+    bucket: str = "day",
+    start_ts: int | None = None,
+    end_ts: int | None = None,
+    source: str = "",
+    time_mode: str = TIME_MODE_LOCAL,
+):
     where, params = _range_clause(range_key, start_ts, end_ts)
     where, params = _source_clause(where, params, source)
     normalized_bucket = normalize_bucket(bucket, range_key)
-    period_expr = _bucket_expr(normalized_bucket)
+    period_expr = _bucket_expr(normalized_bucket, time_mode)
+    day_expr = _bucket_day_expr(normalized_bucket, period_expr)
     rows = rows_to_dicts(con.execute(
         f"""
         select {period_expr} as period,
-               min(day) as day,
+               min({day_expr}) as day,
                count(*) as turns,
                sum(input_tokens) as input_tokens,
                sum(output_tokens) as output_tokens,
@@ -231,7 +250,7 @@ def daily(con: sqlite3.Connection, range_key: str = "", bucket: str = "day", sta
         """,
         params,
     ).fetchall())
-    return _fill_bucket_rows(rows, range_key, normalized_bucket)
+    return _fill_bucket_rows(rows, range_key, normalized_bucket, time_mode)
 
 
 def turns(con: sqlite3.Connection, limit: int, model: str = "", range_key: str = "", start_ts: int | None = None, end_ts: int | None = None, source: str = ""):
@@ -385,9 +404,10 @@ def task_buckets(
     start_ts: int | None = None,
     end_ts: int | None = None,
     source: str = "",
+    time_mode: str = TIME_MODE_LOCAL,
 ):
     normalized_bucket = normalize_bucket(bucket, range_key)
-    period_expr = _bucket_expr(normalized_bucket)
+    period_expr = _bucket_expr(normalized_bucket, time_mode)
     where, params = _range_clause(range_key, start_ts, end_ts)
     where, params = _source_clause(where, params, source)
     rows = rows_to_dicts(con.execute(
@@ -429,9 +449,10 @@ def bucket_tasks(
     start_ts: int | None = None,
     end_ts: int | None = None,
     source: str = "",
+    time_mode: str = TIME_MODE_LOCAL,
 ):
     normalized_bucket = normalize_bucket(bucket, range_key)
-    period_expr = _bucket_expr(normalized_bucket)
+    period_expr = _bucket_expr(normalized_bucket, time_mode)
     where, params = _range_clause(range_key, start_ts, end_ts)
     where, params = _source_clause(where, params, source)
     where = _and_clause(where, f"{period_expr} = ?")
@@ -583,12 +604,14 @@ def dashboard(
     start_ts: int | None = None,
     end_ts: int | None = None,
     source: str = "",
+    time_mode: str = TIME_MODE_LOCAL,
 ):
     normalized_task_mode = normalize_task_mode(task_mode, range_key)
+    normalized_time_mode = normalize_time_mode(time_mode)
     return {
         "state": data_state(con),
         "summary": summary(con, range_key, start_ts, end_ts, source),
-        "daily": daily(con, range_key, bucket, start_ts, end_ts, source),
+        "daily": daily(con, range_key, bucket, start_ts, end_ts, source, normalized_time_mode),
         "turns": turns(con, 150, model, range_key, start_ts, end_ts, source),
         "task_mode": normalized_task_mode,
         "task_modes": {
@@ -599,7 +622,8 @@ def dashboard(
         "tasks": (
             tasks(con, None, range_key, start_ts, end_ts, source)
             if normalized_task_mode == TASK_MODE_SEPARATE
-            else task_buckets(con, range_key, bucket, start_ts, end_ts, source)
+            else task_buckets(con, range_key, bucket, start_ts, end_ts, source, normalized_time_mode)
         ),
         "models": models(con, range_key, start_ts, end_ts, source),
+        "time_mode": normalized_time_mode,
     }

@@ -75,6 +75,7 @@ class AnalyticsHandler(BaseHTTPRequestHandler):
             query = parse_qs(parsed.query)
             start_ts = parse_ts(query, "start_ts")
             end_ts = parse_ts(query, "end_ts")
+            time_mode = first(query, "time_mode")
             if parsed.path == "/api/import":
                 stats = run_import()
                 send_json(self, stats.__dict__)
@@ -89,6 +90,7 @@ class AnalyticsHandler(BaseHTTPRequestHandler):
                     start_ts,
                     end_ts,
                     first(query, "source"),
+                    time_mode,
                 )
                 payload["import_stats"] = stats.__dict__
                 send_json(self, payload)
@@ -112,6 +114,7 @@ class AnalyticsHandler(BaseHTTPRequestHandler):
         bucket = first(query, "bucket", "day")
         start_ts = parse_ts(query, "start_ts")
         end_ts = parse_ts(query, "end_ts")
+        time_mode = first(query, "time_mode")
         if path == "/api/dashboard":
             send_json(self, analytics_service.dashboard(
                 first(query, "model"),
@@ -121,6 +124,7 @@ class AnalyticsHandler(BaseHTTPRequestHandler):
                 start_ts,
                 end_ts,
                 first(query, "source"),
+                time_mode,
             ))
         elif path == "/api/summary":
             send_json(self, analytics_service.summary(range_key, start_ts, end_ts, first(query, "source")))
@@ -131,7 +135,7 @@ class AnalyticsHandler(BaseHTTPRequestHandler):
         elif path == "/api/import-status":
             send_json(self, analytics_service.background_import_status())
         elif path == "/api/daily":
-            send_json(self, analytics_service.daily(range_key, bucket, start_ts, end_ts, first(query, "source")))
+            send_json(self, analytics_service.daily(range_key, bucket, start_ts, end_ts, first(query, "source"), time_mode))
         elif path == "/api/turns":
             limit = parse_limit(query)
             model = first(query, "model")
@@ -144,7 +148,7 @@ class AnalyticsHandler(BaseHTTPRequestHandler):
             if not period:
                 self.send_error(400, "period is required")
                 return
-            send_json(self, analytics_service.bucket_tasks(period, bucket, range_key, start_ts, end_ts, first(query, "source")))
+            send_json(self, analytics_service.bucket_tasks(period, bucket, range_key, start_ts, end_ts, first(query, "source"), time_mode))
         elif path == "/api/task-detail":
             thread_id = first(query, "thread_id")
             turn_id = first(query, "turn_id")
@@ -166,6 +170,8 @@ class AnalyticsHandler(BaseHTTPRequestHandler):
             first(query, "task_mode"),
             parse_ts(query, "start_ts"),
             parse_ts(query, "end_ts"),
+            first(query, "source"),
+            first(query, "time_mode"),
         )
 
     def summary(self, con):

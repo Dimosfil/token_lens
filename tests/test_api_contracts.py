@@ -13,6 +13,7 @@ from app.services.import_service import import_usage_source
 from app.sources.opencode.parser import parse_opencode_event
 from app.sources.codex.parser import parse_response_event, parse_usage_row
 from app.storage import queries
+from app.storage.query_params import normalize_time_mode
 from app.storage.connection import connect
 from app.storage.repositories import upsert_turn
 from app.storage.schema import init_db
@@ -126,9 +127,18 @@ class ApiContractTests(unittest.TestCase):
             "avg_cached_input_tokens", "avg_non_cached_input_tokens",
             "avg_output_tokens", "avg_reasoning_output_tokens", "estimated_cost",
         }, set(models[0]))
-        self.assertEqual(set(dashboard), {"state", "summary", "daily", "turns", "task_mode", "task_modes", "tasks", "models"})
+        self.assertEqual(set(dashboard), {"state", "summary", "daily", "turns", "task_mode", "task_modes", "tasks", "models", "time_mode"})
         self.assertEqual(dashboard["task_mode"], "aggregate")
+        self.assertEqual(dashboard["time_mode"], "local")
         self.assertLessEqual({"requested", "active", "separate_available"}, set(dashboard["task_modes"]))
+
+    def test_time_mode_defaults_to_local_and_keeps_utc_switch(self):
+        self.assertEqual(normalize_time_mode(""), "local")
+        self.assertEqual(normalize_time_mode("local"), "local")
+        self.assertEqual(normalize_time_mode("utc"), "utc")
+        self.assertEqual(normalize_time_mode("unexpected"), "local")
+        self.assertIn("'localtime'", queries._bucket_expr("day", "local"))
+        self.assertNotIn("'localtime'", queries._bucket_expr("day", "utc"))
 
     def test_codex_account_rate_limits_are_normalized(self):
         payload = codex_account_service._normalize_rate_limits({
@@ -352,7 +362,7 @@ class ApiContractTests(unittest.TestCase):
     def test_bucket_tasks_returns_tasks_for_selected_period(self):
         con = connect(self.db_path)
         try:
-            rows = queries.bucket_tasks(con, "2026-05-21", "day")
+            rows = queries.bucket_tasks(con, "2026-05-21", "day", time_mode="utc")
         finally:
             con.close()
 

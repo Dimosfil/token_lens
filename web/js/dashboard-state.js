@@ -1,5 +1,6 @@
 let chartMode = "total";
 let taskMode = "aggregate";
+let timeMode = "local";
 
 const PAGE_SETTINGS_KEY = "token-lens:page-settings:v1";
 const RANGE_SECONDS = {
@@ -49,12 +50,25 @@ function localDateValue(date) {
 }
 
 
+function normalizeTimeMode(value) {
+  return value === "utc" ? "utc" : "local";
+}
+
+
+function utcDateParts(value) {
+  const [year, month, day] = value.split("-").map(Number);
+  return [year, month - 1, day];
+}
+
+
 function dateStartTs(value) {
+  if (timeMode === "utc") return Math.floor(Date.UTC(...utcDateParts(value), 0, 0, 0) / 1000);
   return Math.floor(new Date(`${value}T00:00:00`).getTime() / 1000);
 }
 
 
 function dateEndTs(value) {
+  if (timeMode === "utc") return Math.floor(Date.UTC(...utcDateParts(value), 23, 59, 59) / 1000);
   return Math.floor(new Date(`${value}T23:59:59`).getTime() / 1000);
 }
 
@@ -100,8 +114,11 @@ export function restorePageSettings() {
   const settings = readPageSettings();
   const range = document.getElementById("rangeFilter");
   const bucket = document.getElementById("bucketFilter");
+  const timeModeSelect = document.getElementById("timeModeFilter");
   if (settings.range && hasOption(range, settings.range)) range.value = settings.range;
   if (settings.bucket && hasOption(bucket, settings.bucket)) bucket.value = settings.bucket;
+  if (settings.timeMode && hasOption(timeModeSelect, settings.timeMode)) timeModeSelect.value = settings.timeMode;
+  timeMode = normalizeTimeMode(timeModeSelect.value);
   if (settings.customStart) document.getElementById("customStart").value = settings.customStart;
   if (settings.customEnd) document.getElementById("customEnd").value = settings.customEnd;
   if (settings.chartMode) chartMode = settings.chartMode;
@@ -113,6 +130,7 @@ export function savePageSettings() {
   writePageSettings({
     range: document.getElementById("rangeFilter").value,
     bucket: document.getElementById("bucketFilter").value,
+    timeMode: document.getElementById("timeModeFilter").value,
     customStart: document.getElementById("customStart").value,
     customEnd: document.getElementById("customEnd").value,
     chartMode,
@@ -165,6 +183,8 @@ export function dashboardQuery(source = "codex") {
   const bucket = document.getElementById("bucketFilter").value;
   if (range) params.set("range", range);
   if (bucket) params.set("bucket", bucket);
+  timeMode = normalizeTimeMode(document.getElementById("timeModeFilter").value);
+  params.set("time_mode", timeMode);
   params.set("source", source);
   if (taskMode) params.set("task_mode", taskMode);
   if (range === "custom") {

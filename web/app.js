@@ -109,6 +109,10 @@ document.getElementById("bucketFilter").addEventListener("change", () => {
   savePageSettings();
   refresh(false);
 });
+document.getElementById("timeModeFilter").addEventListener("change", () => {
+  savePageSettings();
+  refresh(false);
+});
 document.getElementById("customRangeButton").addEventListener("click", () => {
   document.getElementById("rangeFilter").value = "custom";
   syncBucketOptions();

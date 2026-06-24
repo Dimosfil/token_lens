@@ -14,6 +14,18 @@ generated outputs, secrets, credentials, or private production data.
 
 ## Tasks
 
+### Dashboard Local Time Default 2026-06-24
+
+Goal: make dashboard time buckets use local time by default while keeping UTC
+available as an explicit switch.
+
+Planned changes:
+
+- [x] Add a dashboard time-mode parameter and local/UTC bucket expressions.
+- [x] Add a web UI switch that defaults to local time and preserves UTC choice.
+- [x] Add focused regression coverage for time-mode normalization/bucketing.
+- [x] Run focused verification.
+
 ### OpenCode Cumulative Chat Rows 2026-06-24
 
 Goal: show OpenCode cumulative usage as one chat/task row per session instead

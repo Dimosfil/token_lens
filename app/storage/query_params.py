@@ -6,6 +6,8 @@ DEFAULT_BUCKET = "day"
 CUSTOM_RANGE = "custom"
 TASK_MODE_AGGREGATE = "aggregate"
 TASK_MODE_SEPARATE = "separate"
+TIME_MODE_LOCAL = "local"
+TIME_MODE_UTC = "utc"
 SEPARATE_TASK_RANGES = {"1h", "24h"}
 
 RANGE_SECONDS = {
@@ -23,9 +25,16 @@ BUCKET_SECONDS = {
 }
 
 BUCKETS = {
-    "hour": "strftime('%Y-%m-%d %H:00', ts, 'unixepoch', 'localtime')",
-    "day": "day",
-    "month": "substr(day, 1, 7)",
+    TIME_MODE_LOCAL: {
+        "hour": "strftime('%Y-%m-%d %H:00', ts, 'unixepoch', 'localtime')",
+        "day": "strftime('%Y-%m-%d', ts, 'unixepoch', 'localtime')",
+        "month": "strftime('%Y-%m', ts, 'unixepoch', 'localtime')",
+    },
+    TIME_MODE_UTC: {
+        "hour": "strftime('%Y-%m-%d %H:00', ts, 'unixepoch')",
+        "day": "day",
+        "month": "substr(day, 1, 7)",
+    },
 }
 
 MAX_BUCKETS = {
@@ -63,3 +72,7 @@ def normalize_task_mode(task_mode: str = "", range_key: str = DEFAULT_RANGE) -> 
     if task_mode == TASK_MODE_SEPARATE and normalize_range(range_key) in SEPARATE_TASK_RANGES:
         return TASK_MODE_SEPARATE
     return TASK_MODE_AGGREGATE
+
+
+def normalize_time_mode(time_mode: str = "") -> str:
+    return TIME_MODE_UTC if time_mode == TIME_MODE_UTC else TIME_MODE_LOCAL

@@ -34,8 +34,15 @@ def usage_limits():
     return read_usage_limits(load_config())
 
 
-def daily(range_key: str = "", bucket: str = "day", start_ts: int | None = None, end_ts: int | None = None, source: str = ""):
-    return with_analytics_db(lambda con: queries.daily(con, range_key, bucket, start_ts, end_ts, source))
+def daily(
+    range_key: str = "",
+    bucket: str = "day",
+    start_ts: int | None = None,
+    end_ts: int | None = None,
+    source: str = "",
+    time_mode: str = "",
+):
+    return with_analytics_db(lambda con: queries.daily(con, range_key, bucket, start_ts, end_ts, source, time_mode))
 
 
 def turns(limit: int, model: str = "", range_key: str = "", start_ts: int | None = None, end_ts: int | None = None, source: str = ""):
@@ -46,8 +53,16 @@ def tasks(limit: int, range_key: str = "", start_ts: int | None = None, end_ts: 
     return with_analytics_db(lambda con: queries.tasks(con, limit, range_key, start_ts, end_ts, source))
 
 
-def bucket_tasks(period: str, bucket: str = "day", range_key: str = "", start_ts: int | None = None, end_ts: int | None = None, source: str = ""):
-    return with_analytics_db(lambda con: queries.bucket_tasks(con, period, bucket, range_key, start_ts, end_ts, source))
+def bucket_tasks(
+    period: str,
+    bucket: str = "day",
+    range_key: str = "",
+    start_ts: int | None = None,
+    end_ts: int | None = None,
+    source: str = "",
+    time_mode: str = "",
+):
+    return with_analytics_db(lambda con: queries.bucket_tasks(con, period, bucket, range_key, start_ts, end_ts, source, time_mode))
 
 
 def task_detail(thread_id: str, turn_id: str):
@@ -66,6 +81,7 @@ def dashboard(
     start_ts: int | None = None,
     end_ts: int | None = None,
     source: str = "",
+    time_mode: str = "",
 ):
     config = load_config()
     payload = with_analytics_db(lambda con: queries.dashboard(
@@ -77,6 +93,7 @@ def dashboard(
         start_ts,
         end_ts,
         source,
+        time_mode,
     ))
     payload["usage_limits"] = read_usage_limits(config)
     payload["state"]["import_status"] = import_status()
