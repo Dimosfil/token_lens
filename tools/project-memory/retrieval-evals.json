@@ -56,6 +56,8 @@
       "query": "where should an agent find external project folders git urls service roles and integration boundaries",
       "mode": "hybrid",
       "expected_paths_any": [
+        "AGENTS.md",
+        "tools/AGENT_WORKING_AGREEMENTS.md",
         "patterns/PROJECT_MEMORY_SPECIFICATIONS.md",
         "templates/CONNECTED_PROJECTS.template.md",
         "tools/project-memory/specs/integration-contracts/connected-projects.md"

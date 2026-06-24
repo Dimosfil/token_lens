@@ -46,3 +46,28 @@ access.
   credentials, or generated local databases.
 - Status: active.
 - Reason retained: Token Lens exists to inspect local Codex token usage.
+
+## OpenCode Local Usage Sources
+
+- Purpose: optional local source of OpenCode token usage metadata.
+- Role in Token Lens: source adapter imports usage counts from configured
+  OpenCode SQLite DB messages and token-tracker JSONL records into the
+  project-owned SQLite analytics database.
+- Local folder: user-private OpenCode data locations outside this repository;
+  current config keys are `opencode_db` and `opencode_tokens_jsonl`.
+- Canonical URLs: none; local application data is the source.
+- Service IDs or runtime endpoints: none.
+- Source of truth: local OpenCode runtime data and Token Lens import/parsing
+  code in `app/sources/opencode/`, `app/services/import_service.py`, and
+  `app/api/handlers.py`.
+- Data/API contract: imports usage metadata read-only from local files when
+  they exist; `/api/ingest/opencode` accepts a JSON event payload for ingest.
+- Safe commands: use project-local import and API workflows documented in
+  `README.md`, `tools/AGENT_RUNBOOK.md`, and source tests.
+- Privacy boundaries: never commit local OpenCode data, telemetry, prompts,
+  responses, secrets, credentials, or generated analytics databases. Do not
+  inspect user-home OpenCode paths unless the user gives an explicit path and
+  action.
+- Status: active.
+- Reason retained: broadens Token Lens beyond Codex-only usage analytics while
+  preserving the same local/private data boundary.

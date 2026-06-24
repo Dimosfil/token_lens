@@ -10,6 +10,61 @@ SQLite analytics database.
 Primary surface: local Python web app served from `app.server` with static UI in
 `web/`.
 
+## Loading Contract
+
+- Start with this file.
+- Read only the modules needed for the current request.
+- Before acting on a concrete task, select and read the matching module(s);
+  this entrypoint alone is enough only for greetings or status-neutral replies.
+- If the request contains a GI chat command such as `gi ...`, `ги ...`, or a
+  known mojibake form, treat it as a concrete task even when the message is
+  short. First read `COMMANDS.md` when present, then read every runtime module
+  routed to that command before acting.
+- For state-changing GI commands that start, stop, restart, rebuild, deploy,
+  test, install, reset, update, commit, push, or manage task-manager state, do
+  not execute from memory, old chat examples, or the command name alone. If the
+  command's routed module is unavailable, stop and report the missing path.
+- For `gi restart`, `gi reboot`, `ги рестарт`, `ги ребут`, and equivalent
+  aliases, `patterns/AGENTS_RUNTIME/09-project-operation-commands.md` is
+  mandatory context before any process inspection, stop, start, or success
+  report.
+- Prefer project-local instructions, runbooks, contracts, project memory, and
+  service guides over shared defaults when they are more specific.
+
+## Runtime Module Routing
+
+- Repository purpose, RAG startup, project memory, summaries, connected projects,
+  and shared-rule propagation: `patterns/AGENTS_RUNTIME/01-purpose.md`
+- Repository map: `patterns/AGENTS_RUNTIME/02-repository-map.md`
+- Rule precedence and scope arbitration: `patterns/AGENTS_RUNTIME/03-rule-precedence.md`
+- Authoring reusable rules, configuration boundaries, code quality, project
+  info/stack inventory, and batch verification:
+  `patterns/AGENTS_RUNTIME/04-content-and-authoring.md`
+- Windows shell and networking policy: `patterns/AGENTS_RUNTIME/05-windows-command-policy.md`
+- Token economy, verification command lookup, `gi info`, `gi stack`,
+  `gi refactor`, feature contracts, and large-output handling:
+  `patterns/AGENTS_RUNTIME/06-tool-usage-and-token-economy.md`
+- Startup, restore, project goal, bug evidence, PDF inspection, repository
+  cleanup, filesystem boundaries, and first-message handling:
+  `patterns/AGENTS_RUNTIME/07-startup-and-scope.md`
+- Config-service, service guide/contract lookup, task manager commands, sprint
+  commands, and web-service port registration:
+  `patterns/AGENTS_RUNTIME/08-config-service-and-task-manager.md`
+- Dev/prod online service publication, FTP deploy, restart/reboot, first test,
+  full test, default reset, installer packaging, SQL/vector inspection, and
+  project/RAG rebuild commands:
+  `patterns/AGENTS_RUNTIME/09-project-operation-commands.md`
+- Nested repositories, private local app data, product-plan intent signals, and
+  missing required entities: `patterns/AGENTS_RUNTIME/10-private-scope-and-missing-context.md`
+- Project, commit, task, and response language preferences:
+  `patterns/AGENTS_RUNTIME/11-language-preferences.md`
+- UI focus, app launch focus, and frontend verification expectations:
+  `patterns/AGENTS_RUNTIME/12-ui-and-focus.md`
+- Progress-update style: `patterns/AGENTS_RUNTIME/13-progress-updates.md`
+- Update intake and `updates/` handling: `patterns/AGENTS_RUNTIME/14-update-intake.md`
+- Verification policy: `patterns/AGENTS_RUNTIME/15-verification.md`
+- Git policy: `patterns/AGENTS_RUNTIME/16-git-policy.md`
+
 ## Windows Command Policy
 
 - Prefer PowerShell-native networking commands such as `Invoke-RestMethod` and
@@ -67,6 +122,19 @@ history, verification guarantees, and current implementation maps. For
 non-trivial feature, business-rule, data-model, integration, or architecture
 work, update the relevant project-memory specification in the same scoped
 change.
+
+Keep general project documentation separate from project memory. Put overview,
+user-visible functionality, stack, commands, operations, and troubleshooting in
+`README.md`, `docs/`, or the runbook. Put algorithms, business rules, workflow
+contracts, state machines, invariants, architecture decisions, and verification
+guarantees in project memory.
+
+Do not store raw work results, generated product outputs, screenshots, photos,
+crawled or downloaded files, large logs, model outputs, build artifacts, export
+bundles, or run datasets under `tools/project-memory/`. Store raw artifacts in a
+project-local artifact/evidence/output/data/docs-asset location chosen by the
+project, and keep only compact manifests, summaries, checksums, or links in
+project memory when needed.
 
 When this project depends on, researches, vendors, or regularly interacts with
 other local repositories, cloned examples, services, libraries, documentation
@@ -193,6 +261,19 @@ Inspect logs:
   `gi команды`, and `ги команды` as read-only requests to show the compact local
   GI command index. Do not run startup restore, resume old work, call services
   or task managers, mutate files, or execute listed commands for help alone.
+- Treat `gi info` and `ги инфо` as documentation inventory commands for the
+  current project's purpose, target users or stakeholders, user-visible
+  functionality, common workflows, technology stack, and documentation gaps.
+  Read project-local instructions, README/docs/runbooks, existing project-memory
+  specs, and the canonical stack inventory before broad scans. Update only
+  missing or stale verified facts, preserve unchanged sections, use configured
+  project working-environment languages, and do not start services, install
+  dependencies, rebuild indexes, call external APIs, read secrets, or inspect
+  private paths unless explicitly approved.
+- Treat `gi stack` and `ги стек` as requests to find or update the verified
+  technology stack inventory. Keep stack facts in
+  `tools/project-memory/specs/technology-stack.md` unless a more specific local
+  source of truth is documented.
 - When a feature has an agreed runtime workflow, loading order, branching state
   flow, background work, or user-visible guarantee, record it in project-local
   docs or project memory. Before changing that feature, read the relevant
@@ -252,6 +333,17 @@ Inspect logs:
   recent bug, one demo, one product name, or one repository unless the user
   explicitly asks for that concrete comparison. Use neutral terms and mark any
   necessary examples as illustrative.
+- When deriving a reusable rule from a concrete request, bug, screenshot, demo,
+  or implementation detail, first name the portable principle. Treat the
+  concrete case as evidence, not the rule itself, and keep changeable selections
+  behind configuration, manifests, contracts, adapters, task payloads,
+  user-selected state, or project-local memory.
+- If a quick fix, legacy compatibility path, test expectation, or observed
+  sample would require hard-coding changeable product, language, prompt,
+  synonym, intent, query-normalization, ranking, model-behavior, or
+  operational-policy values, first implement the compliant boundary. Ask one
+  concise clarification question only when the correct source of truth, config
+  location, or temporary compatibility layer is not documented.
 - Do not hard-code translation maps, synonym dictionaries, stemming rules,
   prompt expansions, model compatibility hacks, intent-interpretation rules,
   score thresholds, ranking weights, or provider-specific LLM calls in request
@@ -411,6 +503,15 @@ Inspect logs:
   any app exits, no expected window or health signal appears, or a new startup
   traceback is present, report the reboot as failed or partially unverified with
   concrete evidence.
+- Treat `gi prod`, `gi production`, `gi прод`, and `ги прод` as production
+  service publication commands only for online services connected to live remote
+  APIs, webhooks, chats, marketplaces, payment providers, or similar external
+  systems. Keep ordinary development, refactoring, tests, cleanup, formatting,
+  and `gi restart` on the development checkout/service. Require a project-local
+  production contract before acting: production folder, include/exclude rules,
+  production-local secrets/config/state to preserve, restart/reload/switchover
+  command, health check, and rollback strategy. Never copy production secrets or
+  runtime state back into development.
 - Treat `gi first test`, `gi первый тест`, and `ги первый тест` as first-launch
   verification requests. Read project-local run, cleanup, cache reset, and test
   instructions before clearing anything. Reset only documented project-owned
@@ -419,6 +520,15 @@ Inspect logs:
   external service data, shared system caches, sibling projects, or arbitrary
   user-home folders. If exact reset paths or commands are missing, ask one
   concise clarification question.
+- Treat `gi test`, `ги тест`, `gi full test`, `gi release test`, `gi system
+  test`, and equivalent wording as live full-system verification against the
+  active test task. Dry-runs, simulations, dispatcher-only execution, replayed
+  logs, mock-only runs, and compile/unit-only checks are diagnostics only unless
+  explicitly requested, and they never satisfy a fresh `gi test`. If the live
+  app/service/worker/UI system cannot be started or reached, report the command
+  as blocked or not checked and name the missing live contract.
+- Treat `gi test task` and `ги тест таск` as requests to set the active
+  release/full-system verification task for the current project.
 - Treat `gi default`, `gi defaults`, and `ги дефолт` as default-state reset
   requests for the current project. Read project-local reset, cleanup,
   first-run, run, backup, and test instructions before clearing anything. Use

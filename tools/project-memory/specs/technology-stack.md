@@ -1,6 +1,6 @@
 # Technology Stack
 
-Last reviewed: 2026-06-21
+Last reviewed: 2026-06-24
 
 ## Summary
 
@@ -9,7 +9,8 @@ Last reviewed: 2026-06-21
 - Runtime model: local web/API server plus desktop mini client, started by
   PowerShell scripts.
 - Current confidence: confirmed from project-local instructions, README,
-  architecture notes, and runbook snippets.
+  architecture notes, runbook snippets, config, API handlers, and source
+  adapters.
 
 ## Components
 
@@ -19,7 +20,7 @@ Last reviewed: 2026-06-21
 | Frontend | Vanilla HTML, CSS, JavaScript ES modules | `README.md`, `web/`, `tools/project-memory/architecture.md` | Static UI served by the Python app. |
 | Backend/API | Python standard library `http.server.ThreadingHTTPServer` and `BaseHTTPRequestHandler` | `tools/project-memory/architecture.md`, `app/api/` | Primary surface is served from `app.server` compatibility entry points. |
 | Data/storage | SQLite via Python `sqlite3` | `README.md`, `tools/project-memory/architecture.md`, `app/storage/` | Product DB is `data/analytics.sqlite`; generated/private runtime data is not committed. |
-| Source adapters | Codex local log adapter | `README.md`, `app/sources/codex/`, `tools/project-memory/architecture.md` | Reads Codex usage metadata read-only from configured local logs. |
+| Source adapters | Codex local log adapter and OpenCode DB/JSONL adapters | `README.md`, `config.json`, `app/sources/codex/`, `app/sources/opencode/`, `app/services/import_service.py` | Reads usage metadata from configured local sources; private user-home sources require explicit user path/action before manual inspection. |
 | Desktop client | Python desktop mini client | `tools/AGENT_RUNBOOK.md`, `desktop/` | Started with the server by `start.ps1` unless intentionally skipped. |
 | Configuration | JSON config files | `config.json`, `config.local.json`, `app/core/config.py` | Local/private overrides belong in local config, not source constants. |
 | Build/package | No separate build step currently defined | `AGENTS.md`, `tools/AGENT_RUNBOOK.md` | `gi install` must stop if installer/versioning contract is missing. |
@@ -36,7 +37,7 @@ Last reviewed: 2026-06-21
 | Restart | `.\start.ps1 -Restart` | `tools/AGENT_RUNBOOK.md`, latest handoff summary |
 | Stop | `.\stop.ps1` | `README.md`, project root scripts |
 | Test | `python -m compileall app` | `AGENTS.md` |
-| Unit tests | `python -m unittest discover -s tests` | `tests/`, latest handoff summary |
+| Unit tests | `python -m unittest discover -s tests` | `tests/`, API/parser/storage/OpenCode/desktop helper test files |
 | Build | No separate build step currently defined | `AGENTS.md` |
 
 ## External Services
@@ -44,6 +45,7 @@ Last reviewed: 2026-06-21
 | Service | Role | Evidence | Boundary |
 | --- | --- | --- | --- |
 | Codex local logs | Read-only source of token usage metadata | `README.md`, `app/sources/codex/` | User-home app data is private external data; inspect only when the user gives an explicit path and action. |
+| OpenCode local sources | Optional source of token usage metadata from local DB and token-tracker JSONL | `README.md`, `config.json`, `app/sources/opencode/`, `app/services/import_service.py`, `app/api/handlers.py` | User-home app data is private external data; inspect only when the user gives an explicit path and action. |
 | Config-service | Optional discovery/config integration for GI commands and self-registration | `AGENTS.md`, `tools/project-memory/specs/integration-contracts/connected-projects.md` | Runtime URL must be resolved through documented config-service flow, not guessed ports or stale records. |
 | Task manager | Optional configured manager for GI task/sprint workflows | `AGENTS.md`, `tools/project-memory/task-managers.json` | Use guide/contract/API endpoints through config-service. |
 

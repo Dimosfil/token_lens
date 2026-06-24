@@ -1,27 +1,27 @@
 # Project Memory
 
-This folder stores durable project knowledge for AI agents.
+This folder stores concise, implementation-driving project knowledge for AI
+agents.
 
-Use it for verified findings that should survive chat resets:
+Use Markdown and JSON files here for human-reviewable memory. Use the local
+SQLite database only as a generated search index that can be rebuilt from git
+tracked files.
 
-- architecture notes
-- debugging findings
-- important decisions
-- product and business rules
-- platform-neutral feature specifications
-- workflow algorithms and state diagrams
-- architecture migration history
-- known pitfalls
-- local workflows
-- dependency maps
-- reusable agent experience that may improve `gi`
+## Documentation Versus Summary Versus Project Memory
 
-Do not store secrets or credentials here.
-
-## Summary Versus Project Memory
-
+`README.md`, `docs/`, and runbooks are project documentation: overview,
+functionality, stack, commands, operations, troubleshooting, and examples.
 `tools/summary/` is compact handoff state for the current or recent chat.
-`tools/project-memory/` is long-lived product and project knowledge.
+`tools/project-memory/` is long-lived implementation-driving knowledge:
+algorithms, business rules, workflow contracts, state machines, invariants,
+architecture decisions, and verification guarantees.
+
+Do not store raw work results, generated product outputs, screenshots, photos,
+crawled/downloaded files, large logs, model outputs, build artifacts, export
+bundles, or run datasets in this folder. Put those files in a project-local
+artifact, evidence, output, data, or docs-asset location and keep only compact
+summaries, manifests, checksums, or links here when they are needed for a
+decision, behavior contract, failure, or verification result.
 
 Write project-memory documents so another agent could rebuild the project on a
 different language, framework, platform, or UI stack and preserve the same
@@ -34,8 +34,6 @@ Recommended specification structure:
 tools/project-memory/
   architecture-migrations.md
   specs/
-    product-overview.md
-    glossary.md
     features/
     business-rules/
     data-model/
@@ -43,102 +41,86 @@ tools/project-memory/
       connected-projects.md
 ```
 
-Split documents by meaning. Keep feature behavior, business logic, architecture
-history, and implementation mapping searchable as separate focused files instead
-of one giant document.
+Split documents by meaning. Keep feature algorithms, business logic,
+architecture contracts, and implementation mapping searchable as separate
+focused files instead of one giant document. Keep user-facing functionality,
+stack, commands, and operations in project documentation unless a compatibility
+path is explicitly linked.
 
 Keep a connected-projects register when this project depends on, researches,
 vendors, or regularly interacts with external repositories, cloned examples,
-services, libraries, documentation sites, upstream tools, or sibling
-workspaces:
+service projects, libraries, docs sites, upstream tools, or sibling workspaces:
 
 ```text
 tools/project-memory/specs/integration-contracts/connected-projects.md
 ```
 
 For each connected project, record its purpose, business or architectural role,
-approved local folder when applicable, canonical Git/package/docs URLs, service
-IDs or endpoints, source of truth, data/API contract, safe setup or update
-commands, privacy boundaries, status, and why the dependency still exists.
-Agents should read the register before touching integrations, nested
-repositories, cloned examples, or external project folders.
+local folder when applicable, canonical Git/package/docs URLs, service IDs or
+runtime endpoints, owner/source of truth, data or API contract, setup/update
+commands, privacy and access boundaries, status, caveats, and why this project
+needs it. Agents should read the register before touching integrations or
+external project folders, and update it when a connected project is added,
+removed, moved, replaced, or given a new role.
 
-For each non-trivial feature or workflow, record:
+## SQLite Index
 
-- product intent and success signal;
-- actors, roles, permissions, and preconditions;
-- user-visible workflow, branches, and terminal states;
-- business rules, invariants, inputs, outputs, and validation;
-- background work, ordering, retries, cancellation, and failure behavior;
-- Mermaid flowcharts or state diagrams when useful;
-- verification rules for preserving behavior after a rewrite;
-- current implementation map with evidence paths.
-
-Keep major rewrites, platform moves, framework replacements, storage changes,
-service splits, and routing changes in `architecture-migrations.md`.
-
-Keep the current technology stack in:
-
-```text
-tools/project-memory/specs/technology-stack.md
-```
-
-Record verified languages, runtimes, frameworks, package managers, storage
-engines, external services, run/test/build commands, generated artifacts, and
-open stack gaps there. Update it in the same scoped change that materially
-changes the stack or documented runtime commands.
-
-## Reusable Experience For GI
-
-When this project reveals a reusable workflow, failure pattern, token-saving
-tactic, or agent-instruction improvement, write a concise recommendation for the
-shared instruction kit.
-
-Prefer the `updates/` folder in an available checkout/cache of the canonical
-shared-instruction source repo when this repository is being maintained:
-
-```text
-<general-instructions checkout>\updates\
-```
-
-If the shared library is unavailable, use a local intake folder:
-
-```text
-tools/project-memory/instruction-updates/
-```
-
-Recommendations should include:
-
-- observed problem or repeated friction
-- reusable rule, pattern, template, checklist, or migration idea
-- evidence paths or commands
-- expected benefit for token economy, startup retrieval, safety, or workflow
-- privacy review notes
-
-Do not include secrets, credentials, private user data, production data, or
-unnecessary project-specific details.
-
-## Agent Memory SQLite
-
-If the project benefits from searchable agent memory, use a local SQLite
-database as an agent index/experience store, not as the application database.
-
-Recommended path:
+Recommended local database:
 
 ```text
 tools/project-memory/project_memory.sqlite
 ```
 
-The SQLite file is usually local/generated and ignored by git when it is large
-or rebuildable. Commit the indexing script, schema notes, and Markdown exports
-instead.
+Rebuild it from git tracked repository content:
 
-Use the database for verified facts, searchable file/symbol indexes, debugging
-findings, useful commands, recurring failures, and durable notes with evidence
-paths. Do not store secrets, credentials, private user data, or production data.
+```powershell
+python .\tools\project-memory\build_project_memory_index.py rebuild
+```
 
-Do not dump the database into chat. Query it by symbol, path, topic, error, or
-feature name with small limits.
+Check index size:
+
+```powershell
+python .\tools\project-memory\build_project_memory_index.py stats
+```
+
+Search indexed content:
+
+```powershell
+python .\tools\project-memory\build_project_memory_index.py search "gi config"
+```
+
+Export semantic-ready chunks for a future embedding adapter:
+
+```powershell
+python .\tools\project-memory\build_project_memory_index.py export-chunks
+```
+
+Build a local Chroma vector index from the exported chunks:
+
+```powershell
+uv run --with chromadb python .\tools\project-memory\build_chroma_index.py rebuild
+```
+
+Run semantic search through Chroma:
+
+```powershell
+uv run --with chromadb python .\tools\project-memory\build_chroma_index.py query "semantic startup retrieval"
+```
+
+Run local RAG health checks and retrieval evals:
+
+```powershell
+uv run --with chromadb python .\tools\project-memory\rag_check.py run
+```
+
+The check verifies that `rag-system.json` is readable, generated indexes are
+ignored, SQLite chunks match the semantic corpus, Chroma records match the
+semantic corpus when vector retrieval is enabled, and the reviewable eval cases
+in `retrieval-evals.json` return at least one expected source in the configured
+top results.
+
+The database is ignored by git. Commit this README, durable Markdown notes,
+preference JSON files, and indexing scripts instead.
 
 Use SQLite for deterministic project facts and graphs: paths, symbols, exact
 references, generated identifiers, asset links, reverse dependencies, commands,
@@ -159,55 +141,23 @@ over curated notes, summaries, architecture docs, and selected chunks. Do not
 replace exact graph queries with embeddings, and always verify current source
 files before editing because generated indexes can be stale.
 
-## Two Memory Layers
-
-- Markdown is the human-reviewable layer. Keep summaries, decisions,
-  architecture notes, and curated exports concise.
-- SQLite is the searchable agent-memory layer for detailed findings,
-  file/symbol indexes, references, commands, failures, and evidence-backed notes.
-
-Do not blindly migrate all Markdown into SQLite. When Markdown memory becomes
-too large to read cheaply, introduce or rebuild the SQLite memory/index and keep
-Markdown as the concise reviewable export.
-
 ## RAG System Structure
 
-When the project needs retrieval that can grow beyond Markdown and SQLite FTS,
-add:
+This repository records its expandable RAG configuration in:
 
 ```text
 tools/project-memory/rag-system.json
 ```
 
-Use `templates/rag-system.template.json` as the starter shape and
-`patterns/RAG_SYSTEM_STRUCTURE.md` as the architecture rule. Keep vector stores
-such as Chroma, Qdrant, and pgvector behind retrieval adapters so prompts and
-agent workflows do not depend on one storage backend.
+The current mode is SQLite FTS. Chroma, Qdrant, pgvector, or other vector stores
+should be added as retrieval adapters behind the same structure rather than as a
+replacement for project memory.
 
-Before enabling vector retrieval, prepare semantic-ready chunks and embedding
-metadata with `patterns/SEMANTIC_RAG_RETRIEVAL.md`. Keep generated files such as
-`tools/project-memory/semantic-corpus.jsonl` ignored.
+Generated semantic exports such as `tools/project-memory/semantic-corpus.jsonl`
+are ignored and should be rebuilt from tracked source files.
 
-For a local semantic MVP, build Chroma from exported chunks:
-
-```powershell
-python .\tools\project-memory\build_project_memory_index.py rebuild
-python .\tools\project-memory\build_project_memory_index.py export-chunks
-uv run --with chromadb python .\tools\project-memory\build_chroma_index.py rebuild
-```
-
-Run local RAG health checks and retrieval evals when an eval runner is present:
-
-```powershell
-python .\tools\project-memory\rag_check.py health
-python .\tools\project-memory\rag_check.py run
-```
-
-These checks should verify configured RAG files are readable and free of obvious
-secret-path risks, generated indexes are ignored when rebuildable, SQLite chunk
-counts match semantic corpus counts, vector records match the semantic corpus
-when vector retrieval is enabled, and reviewable eval cases in
-`retrieval-evals.json` return expected source paths.
+The generated Chroma index under `tools/project-memory/vector-index/chroma` is
+ignored and can be rebuilt from `semantic-corpus.jsonl`.
 
 ## Activation Limits And Diagnostics
 
@@ -240,47 +190,6 @@ embedding/vector metadata, check semantic corpus size and chunk count, run the
 vector adapter status helper when available, and report collection, record
 count, index path, freshness caveats, and readiness.
 
-## Suggested Files
-
-- `pending-tasks.md`: active project-wide plans and multi-step work.
-- `STUDY_PLAN.md`: roadmap for understanding the project.
-- `git-preferences.json`: commit-message language preferences.
-- `system-preferences.json`: agent user-facing working language preferences.
-- `rag-system.json`: RAG source, exclusion, retrieval, context-packet, and
-  writeback configuration.
-- `architecture-migrations.md`: major architecture rewrites, platform moves,
-  framework replacements, and storage/service/routing migrations.
-- `specs/`: platform-neutral feature, business-rule, data-model, and
-  integration-contract specifications.
-- `semantic-retrieval-evals.md`: small eval set for semantic and hybrid
-  retrieval quality.
-- `build_chroma_index.py`: optional local Chroma adapter when semantic
-  retrieval is enabled.
-- `rag_check.py`: optional local RAG health and retrieval eval runner.
-- `retrieval-evals.json`: reviewable retrieval eval cases for keyword,
-  semantic, or hybrid evidence checks.
-- `NOTES.md`: reviewable export of durable notes from local agent memory.
-- `architecture.md`: verified architecture notes.
-- `decisions.md`: durable decisions and rationale.
-- `known-issues.md`: recurring bugs, caveats, and workarounds.
-
-## Task Planning
-
-For analysis, refactoring, migration, or multi-step implementation tasks, keep a
-concise checklist in `pending-tasks.md` or a dedicated task plan in this folder.
-
-Include:
-
-- goal
-- planned changes
-- execution order
-- risks or dependencies
-- verification steps
-
-Update progress as meaningful steps complete. Keep plans task-relevant and avoid
-full diffs, large logs, generated outputs, secrets, credentials, or private
-production data.
-
-## Rule
-
-If a future agent would waste time rediscovering the same fact, write it down.
+Use `gi tools rebuild evals` or `gi rag rebuild evals` to run the configured
+RAG checks without rebuilding source indexes. A failing eval means retrieval may
+still be structurally present but not yet trustworthy for that kind of question.

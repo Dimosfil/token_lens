@@ -69,6 +69,9 @@
   git finish requests. `gi коммит` commits scoped current changes only; `gi пуш`
   and `gi коммит пуш` commit scoped current changes and push the current branch;
   `gi только пуш` pushes existing local commits without creating a new commit.
+  Do not reinterpret `gi пуш` as a raw `git push`, a retry of a previous
+  terminal push, or a push-only command; if there are no scoped changes to
+  commit, report that clearly instead of falling back to push-only behavior.
   Inspect status, keep unrelated/user changes out, follow commit-message
   preferences, and stop on ambiguous scope, missing remote, conflicts, secrets,
   or push failures.

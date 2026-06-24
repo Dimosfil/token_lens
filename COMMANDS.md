@@ -3,6 +3,11 @@
 This is the compact local command index for agent chat commands. These are not
 PowerShell commands unless a command explicitly points to a script path.
 
+Before executing any state-changing `gi ...` / `ги ...` command, read the
+current project's `AGENTS.md` loading contract and every routed
+`patterns/AGENTS_RUNTIME/` module for that command. If a routed module is
+missing, stop and report the missing path instead of acting from memory.
+
 `gi help`, `gi хелп`, `ги help`, `ги хелп`, `gi commands`, `gi команды`, and
 `ги команды` are read-only help requests. They show this command list without
 running startup restore, resuming old work, calling task managers, mutating
@@ -20,6 +25,8 @@ files, or executing any listed command.
 | `gi sql`, `gi sqlite` | Inspect SQLite/FTS project-memory readiness and metrics. |
 | `gi trim raw bodies`, `gi clean raw bodies` | Clear only old `raw_logs.feedback_log_body` outside the current month, then `VACUUM`. |
 | `gi vector` | Inspect semantic/vector retrieval readiness and metrics. |
+| `gi info`, `ги инфо` | Find or update the current project's purpose, visible functionality, workflows, and stack overview only when verified facts are missing or stale. |
+| `gi stack`, `ги стек` | Find or update the verified technology stack inventory. |
 | `gi rebuild` | Rebuild the current project/application output through documented local build instructions. |
 | `gi default`, `gi defaults`, `ги дефолт` | Restore documented first-run/default project state and verify it. |
 | `gi refactor`, `gi рефактор`, `ги рефактор` | Refactor the current project according to applicable GI rules in small verified batches. |
@@ -32,6 +39,7 @@ files, or executing any listed command.
 | `gi config`, `gi config service` | Inspect config/discovery service settings. |
 | `gi config service url=<url>` | Set the config-service URL after validation. |
 | `gi config service on`, `gi config service off` | Toggle this app's config-service self-registration flag. |
+| `gi prod`, `gi production`, `gi прод`, `ги прод` | Publish a development version to a documented production online service only when a production contract exists. |
 | `gi reboot`, `gi restart`, `ги ребут`, `ги рестарт` | Start or restart all documented Token Lens apps using project-local run instructions. |
 | `gi first test`, `gi первый тест` | Reset documented first-run state and verify first-launch behavior. |
 | `gi install`, `gi инсталл`, `ги инсталл` | Build/package the project and verify an installer artifact when packaging is configured. |
@@ -44,6 +52,8 @@ files, or executing any listed command.
 | `gi plan`, `gi план`, `gi post plan` | Send the current plan to the configured task manager. |
 | `gi start sprint`, `gi старт спринт` | Take the active Sprint/Cycle into work through the configured task manager. |
 | `gi test plan`, `gi тест-план` | Build a verification plan from current project contracts. |
+| `gi test task`, `ги тест таск` | Set the active release/full-system verification task for the current project. |
+| `gi test`, `ги тест`, `gi full test`, `gi release test`, `gi system test` | Run the documented live full-system verification flow against the active test task; dry-runs and mock-only checks are diagnostics only. |
 | `gi git summary`, `gi гит-обзор` | Summarize recent git state without printing a full diff. |
 | `gi commit`, `gi коммит` | Commit scoped changes. |
 | `gi push`, `gi пуш` | Commit and push scoped changes. |
