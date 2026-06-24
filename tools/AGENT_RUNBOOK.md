@@ -8,6 +8,121 @@ Every command should be copy-pasteable from the project root.
 # Uses the system/local Python environment. No dependency manifest is currently present.
 ```
 
+## Prepare Local Source Config
+
+Run this before a first launch from a new checkout/root, before diagnosing
+`0` imported rows, or whenever `config.local.json` is missing:
+
+```powershell
+python -c "from app.core.config import load_config; print(load_config())"
+```
+
+Expected result:
+
+- `config.local.json` is created or updated when Codex/OpenCode source paths are
+  blank or stale.
+- Existing readable values in `config.local.json` are preserved.
+- The app does not need committed machine-specific paths in `config.json`.
+
+Source-of-truth files for this behavior:
+
+```text
+app/core/config.py
+app/core/codex_discovery.py
+README.md
+```
+
+Do not manually choose between multiple Codex SQLite candidates by querying
+private log contents. The discovery order in `app/core/codex_discovery.py` is
+the contract:
+
+```text
+1. ~\.codex\sqlite\logs_2.sqlite
+2. ~\.codex\logs_2.sqlite
+```
+
+Use the root-level `logs_2.sqlite` only as a fallback when the preferred
+`sqlite\logs_2.sqlite` file does not exist. Checking path existence is enough
+for configuration. Do not run schema, row-count, timestamp, prompt, response, or
+raw-body inspection queries against user-private Codex/OpenCode files just to
+prepare startup.
+
+The interactive equivalent is:
+
+```powershell
+.\tools\configure-local-sources.ps1
+```
+
+Accept the suggested values unless the user explicitly gives a different local
+source path.
+
+## Verify Codex Account Limits
+
+Use this section when the user asks whether Codex 5h, weekly, Spark, or account
+remaining limits work.
+
+Important distinction:
+
+- Codex 5h/weekly/Spark limits come from `codex app-server --stdio`.
+- They do not come from `OPENAI_API_KEY`, OpenAI Admin API, OpenAI usage/costs
+  endpoints, or `data\analytics.sqlite`.
+- OpenAI API usage/costs/rate limits are a separate future integration.
+
+Read these files before changing limit behavior:
+
+```text
+app/services/codex_account_service.py
+app/core/codex_discovery.py
+app/services/analytics_service.py
+web/js/render/limits.js
+desktop/mini_client.py
+```
+
+Start or reuse the local app:
+
+```powershell
+.\start.ps1
+```
+
+Check the API endpoint with PowerShell-native HTTP:
+
+```powershell
+Invoke-RestMethod -Uri "http://127.0.0.1:8765/api/usage-limits"
+```
+
+Expected successful shape:
+
+```text
+ok: true
+source: codex_app_server
+groups: one or more limit groups
+windows: one or more windows
+window labels: 5h and/or weekly
+Spark: a separate group/window when the account reports it, commonly with a
+       display name like GPT-5.3-Codex-Spark
+```
+
+If the response is unavailable:
+
+- `codex command not found`: set or repair the local Codex launcher path.
+- `[WinError 5] Access denied`: Windows likely resolved a blocked WindowsApps
+  shim or another unusable launcher.
+- `timed out`: the launcher started but did not answer the stdio protocol in
+  time.
+
+Preferred fix for launcher resolution is an ignored local config override:
+
+```json
+{
+  "codex_app_server_command": "C:\\Users\\Fil-Dom\\.codex\\bin\\codex.cmd"
+}
+```
+
+Use the actual current user's path when different. Prefer Codex-owned helper
+locations such as `.codex\bin` or user npm bin folders over WindowsApps shims.
+Do not solve this with `OPENAI_API_KEY`, OpenAI Admin API keys, broad antivirus
+exclusions, System32 exclusions, or SQLite log inspection.
+
 ## Run
 
 ```powershell

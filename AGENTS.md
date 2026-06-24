@@ -10,6 +10,100 @@ SQLite analytics database.
 Primary surface: local Python web app served from `app.server` with static UI in
 `web/`.
 
+## Agent Launch Preparation
+
+Before starting, restarting, testing a live import, or explaining why a clean
+checkout imported zero rows, read this section and then read the current source
+of truth in:
+
+- `app/core/config.py`
+- `app/core/codex_discovery.py`
+- `tools/AGENT_RUNBOOK.md`
+- `README.md` section `Local Source Setup`
+
+Do not guess local source paths from chat history, screenshots, old summaries,
+or another checkout. Token Lens intentionally keeps machine-specific paths in
+ignored `config.local.json`; committed `config.json` keeps portable blank
+defaults.
+
+Canonical startup behavior:
+
+- `load_config()` reads `config.json`, overlays ignored `config.local.json` when
+  present, then auto-discovers missing or stale source paths.
+- Codex discovery checks `CODEX_HOME`, `CODEX_CONFIG_HOME`, and the current
+  user's `.codex` folder.
+- For Codex logs, the preferred current layout is
+  `~\.codex\sqlite\logs_2.sqlite`; legacy fallback is
+  `~\.codex\logs_2.sqlite`.
+- If both Codex SQLite candidates exist, use the order implemented in
+  `app/core/codex_discovery.py`: prefer `sqlite\logs_2.sqlite` and use
+  root-level `logs_2.sqlite` only as a fallback. Do not run schema, row-count,
+  timestamp, or content-inspection queries against private Codex logs just to
+  choose between those candidates.
+- Codex session names come from `~\.codex\sessions` when present, otherwise
+  legacy `~\.codex\session_index.jsonl`.
+- OpenCode discovery checks standard user data/config locations for
+  `opencode.db` and `logs\token-tracker\tokens.jsonl`.
+- When discovery finds a path and the loaded config value is blank or stale,
+  `load_config()` writes the fresh value to ignored `config.local.json`.
+- Existing readable values in `config.local.json` override auto-discovery.
+
+To prepare a local checkout for launch, do one of these safe actions:
+
+1. Run `.\tools\configure-local-sources.ps1` from the project root and accept
+   the suggested values when they are correct.
+2. Or run `python -c "from app.core.config import load_config; print(load_config())"`
+   from the project root to trigger the same discovery/write path without
+   starting the web app.
+3. Then start the app with `.\start.ps1` or restart it with
+   `.\start.ps1 -Restart`.
+
+Privacy boundary: Codex/OpenCode source files live in user-private application
+data outside this repository. For configuration, checking whether a candidate
+path exists is enough. Do not inspect prompts, responses, raw log bodies, or
+arbitrary external app data unless the user gives an explicit concrete path and
+action. Source adapters must read these files read-only.
+
+## Codex Limit Verification
+
+When the user asks about Codex 5h, weekly, Spark, or account remaining limits,
+do not use `OPENAI_API_KEY`, OpenAI Admin API, usage/costs endpoints, or the
+local SQLite analytics database. Those are different data sources.
+
+Token Lens gets these live Codex account limits from the local Codex launcher:
+
+```text
+codex app-server --stdio
+```
+
+The app code path is:
+
+- `app/services/codex_account_service.py`
+- `app/core/codex_discovery.py`
+- `app/services/analytics_service.py`
+- `web/js/render/limits.js`
+- `desktop/mini_client.py`
+
+To verify the live limits, start the app and call the local endpoint:
+
+```powershell
+.\start.ps1
+Invoke-RestMethod -Uri "http://127.0.0.1:8765/api/usage-limits"
+```
+
+A good response has `ok: true`, `source: codex_app_server`, and non-empty
+`groups` or `windows`. Expected windows include labels such as `5h` and
+`weekly`; Spark appears as a separate group/window when the Codex account
+reports a Spark bucket, for example a display name like
+`GPT-5.3-Codex-Spark`.
+
+If the endpoint returns `WinError 5`, `Access denied`, or a WindowsApps alias
+problem, the likely issue is that Windows resolved a blocked shim instead of the
+real Codex launcher. Set `codex_app_server_command` in ignored
+`config.local.json` to a trusted local launcher such as
+`%USERPROFILE%\.codex\bin\codex.cmd` when it exists. Do not add broad antivirus
+or System32 exclusions, and do not treat this as an OpenAI API key problem.
+
 ## Loading Contract
 
 - Start with this file.

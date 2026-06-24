@@ -48,6 +48,13 @@ access.
   may be a JSONL file, sessions directory, or glob over session JSONL files. If
   the local Codex source is not configured or readable, import is skipped with a
   logged warning and no source fallback is guessed.
+- Launch-prep rule for agents: read `AGENTS.md`, `tools/AGENT_RUNBOOK.md`,
+  `app/core/config.py`, and `app/core/codex_discovery.py` before configuring or
+  starting a clean checkout. If both `~\.codex\sqlite\logs_2.sqlite` and
+  `~\.codex\logs_2.sqlite` exist, prefer `sqlite\logs_2.sqlite`; root-level
+  `logs_2.sqlite` is legacy fallback. Do not inspect private log schema,
+  row-counts, timestamps, prompts, responses, or raw bodies just to choose the
+  source path.
 - Safe commands: use `.\tools\configure-local-sources.ps1` to set local paths,
   then project-local import, maintenance, and cleanup workflows documented in
   `AGENTS.md`, `README.md`, and runbook files.
@@ -55,6 +62,34 @@ access.
   credentials, or generated local databases.
 - Status: active.
 - Reason retained: Token Lens exists to inspect local Codex token usage.
+
+## Codex Account Limits
+
+- Purpose: live display of Codex account remaining limits such as 5h, weekly,
+  and Spark buckets.
+- Role in Token Lens: `/api/usage-limits`, dashboard limit widget, and desktop
+  mini client source context.
+- Source of truth: local Codex launcher stdio protocol,
+  `codex app-server --stdio`, method `account/rateLimits/read`.
+- Implementation map: `app/services/codex_account_service.py`,
+  `app/core/codex_discovery.py`, `app/services/analytics_service.py`,
+  `web/js/render/limits.js`, and `desktop/mini_client.py`.
+- Data/API contract: successful responses have `ok: true`,
+  `source: codex_app_server`, and non-empty `groups` or `windows`; windows may
+  include labels such as `5h` and `weekly`, and Spark appears only when the
+  account reports a Spark bucket.
+- Configuration: `codex_app_server_command` in ignored `config.local.json` may
+  override launcher discovery when Windows resolves a blocked WindowsApps shim
+  or another unusable command.
+- Privacy boundaries: this flow is separate from OpenAI API usage/costs/rate
+  limits, `OPENAI_API_KEY`, OpenAI Admin API keys, and local SQLite analytics.
+  Do not inspect Codex log contents to verify account limits.
+- Safe check:
+  `Invoke-RestMethod -Uri "http://127.0.0.1:8765/api/usage-limits"` after
+  `.\start.ps1`.
+- Status: active.
+  Reason retained: lets Token Lens show live Codex subscription/account budget
+  alongside local token analytics without mixing the two data sources.
 
 ## OpenCode Local Usage Sources
 

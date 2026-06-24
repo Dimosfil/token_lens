@@ -118,10 +118,30 @@ values in `config.local.json` override auto-discovery. If Codex paths remain
 blank, missing, or unreadable, Token Lens still starts and keeps the analytics
 database available, but the Codex import is skipped until the local source is
 configured.
+For agents preparing a checkout: do not choose between
+`~\.codex\sqlite\logs_2.sqlite` and `~\.codex\logs_2.sqlite` by querying private
+log contents. The project contract is to follow `app/core/codex_discovery.py`:
+prefer `~\.codex\sqlite\logs_2.sqlite`, and use `~\.codex\logs_2.sqlite` only
+as a legacy fallback. To trigger discovery and write ignored `config.local.json`
+without starting the app, run:
+
+```powershell
+python -c "from app.core.config import load_config; print(load_config())"
+```
+
 Live account limits use `codex app-server --stdio`; the Codex command is
 auto-discovered from `.codex\bin`, user npm bin folders, or PATH. Set
 `codex_app_server_command` in `config.local.json` only when a machine uses a
 custom command path.
+These Codex 5h/weekly/Spark limits are not OpenAI API usage/costs/rate limits
+and do not use `OPENAI_API_KEY`. To verify them locally:
+
+```powershell
+Invoke-RestMethod -Uri "http://127.0.0.1:8765/api/usage-limits"
+```
+
+A successful response has `ok: true`, `source: codex_app_server`, and non-empty
+`groups` or `windows`.
 
 The app is split into small standard-library Python modules and static browser
 modules:

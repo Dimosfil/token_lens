@@ -14,6 +14,31 @@ generated outputs, secrets, credentials, or private production data.
 
 ## Tasks
 
+### Agent Launch Config Instructions 2026-06-24
+
+Goal: make project-local instructions unambiguous for agents preparing a clean
+Token Lens checkout with missing local source config.
+
+Planned changes:
+
+- [x] Add an agent launch-preparation section to `AGENTS.md`.
+- [x] Add a runbook checklist for writing `config.local.json` before launch.
+- [x] Document Codex SQLite candidate priority and privacy limits.
+- [x] Mirror the source-path contract in README and connected-project memory.
+
+### Codex Limit Verification Instructions 2026-06-24
+
+Goal: make agents verify Codex 5h/weekly/Spark limits through the correct local
+Codex app-server path instead of confusing them with OpenAI API key usage.
+
+Planned changes:
+
+- [x] Document the Codex limit source of truth in `AGENTS.md`.
+- [x] Add runbook commands for `/api/usage-limits`.
+- [x] Explain expected `groups`/`windows` response shape and Spark bucket.
+- [x] Record that OpenAI API/Admin API and SQLite analytics are separate data
+      sources from Codex account limits.
+
 ### Dashboard Local Time Default 2026-06-24
 
 Goal: make dashboard time buckets use local time by default while keeping UTC
