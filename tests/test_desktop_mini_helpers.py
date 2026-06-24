@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 from unittest import mock
 from urllib.error import URLError
@@ -39,7 +40,8 @@ class MiniClientHelperTests(unittest.TestCase):
         )
         self.assertEqual(mini_client.format_duration(3661), "1:01:01")
         self.assertEqual(mini_client.format_duration("bad"), "0:00")
-        self.assertEqual(mini_client.format_timestamp("2026-06-19T10:25:30+00:00"), "2026-06-19 10:25")
+        expected_time = datetime.fromisoformat("2026-06-19T10:25:30+00:00").astimezone().strftime("%Y-%m-%d %H:%M")
+        self.assertEqual(mini_client.format_timestamp("2026-06-19T10:25:30+00:00"), expected_time)
 
     def test_usage_limit_helpers_group_and_format_windows(self):
         snapshot = {

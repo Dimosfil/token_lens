@@ -322,6 +322,13 @@ def format_timestamp(value) -> str:
     text = str(value or "").strip()
     if not text:
         return ""
+    try:
+        timestamp = datetime.fromisoformat(text)
+        if timestamp.tzinfo is not None:
+            timestamp = timestamp.astimezone()
+        return timestamp.strftime("%Y-%m-%d %H:%M")
+    except ValueError:
+        pass
     if "T" in text:
         date_part, time_part = text.split("T", 1)
         return f"{date_part} {time_part[:5]}"
