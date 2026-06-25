@@ -766,7 +766,11 @@ class MiniClientApp:
         self.limits_frames[source] = limits_frame
         self.limit_bar_canvases[source] = []
 
-        table = ttk.Treeview(parent, columns=TABLE_COLUMN_IDS, show="headings", height=vars_for_source["limit"].get())
+        table_frame = ttk.Frame(parent)
+        table_frame.pack(fill=tk.BOTH, expand=True)
+        table = ttk.Treeview(table_frame, columns=TABLE_COLUMN_IDS, show="headings", height=vars_for_source["limit"].get())
+        x_scroll = ttk.Scrollbar(table_frame, orient=tk.HORIZONTAL, command=table.xview)
+        table.configure(xscrollcommand=x_scroll.set)
         for column in TABLE_COLUMNS:
             column_id = column["id"]
             table.heading(column_id, text=column["label"])
@@ -781,7 +785,8 @@ class MiniClientApp:
         self.apply_column_visibility(source, save=False)
         table.tag_configure("over-limit", background="#fff1b8")
         table.pack(fill=tk.BOTH, expand=True)
-        self.agent_widgets[source] = {"columns_menu": columns_menu}
+        x_scroll.pack(fill=tk.X)
+        self.agent_widgets[source] = {"columns_menu": columns_menu, "x_scroll": x_scroll}
 
     def _bind_settings_persistence(self):
         for source, vars_for_source in self.agent_vars.items():
