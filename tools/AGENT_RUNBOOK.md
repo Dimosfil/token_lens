@@ -123,6 +123,18 @@ locations such as `.codex\bin` or user npm bin folders over WindowsApps shims.
 Do not solve this with `OPENAI_API_KEY`, OpenAI Admin API keys, broad antivirus
 exclusions, System32 exclusions, or SQLite log inspection.
 
+Do not report "codex is not installed" or tell the user to install OpenAI Codex
+CLI until the project discovery path has been checked:
+
+```powershell
+python -c "from app.core.config import load_config; print(load_config().get('codex_app_server_command'))"
+```
+
+If that prints a real file outside WindowsApps, use it. If it prints nothing,
+check whether `%USERPROFILE%\.codex\bin\codex.cmd` exists and add that path to
+ignored `config.local.json`. WindowsApps aliases are treated as unusable even if
+`where codex` or PATH discovery finds them.
+
 ## Run
 
 ```powershell

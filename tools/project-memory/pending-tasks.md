@@ -39,6 +39,18 @@ Planned changes:
 - [x] Record that OpenAI API/Admin API and SQLite analytics are separate data
       sources from Codex account limits.
 
+### Codex Launcher Discovery Hardening 2026-06-24
+
+Goal: prevent agents and runtime checks from misclassifying WindowsApps aliases
+as missing Codex installations.
+
+Planned changes:
+
+- [x] Ignore WindowsApps Codex aliases during launcher discovery.
+- [x] Persist a usable discovered `codex_app_server_command` to local config.
+- [x] Return actionable `/api/usage-limits` errors for bad launcher overrides.
+- [x] Add regression tests and update agent-facing launch/limit instructions.
+
 ### Dashboard Local Time Default 2026-06-24
 
 Goal: make dashboard time buckets use local time by default while keeping UTC

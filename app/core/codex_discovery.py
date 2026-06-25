@@ -51,13 +51,24 @@ def discover_opencode_paths(env: dict[str, str] | None = None) -> dict[str, str]
 def discover_codex_command(env: dict[str, str] | None = None) -> str | None:
     env = env or os.environ
     roots = _candidate_roots(env)
-    command = _first_existing_file(
+    command = _first_usable_command(
         [root / "bin" / name for root in roots for name in _codex_command_names()]
         + _user_bin_commands(env)
     )
     if command:
         return str(command)
-    return shutil.which("codex.cmd") or shutil.which("codex.exe") or shutil.which("codex")
+    for name in ("codex.cmd", "codex.exe", "codex"):
+        path = shutil.which(name)
+        if path and is_usable_codex_command(path):
+            return path
+    return None
+
+
+def is_usable_codex_command(value: str | Path) -> bool:
+    path = Path(os.path.expandvars(str(value))).expanduser()
+    if _is_windowsapps_shim(path):
+        return False
+    return path.is_file()
 
 
 def _candidate_roots(env: dict[str, str]) -> list[Path]:
@@ -171,6 +182,18 @@ def _first_existing_file(paths: list[Path]) -> Path | None:
         if path.is_file():
             return path
     return None
+
+
+def _first_usable_command(paths: list[Path]) -> Path | None:
+    for path in paths:
+        if is_usable_codex_command(path):
+            return path
+    return None
+
+
+def _is_windowsapps_shim(path: Path) -> bool:
+    parts = {part.lower() for part in path.parts}
+    return "windowsapps" in parts
 
 
 def _first_existing_path(paths: list[Path]) -> Path | None:

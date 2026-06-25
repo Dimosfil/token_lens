@@ -5,7 +5,7 @@ import os
 import glob
 from pathlib import Path
 
-from app.core.codex_discovery import discover_codex_paths, discover_opencode_paths
+from app.core.codex_discovery import discover_codex_command, discover_codex_paths, discover_opencode_paths
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -24,6 +24,7 @@ REQUIRED_CODEX_KEYS = ("codex_logs_db",)
 DISCOVERED_SOURCE_KEYS = (
     "codex_logs_db",
     "codex_session_index",
+    "codex_app_server_command",
     "opencode_db",
     "opencode_tokens_jsonl",
 )
@@ -39,6 +40,10 @@ def load_config() -> dict:
     discovered: dict[str, str] = {}
     if config.get("auto_discover_codex_sources", True):
         discovered.update(discover_codex_paths())
+    if config.get("auto_discover_codex_command", True):
+        command = discover_codex_command()
+        if command:
+            discovered["codex_app_server_command"] = command
     if config.get("auto_discover_opencode_sources", True):
         discovered.update(discover_opencode_paths())
 
@@ -100,7 +105,7 @@ def _should_use_discovered_path(key: str, config: dict) -> bool:
 
 
 def _resolve_config_path(value: str) -> Path:
-    path = Path(value).expanduser()
+    path = Path(os.path.expandvars(value)).expanduser()
     if not path.is_absolute():
         path = ROOT / path
     return path
@@ -120,7 +125,7 @@ def _validate_readable_file(key: str, value: str) -> list[str]:
 def _configured_path_exists(value: str) -> bool:
     if _has_glob(value):
         return any(Path(item).is_file() for item in glob.glob(value, recursive=True))
-    path = Path(value).expanduser()
+    path = Path(os.path.expandvars(value)).expanduser()
     if not path.is_absolute():
         path = ROOT / path
     return path.exists()

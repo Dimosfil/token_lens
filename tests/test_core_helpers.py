@@ -112,9 +112,12 @@ class ConfigAndPayloadTests(unittest.TestCase):
             codex_root = home / ".codex"
             logs_db = codex_root / "sqlite" / "logs_2.sqlite"
             sessions = codex_root / "sessions"
+            command = codex_root / "bin" / "codex.cmd"
             logs_db.parent.mkdir(parents=True)
             sessions.mkdir()
+            command.parent.mkdir(parents=True)
             logs_db.write_text("", encoding="utf-8")
+            command.write_text("@echo off\n", encoding="utf-8")
             config_path = root / "config.json"
             local_path = root / "config.local.json"
             config_path.write_text(
@@ -136,8 +139,10 @@ class ConfigAndPayloadTests(unittest.TestCase):
 
         self.assertEqual(config["codex_logs_db"], str(logs_db))
         self.assertEqual(config["codex_session_index"], str(sessions))
+        self.assertEqual(config["codex_app_server_command"], str(command))
         self.assertEqual(local_config["codex_logs_db"], str(logs_db))
         self.assertEqual(local_config["codex_session_index"], str(sessions))
+        self.assertEqual(local_config["codex_app_server_command"], str(command))
 
     def test_load_config_auto_discovers_opencode_paths_when_blank(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -233,6 +238,17 @@ class ConfigAndPayloadTests(unittest.TestCase):
             discovered = discover_codex_command({"USERPROFILE": str(home)})
 
         self.assertEqual(discovered, str(command))
+
+    def test_discover_codex_command_ignores_windowsapps_alias(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            alias = Path(tmp) / "WindowsApps" / "codex.exe"
+            alias.parent.mkdir(parents=True)
+            alias.write_text("", encoding="utf-8")
+
+            with mock.patch("app.core.codex_discovery.shutil.which", return_value=str(alias)):
+                discovered = discover_codex_command({"USERPROFILE": str(Path(tmp) / "home")})
+
+        self.assertIsNone(discovered)
 
     def test_codex_source_validation_reports_missing_or_unreadable_paths(self):
         with tempfile.TemporaryDirectory() as tmp:

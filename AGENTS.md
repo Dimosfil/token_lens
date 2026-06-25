@@ -103,6 +103,10 @@ real Codex launcher. Set `codex_app_server_command` in ignored
 `config.local.json` to a trusted local launcher such as
 `%USERPROFILE%\.codex\bin\codex.cmd` when it exists. Do not add broad antivirus
 or System32 exclusions, and do not treat this as an OpenAI API key problem.
+Do not tell the user to install OpenAI Codex CLI until `load_config()` and
+`discover_codex_command()` have been checked and no usable launcher exists in
+`.codex\bin`, user npm bin folders, or PATH. WindowsApps aliases are not usable
+launchers for this project and must be ignored.
 
 ## Loading Contract
 

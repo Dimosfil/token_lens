@@ -80,7 +80,11 @@ access.
   account reports a Spark bucket.
 - Configuration: `codex_app_server_command` in ignored `config.local.json` may
   override launcher discovery when Windows resolves a blocked WindowsApps shim
-  or another unusable command.
+  or another unusable command. `load_config()` auto-discovers and persists a
+  usable launcher when the loaded command value is blank or stale. Discovery
+  prefers `.codex\bin` and user npm bin folders; WindowsApps aliases are
+  ignored and must not be treated as a reason to tell the user to install Codex
+  CLI before project discovery has run.
 - Privacy boundaries: this flow is separate from OpenAI API usage/costs/rate
   limits, `OPENAI_API_KEY`, OpenAI Admin API keys, and local SQLite analytics.
   Do not inspect Codex log contents to verify account limits.

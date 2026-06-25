@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
+import os
 import queue
-import shutil
 import subprocess
 import threading
 import time
 
-from app.core.codex_discovery import discover_codex_command
+from app.core.codex_discovery import discover_codex_command, is_usable_codex_command
 
 
 DEFAULT_CACHE_SECONDS = 30
@@ -31,9 +31,16 @@ def read_usage_limits(config: dict | None = None) -> dict:
         cached["cached"] = True
         return cached
 
+    command_issue = _configured_codex_command_issue(config)
+    if command_issue:
+        return _unavailable(command_issue)
+
     command = _resolve_codex_command(config)
     if not command:
-        return _unavailable("codex command not found")
+        return _unavailable(
+            "codex app-server launcher not found; configure codex_app_server_command "
+            "with a real Codex launcher such as %USERPROFILE%\\.codex\\bin\\codex.cmd"
+        )
 
     timeout_seconds = _safe_int(config.get("codex_rate_limits_timeout_seconds"), DEFAULT_TIMEOUT_SECONDS, 3, 60)
     try:
@@ -53,8 +60,21 @@ def read_usage_limits(config: dict | None = None) -> dict:
 def _resolve_codex_command(config: dict) -> str | None:
     configured = str(config.get("codex_app_server_command") or "").strip()
     if configured:
-        return configured
-    return discover_codex_command() or shutil.which("codex.cmd") or shutil.which("codex")
+        return os.path.expandvars(configured)
+    return discover_codex_command()
+
+
+def _configured_codex_command_issue(config: dict) -> str | None:
+    configured = str(config.get("codex_app_server_command") or "").strip()
+    if not configured:
+        return None
+    if not is_usable_codex_command(configured):
+        return (
+            "codex_app_server_command is not a usable local Codex launcher; "
+            "point it to a real file such as %USERPROFILE%\\.codex\\bin\\codex.cmd "
+            "and avoid WindowsApps aliases"
+        )
+    return None
 
 
 def _request_rate_limits(command: str, timeout_seconds: int) -> dict:

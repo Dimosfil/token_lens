@@ -186,6 +186,19 @@ class ApiContractTests(unittest.TestCase):
             "C:\\tools\\codex.cmd",
         )
 
+    def test_codex_account_limits_reject_windowsapps_launcher_override(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            alias = Path(tmp) / "WindowsApps" / "codex.exe"
+            alias.parent.mkdir(parents=True)
+            alias.write_text("", encoding="utf-8")
+
+            payload = codex_account_service.read_usage_limits({
+                "codex_app_server_command": str(alias),
+            })
+
+        self.assertFalse(payload["ok"])
+        self.assertIn("avoid WindowsApps aliases", payload["error"])
+
     def test_task_detail_returns_calls_and_payloads(self):
         con = connect(self.db_path)
         try:
