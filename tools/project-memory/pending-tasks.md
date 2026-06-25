@@ -14,6 +14,19 @@ generated outputs, secrets, credentials, or private production data.
 
 ## Tasks
 
+### Data Refresh Freshness Module 2026-06-25
+
+Goal: make Token Lens data freshness explicit so mini and web refreshes do not
+silently show stale imported rows.
+
+Planned changes:
+
+- [x] Extract import/update orchestration into a dedicated data refresh module.
+- [x] Route server startup, background loop, API refresh, and mini refresh
+      through that module.
+- [x] Add tests for every public function in the refresh module.
+- [x] Verify app restart and API freshness behavior.
+
 ### Mini Agent Tabs And Per-Agent Settings 2026-06-25
 
 Goal: replace source toggle buttons with Codex/OpenCode tabs and persist table

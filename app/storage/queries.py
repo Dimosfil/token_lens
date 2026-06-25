@@ -43,6 +43,27 @@ def _and_clause(where: str, clause: str) -> str:
     return f"{where} and {clause}" if where else f"where {clause}"
 
 
+def _usage_clause(where: str) -> str:
+    return _and_clause(
+        where,
+        """
+        not (
+          source = 'codex'
+          and (
+            total_tokens <= 0
+            or total_tokens < input_tokens + output_tokens
+            or (
+              input_tokens = 0
+              and cached_input_tokens = 0
+              and output_tokens = 0
+              and reasoning_output_tokens = 0
+            )
+          )
+        )
+        """,
+    )
+
+
 def _source_clause(where: str, params: list, source: str = "") -> tuple[str, list]:
     if source in {"codex", "opencode"}:
         where = _and_clause(where, "source = ?")
@@ -137,6 +158,7 @@ def summary(con: sqlite3.Connection, range_key: str = "", start_ts: int | None =
 
     where, params = _range_clause(range_key, start_ts, end_ts)
     where, params = _source_clause(where, params, source)
+    where = _usage_clause(where)
     row = con.execute(
         f"""
         select count(*) as turns,
@@ -228,6 +250,7 @@ def daily(
 ):
     where, params = _range_clause(range_key, start_ts, end_ts)
     where, params = _source_clause(where, params, source)
+    where = _usage_clause(where)
     normalized_bucket = normalize_bucket(bucket, range_key)
     period_expr = _bucket_expr(normalized_bucket, time_mode)
     day_expr = _bucket_day_expr(normalized_bucket, period_expr)
@@ -257,6 +280,7 @@ def turns(con: sqlite3.Connection, limit: int, model: str = "", range_key: str =
     params = []
     where, params = _range_clause(range_key, start_ts, end_ts)
     where, params = _source_clause(where, params, source)
+    where = _usage_clause(where)
     if model:
         where = _and_clause(where, "model = ?")
         params.append(model)
@@ -283,6 +307,7 @@ def tasks(con: sqlite3.Connection, limit: int | None, range_key: str = "", start
 
     where, params = _range_clause(range_key, start_ts, end_ts)
     where, params = _source_clause(where, params, source)
+    where = _usage_clause(where)
     limit_clause = ""
     if limit is not None:
         limit_clause = "limit ?"
@@ -410,6 +435,7 @@ def task_buckets(
     period_expr = _bucket_expr(normalized_bucket, time_mode)
     where, params = _range_clause(range_key, start_ts, end_ts)
     where, params = _source_clause(where, params, source)
+    where = _usage_clause(where)
     rows = rows_to_dicts(con.execute(
         f"""
         select {period_expr} as period,
@@ -455,6 +481,7 @@ def bucket_tasks(
     period_expr = _bucket_expr(normalized_bucket, time_mode)
     where, params = _range_clause(range_key, start_ts, end_ts)
     where, params = _source_clause(where, params, source)
+    where = _usage_clause(where)
     where = _and_clause(where, f"{period_expr} = ?")
     params.append(period)
     return rows_to_dicts(con.execute(
@@ -542,6 +569,7 @@ def task_detail(con: sqlite3.Connection, thread_id: str, turn_id: str):
 def models(con: sqlite3.Connection, range_key: str = "", start_ts: int | None = None, end_ts: int | None = None, source: str = ""):
     where, params = _range_clause(range_key, start_ts, end_ts)
     where, params = _source_clause(where, params, source)
+    where = _usage_clause(where)
     return rows_to_dicts(con.execute(
         f"""
         select model,
@@ -574,6 +602,19 @@ def data_state(con: sqlite3.Connection):
                coalesce(max(ts), 0) as latest_ts,
                coalesce(sum(total_tokens), 0) as total_tokens
         from turns
+        where not (
+          source = 'codex'
+          and (
+            total_tokens <= 0
+            or total_tokens < input_tokens + output_tokens
+            or (
+              input_tokens = 0
+              and cached_input_tokens = 0
+              and output_tokens = 0
+              and reasoning_output_tokens = 0
+            )
+          )
+        )
         """
     ).fetchone()
     state = dict(row)

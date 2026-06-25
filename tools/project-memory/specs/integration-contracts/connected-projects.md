@@ -51,10 +51,10 @@ access.
 - Launch-prep rule for agents: read `AGENTS.md`, `tools/AGENT_RUNBOOK.md`,
   `app/core/config.py`, and `app/core/codex_discovery.py` before configuring or
   starting a clean checkout. If both `~\.codex\sqlite\logs_2.sqlite` and
-  `~\.codex\logs_2.sqlite` exist, prefer `sqlite\logs_2.sqlite`; root-level
-  `logs_2.sqlite` is legacy fallback. Do not inspect private log schema,
-  row-counts, timestamps, prompts, responses, or raw bodies just to choose the
-  source path.
+  `~\.codex\logs_2.sqlite` exist, follow `app/core/codex_discovery.py`: use the
+  active candidate indicated by safe file metadata. Do not inspect private log
+  schema, row-counts, prompts, responses, raw bodies, or content just to choose
+  the source path.
 - Safe commands: use `.\tools\configure-local-sources.ps1` to set local paths,
   then project-local import, maintenance, and cleanup workflows documented in
   `AGENTS.md`, `README.md`, and runbook files.

@@ -8,7 +8,7 @@ import logging
 from app.api.handlers import AnalyticsHandler
 from app.core.config import load_config
 from app.core.logging_config import configure_logging
-from app.services.background import auto_import_loop, run_import
+from app.services.data_refresh import auto_import_loop, run_import
 from app.storage.schema import init_db
 
 

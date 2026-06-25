@@ -568,6 +568,26 @@ def usage_limits_text(snapshot: dict | None) -> str:
     return "\n".join(lines) if lines else "Limits: unavailable"
 
 
+def import_status_error_text(status: dict | None) -> str:
+    if not isinstance(status, dict):
+        return ""
+    error = str(status.get("error") or "").strip()
+    if not error:
+        return ""
+    return f"Import error: {error}"
+
+
+def refresh_status_text(status: dict | None, warnings: list | None = None) -> str:
+    error_text = import_status_error_text(status)
+    if error_text:
+        return error_text
+    if isinstance(warnings, list) and warnings:
+        warning = str(warnings[0]).strip()
+        if warning:
+            return f"Import warning: {warning}"
+    return ""
+
+
 class ApiClient:
     def __init__(self, base_url: str, timeout: float = 4.0):
         self.base_url = base_url.rstrip("/")
@@ -993,25 +1013,32 @@ class MiniClientApp:
 
     def poll_once(self):
         state = self.api.get_json("/api/state")
+        import_status = state.get("import_status") if isinstance(state, dict) else None
+        source_warnings = state.get("source_warnings") if isinstance(state, dict) else None
         source_context = self.load_source_context()
         if self.data_version is None or state.get("version") != self.data_version:
             rows = self.load_rows()
-            self._ui(lambda: self.render_rows(rows, state.get("version"), source_context))
+            self._ui(lambda: self.render_rows(rows, state.get("version"), source_context, import_status, source_warnings))
         else:
             self._ui(lambda: self.render_source_context(source_context))
-            self._ui(lambda: self.set_checked_status())
+            self._ui(lambda: self.set_checked_status(import_status, source_warnings))
 
     def refresh_once(self, import_first: bool):
         if import_first:
             dashboard = self.api.post_json("/api/refresh", self.query())
             rows = dashboard.get("tasks", [])
             version = dashboard.get("state", {}).get("version")
+            import_status = dashboard.get("import_status")
+            source_warnings = dashboard.get("source_warnings")
             source_context = self.source_context_from_dashboard(dashboard)
         else:
             rows = self.load_rows()
-            version = self.api.get_json("/api/state").get("version")
+            state = self.api.get_json("/api/state")
+            version = state.get("version")
+            import_status = state.get("import_status")
+            source_warnings = state.get("source_warnings")
             source_context = self.load_source_context()
-        self._ui(lambda: self.render_rows(rows, version, source_context))
+        self._ui(lambda: self.render_rows(rows, version, source_context, import_status, source_warnings))
 
     def run_with_api_recovery(self, operation):
         try:
@@ -1261,7 +1288,14 @@ class MiniClientApp:
                     font=("TkDefaultFont", 7, "bold"),
                 )
 
-    def render_rows(self, rows: list[dict], version, source_context: dict | None = None):
+    def render_rows(
+        self,
+        rows: list[dict],
+        version,
+        source_context: dict | None = None,
+        import_status: dict | None = None,
+        source_warnings: list | None = None,
+    ):
         self.data_version = version
         if source_context is not None:
             self.render_source_context(source_context)
@@ -1279,10 +1313,12 @@ class MiniClientApp:
                 values=tuple(table_cell_value(column_id, row) for column_id in TABLE_COLUMN_IDS),
             )
         self.maybe_signal(rows, version, threshold)
-        self.status_var.set(f"Updated {time.strftime('%H:%M:%S')}")
+        status_text = refresh_status_text(import_status, source_warnings)
+        self.status_var.set(status_text or f"Updated {time.strftime('%H:%M:%S')}")
 
-    def set_checked_status(self):
-        self.status_var.set(f"Checked {time.strftime('%H:%M:%S')}")
+    def set_checked_status(self, import_status: dict | None = None, source_warnings: list | None = None):
+        status_text = refresh_status_text(import_status, source_warnings)
+        self.status_var.set(status_text or f"Checked {time.strftime('%H:%M:%S')}")
 
     def set_error(self, error: Exception):
         self.status_var.set(f"Error: {error}")

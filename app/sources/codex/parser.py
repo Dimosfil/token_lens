@@ -132,6 +132,15 @@ def parse_usage_row(
     non_cached_input_tokens = token_pairs.get("non_cached_input_tokens")
     if non_cached_input_tokens is not None:
         cached_input_tokens = max(input_tokens - non_cached_input_tokens, 0)
+    output_tokens = token_pairs.get("output_tokens", 0)
+    reasoning_output_tokens = token_pairs.get("reasoning_output_tokens", 0)
+    total_tokens = token_pairs.get("total_tokens", 0)
+    if (
+        total_tokens <= 0
+        or total_tokens < input_tokens + output_tokens
+        or not any((input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens))
+    ):
+        return None
 
     return build_turn_row(
         source_log_id=source_log_id,
@@ -147,9 +156,9 @@ def parse_usage_row(
         input_tokens=input_tokens,
         cached_input_tokens=cached_input_tokens,
         non_cached_input_tokens=non_cached_input_tokens,
-        output_tokens=token_pairs.get("output_tokens", 0),
-        reasoning_output_tokens=token_pairs.get("reasoning_output_tokens", 0),
-        total_tokens=token_pairs.get("total_tokens", 0),
+        output_tokens=output_tokens,
+        reasoning_output_tokens=reasoning_output_tokens,
+        total_tokens=total_tokens,
         prices=prices,
     )
 
@@ -175,6 +184,8 @@ def parse_response_event(
 
     response = event.get("response") or {}
     usage = response.get("usage") or {}
+    if event_type != "completed" and not usage:
+        return None
     request_payload = response.get("input") or event.get("input") or event.get("request")
     response_payload = response_output_payload(response) or response
 

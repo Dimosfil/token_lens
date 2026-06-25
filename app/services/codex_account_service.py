@@ -11,7 +11,7 @@ import time
 from app.core.codex_discovery import discover_codex_command, is_usable_codex_command
 
 
-DEFAULT_CACHE_SECONDS = 30
+DEFAULT_CACHE_SECONDS = 3
 DEFAULT_TIMEOUT_SECONDS = 20
 
 _CACHE: dict | None = None
@@ -23,10 +23,10 @@ def read_usage_limits(config: dict | None = None) -> dict:
     if config.get("codex_rate_limits_enabled") is False:
         return _unavailable("disabled")
 
-    cache_seconds = _safe_int(config.get("codex_rate_limits_cache_seconds"), DEFAULT_CACHE_SECONDS, 1, 300)
+    cache_seconds = _safe_int(config.get("codex_rate_limits_cache_seconds"), DEFAULT_CACHE_SECONDS, 0, 300)
     now = time.time()
     global _CACHE, _CACHE_TS
-    if _CACHE and now - _CACHE_TS < cache_seconds:
+    if cache_seconds > 0 and _CACHE and now - _CACHE_TS < cache_seconds:
         cached = dict(_CACHE)
         cached["cached"] = True
         return cached

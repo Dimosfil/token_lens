@@ -111,7 +111,8 @@ By default, Token Lens auto-discovers Codex sources from `CODEX_HOME`,
 sources from standard user data/config locations. When discovered source paths
 are blank or stale in the loaded config, Token Lens writes the fresh values to
 ignored `config.local.json` during startup. `codex_logs_db` must point to the
-Codex SQLite file, commonly `~\.codex\sqlite\logs_2.sqlite`.
+active Codex SQLite file, commonly `~\.codex\sqlite\logs_2.sqlite` or
+`~\.codex\logs_2.sqlite`.
 `codex_session_index` may point to one JSONL file, a sessions folder, or a glob
 such as `~\.codex\sessions\2026\06\24\rollout-*.jsonl`. Existing readable
 values in `config.local.json` override auto-discovery. If Codex paths remain
@@ -121,9 +122,9 @@ configured.
 For agents preparing a checkout: do not choose between
 `~\.codex\sqlite\logs_2.sqlite` and `~\.codex\logs_2.sqlite` by querying private
 log contents. The project contract is to follow `app/core/codex_discovery.py`:
-prefer `~\.codex\sqlite\logs_2.sqlite`, and use `~\.codex\logs_2.sqlite` only
-as a legacy fallback. To trigger discovery and write ignored `config.local.json`
-without starting the app, run:
+prefer `~\.codex\sqlite\logs_2.sqlite` unless safe file metadata shows
+`~\.codex\logs_2.sqlite` is the active updated source. To trigger discovery and
+write ignored `config.local.json` without starting the app, run:
 
 ```powershell
 python -c "from app.core.config import load_config; print(load_config())"

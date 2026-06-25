@@ -33,19 +33,18 @@ README.md
 ```
 
 Do not manually choose between multiple Codex SQLite candidates by querying
-private log contents. The discovery order in `app/core/codex_discovery.py` is
-the contract:
+private log contents. The active-file selection in
+`app/core/codex_discovery.py` is the contract:
 
 ```text
-1. ~\.codex\sqlite\logs_2.sqlite
-2. ~\.codex\logs_2.sqlite
+1. Prefer ~\.codex\sqlite\logs_2.sqlite when it is the active candidate.
+2. Use ~\.codex\logs_2.sqlite when safe file metadata shows it is the active
+   updated source.
 ```
 
-Use the root-level `logs_2.sqlite` only as a fallback when the preferred
-`sqlite\logs_2.sqlite` file does not exist. Checking path existence is enough
-for configuration. Do not run schema, row-count, timestamp, prompt, response, or
-raw-body inspection queries against user-private Codex/OpenCode files just to
-prepare startup.
+Checking path existence and file metadata is enough for configuration. Do not
+run schema, row-count, prompt, response, raw-body, or content-inspection queries
+against user-private Codex/OpenCode files just to prepare startup.
 
 The interactive equivalent is:
 

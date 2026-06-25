@@ -10,13 +10,7 @@ def discover_codex_paths(env: dict[str, str] | None = None) -> dict[str, str]:
     roots = _candidate_roots(env)
     discovered: dict[str, str] = {}
 
-    logs_db = _first_existing_file([
-        root / "sqlite" / "logs_2.sqlite"
-        for root in roots
-    ] + [
-        root / "logs_2.sqlite"
-        for root in roots
-    ])
+    logs_db = _active_codex_logs_db(roots)
     if logs_db:
         discovered["codex_logs_db"] = str(logs_db)
 
@@ -31,6 +25,20 @@ def discover_codex_paths(env: dict[str, str] | None = None) -> dict[str, str]:
         discovered["codex_session_index"] = str(session_index)
 
     return discovered
+
+
+def _active_codex_logs_db(roots: list[Path]) -> Path | None:
+    preferred = _first_existing_file([
+        root / "sqlite" / "logs_2.sqlite"
+        for root in roots
+    ])
+    legacy = _first_existing_file([
+        root / "logs_2.sqlite"
+        for root in roots
+    ])
+    if preferred and legacy and _file_mtime(legacy) > _file_mtime(preferred):
+        return legacy
+    return preferred or legacy
 
 
 def discover_opencode_paths(env: dict[str, str] | None = None) -> dict[str, str]:
@@ -182,6 +190,13 @@ def _first_existing_file(paths: list[Path]) -> Path | None:
         if path.is_file():
             return path
     return None
+
+
+def _file_mtime(path: Path) -> float:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
 
 
 def _first_usable_command(paths: list[Path]) -> Path | None:

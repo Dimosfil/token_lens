@@ -14,7 +14,9 @@ from app.api.responses import send_json
 from app.core import config as core_config
 from app.core.codex_discovery import discover_codex_command, discover_codex_paths, discover_opencode_paths
 from app.core.logging_config import configure_logging
+from app.core.types import ImportStats
 from app.services import background
+from app.services import data_refresh
 from app.sources.codex.reader import iter_log_rows_after, iter_usage_log_rows, latest_log_id
 from app.sources.codex.thread_names import load_thread_names
 from app.storage.payloads import compact_event_payload, decode_json
@@ -203,15 +205,34 @@ class ConfigAndPayloadTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp)
             logs_db = home / ".codex" / "sqlite" / "logs_2.sqlite"
+            legacy_logs = home / ".codex" / "logs_2.sqlite"
             sessions = home / ".codex" / "sessions"
             logs_db.parent.mkdir(parents=True)
             sessions.mkdir()
             logs_db.write_text("", encoding="utf-8")
+            legacy_logs.write_text("", encoding="utf-8")
 
             discovered = discover_codex_paths({"USERPROFILE": str(home)})
 
         self.assertEqual(discovered["codex_logs_db"], str(logs_db))
         self.assertEqual(discovered["codex_session_index"], str(sessions))
+
+    def test_discover_codex_paths_uses_newer_legacy_logs_when_current_layout_is_stale(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            logs_db = home / ".codex" / "sqlite" / "logs_2.sqlite"
+            legacy_logs = home / ".codex" / "logs_2.sqlite"
+            logs_db.parent.mkdir(parents=True)
+            logs_db.write_text("", encoding="utf-8")
+            legacy_logs.write_text("", encoding="utf-8")
+            old_time = 1_700_000_000
+            new_time = old_time + 60
+            core_config.os.utime(logs_db, (old_time, old_time))
+            core_config.os.utime(legacy_logs, (new_time, new_time))
+
+            discovered = discover_codex_paths({"USERPROFILE": str(home)})
+
+        self.assertEqual(discovered["codex_logs_db"], str(legacy_logs))
 
     def test_discover_opencode_paths_checks_standard_user_locations(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -472,38 +493,116 @@ class CodexSourceHelperTests(unittest.TestCase):
 
 
 class BackgroundImportTests(unittest.TestCase):
-    def test_run_import_records_success_and_failure_state(self):
-        class Stats:
-            def __init__(self, imported: int):
-                self.scanned = imported
-                self.imported = imported
-                self.skipped = 0
-                self.archived = 0
-
+    def test_import_status_returns_current_state(self):
         with (
-            mock.patch.object(background, "import_codex_logs", return_value=Stats(2)),
-            mock.patch.object(background, "import_opencode_sources", return_value=Stats(0)),
-            mock.patch.object(background, "LOGGER"),
+            mock.patch.object(data_refresh, "source_warnings", return_value=[]),
+            mock.patch.object(data_refresh, "import_codex_logs", return_value=ImportStats(scanned=2, imported=2)),
+            mock.patch.object(data_refresh, "import_opencode_sources", return_value=ImportStats()),
+            mock.patch.object(data_refresh, "LOGGER"),
         ):
-            stats = background.run_import()
-            state = background.import_status()
+            data_refresh.run_import()
+            state = data_refresh.import_status()
 
-        self.assertEqual(stats.imported, 2)
         self.assertEqual(state["status"], "succeeded")
         self.assertEqual(state["stats"], {"scanned": 2, "imported": 2, "skipped": 0, "archived": 0})
         self.assertIsNone(state["error"])
 
+    def test_source_warnings_reports_legacy_readable_override(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            configured = Path(tmp) / "logs_2.sqlite"
+            preferred = Path(tmp) / "sqlite" / "logs_2.sqlite"
+            preferred.parent.mkdir()
+            configured.write_text("", encoding="utf-8")
+            preferred.write_text("", encoding="utf-8")
+
+            warnings = data_refresh.source_warnings(
+                {"codex_logs_db": str(configured)},
+                {"codex_logs_db": str(preferred)},
+            )
+            clean = data_refresh.source_warnings(
+                {"codex_logs_db": str(preferred)},
+                {"codex_logs_db": str(preferred)},
+            )
+
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("preferred discovered Codex SQLite source", warnings[0])
+        self.assertEqual(clean, [])
+
+    def test_run_import_records_success_and_failure_state(self):
         with (
-            mock.patch.object(background, "import_codex_logs", side_effect=RuntimeError("boom")),
-            mock.patch.object(background, "import_opencode_sources", return_value=Stats(0)),
-            mock.patch.object(background, "LOGGER"),
+            mock.patch.object(data_refresh, "source_warnings", return_value=["warn"]),
+            mock.patch.object(data_refresh, "import_codex_logs", return_value=ImportStats(scanned=2, imported=2)),
+            mock.patch.object(data_refresh, "import_opencode_sources", return_value=ImportStats()),
+            mock.patch.object(data_refresh, "LOGGER"),
+        ):
+            stats = data_refresh.run_import()
+            state = data_refresh.import_status()
+
+        self.assertEqual(stats.imported, 2)
+        self.assertEqual(state["status"], "succeeded")
+        self.assertEqual(state["warnings"], ["warn"])
+
+        with (
+            mock.patch.object(data_refresh, "source_warnings", return_value=[]),
+            mock.patch.object(data_refresh, "import_codex_logs", side_effect=RuntimeError("boom")),
+            mock.patch.object(data_refresh, "import_opencode_sources", return_value=ImportStats()),
+            mock.patch.object(data_refresh, "LOGGER"),
         ):
             with self.assertRaises(RuntimeError):
-                background.run_import()
-            failed = background.import_status()
+                data_refresh.run_import()
+            failed = data_refresh.import_status()
 
         self.assertEqual(failed["status"], "failed")
         self.assertIn("RuntimeError: boom", failed["error"])
+
+    def test_run_import_capture_returns_payload_instead_of_raising(self):
+        with mock.patch.object(data_refresh, "run_import", return_value=ImportStats(imported=3)):
+            success = data_refresh.run_import_capture()
+
+        self.assertEqual(success["stats"]["imported"], 3)
+        self.assertIsNone(success["error"])
+        self.assertIn("status", success)
+
+        with mock.patch.object(data_refresh, "run_import", side_effect=RuntimeError("bad import")):
+            failure = data_refresh.run_import_capture()
+
+        self.assertIsNone(failure["stats"])
+        self.assertEqual(failure["error"], "bad import")
+        self.assertIn("status", failure)
+
+    def test_refresh_dashboard_adds_import_result_to_payload(self):
+        import_status = {"status": "succeeded", "stats": {"imported": 1}}
+        with mock.patch.object(
+            data_refresh,
+            "run_import_capture",
+            return_value={"stats": {"imported": 1}, "error": None, "status": import_status},
+        ):
+            payload = data_refresh.refresh_dashboard(lambda: {"state": {"version": "v1"}, "tasks": []})
+
+        self.assertEqual(payload["import_stats"], {"imported": 1})
+        self.assertIsNone(payload["import_error"])
+        self.assertEqual(payload["import_status"], import_status)
+        self.assertEqual(payload["state"]["import_status"], import_status)
+
+    def test_auto_import_loop_runs_until_sleep_stops_it(self):
+        calls = []
+
+        def stop_after_first(_interval):
+            raise KeyboardInterrupt()
+
+        with (
+            mock.patch.object(data_refresh, "run_import", side_effect=lambda: calls.append("run")),
+            mock.patch.object(data_refresh, "LOGGER"),
+        ):
+            with self.assertRaises(KeyboardInterrupt):
+                data_refresh.auto_import_loop(30, sleep=stop_after_first)
+
+        self.assertEqual(calls, ["run"])
+
+    def test_background_module_keeps_compatibility_exports(self):
+        self.assertIs(background.run_import, data_refresh.run_import)
+        self.assertIs(background.import_status, data_refresh.import_status)
+        self.assertIs(background.auto_import_loop, data_refresh.auto_import_loop)
 
 
 if __name__ == "__main__":

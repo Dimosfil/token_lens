@@ -92,6 +92,22 @@ class MiniClientHelperTests(unittest.TestCase):
         self.assertIn("Spark week: 100% left", text)
         self.assertEqual(mini_client.usage_limits_text({"ok": False, "error": "offline"}), "Limits: offline")
 
+    def test_import_status_error_text_is_compact(self):
+        self.assertEqual(mini_client.import_status_error_text(None), "")
+        self.assertEqual(mini_client.import_status_error_text({"status": "succeeded"}), "")
+        self.assertEqual(
+            mini_client.import_status_error_text({"status": "failed", "error": "codex: locked"}),
+            "Import error: codex: locked",
+        )
+        self.assertEqual(
+            mini_client.refresh_status_text({"status": "succeeded"}, ["legacy source"]),
+            "Import warning: legacy source",
+        )
+        self.assertEqual(
+            mini_client.refresh_status_text({"status": "failed", "error": "codex: locked"}, ["legacy source"]),
+            "Import error: codex: locked",
+        )
+
     def test_limit_bar_fill_color_highlights_full_and_low_remaining(self):
         self.assertEqual(mini_client.limit_bar_fill_color(100), "#1d8f45")
         self.assertEqual(mini_client.limit_bar_fill_color(64), "#0f7c80")

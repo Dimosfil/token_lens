@@ -270,8 +270,11 @@ class ApiContractTests(unittest.TestCase):
             analytics_service.read_usage_limits = original_read_usage_limits
 
         self.assertIn("import_status", state)
+        self.assertIn("source_warnings", state)
         self.assertIn("import_status", dashboard)
+        self.assertIn("source_warnings", dashboard)
         self.assertIn("import_status", dashboard["state"])
+        self.assertIn("source_warnings", dashboard["state"])
         self.assertIn("usage_limits", dashboard)
         self.assertLessEqual({
             "status", "started_at", "completed_at", "duration_seconds", "stats", "error",
@@ -330,6 +333,79 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(forced_aggregate["task_mode"], "aggregate")
         self.assertFalse(forced_aggregate["task_modes"]["separate_available"])
         self.assertIn("period", forced_aggregate["tasks"][0])
+
+    def test_codex_empty_in_progress_rows_are_hidden_from_usage_views(self):
+        con = connect(self.db_path)
+        try:
+            upsert_turn(con, sample_turn(
+                source_log_id=3,
+                response_id="resp-empty-progress",
+                status="in_progress",
+                ts=int(time.time()),
+                ts_iso="2026-05-21T00:01:00+00:00",
+                day="2026-05-21",
+                thread_id="thread-progress",
+                thread_name="Progress placeholder",
+                turn_id="turn-progress",
+                input_tokens=0,
+                cached_input_tokens=0,
+                non_cached_input_tokens=0,
+                output_tokens=0,
+                reasoning_output_tokens=0,
+                total_tokens=0,
+                event_json='{"type":"response.in_progress"}',
+            ))
+            upsert_turn(con, sample_turn(
+                source_log_id=4,
+                response_id="resp-empty-completed",
+                status="completed",
+                ts=int(time.time()) + 1,
+                ts_iso="2026-05-21T00:02:00+00:00",
+                day="2026-05-21",
+                thread_id="thread-empty-completed",
+                thread_name="Empty completed placeholder",
+                turn_id="turn-empty-completed",
+                input_tokens=0,
+                cached_input_tokens=0,
+                non_cached_input_tokens=100,
+                output_tokens=0,
+                reasoning_output_tokens=0,
+                total_tokens=0,
+            ))
+            upsert_turn(con, sample_turn(
+                source_log_id=5,
+                response_id="resp-inconsistent-completed",
+                status="completed",
+                ts=int(time.time()) + 2,
+                ts_iso="2026-05-21T00:03:00+00:00",
+                day="2026-05-21",
+                thread_id="thread-inconsistent-completed",
+                thread_name="Inconsistent completed placeholder",
+                turn_id="turn-inconsistent-completed",
+                input_tokens=100,
+                cached_input_tokens=30,
+                non_cached_input_tokens=70,
+                output_tokens=50,
+                reasoning_output_tokens=10,
+                total_tokens=2,
+            ))
+            con.commit()
+
+            summary = queries.summary(con)["summary"]
+            turns = queries.turns(con, 10)
+            tasks = queries.tasks(con, 10)
+            state = queries.data_state(con)
+        finally:
+            con.close()
+
+        self.assertEqual(summary["turns"], 2)
+        self.assertEqual(state["turns"], 2)
+        self.assertNotIn("thread-progress", {row["thread_id"] for row in turns})
+        self.assertNotIn("thread-progress", {row["thread_id"] for row in tasks})
+        self.assertNotIn("thread-empty-completed", {row["thread_id"] for row in turns})
+        self.assertNotIn("thread-empty-completed", {row["thread_id"] for row in tasks})
+        self.assertNotIn("thread-inconsistent-completed", {row["thread_id"] for row in turns})
+        self.assertNotIn("thread-inconsistent-completed", {row["thread_id"] for row in tasks})
 
     def test_opencode_tasks_use_latest_cumulative_snapshot_per_chat(self):
         now = int(time.time())
@@ -559,6 +635,42 @@ class ParserContractTests(unittest.TestCase):
             self.assertEqual(usage_row[key], response_row[key])
         self.assertIn("hi", response_row["request_json"])
         self.assertIn("hello", response_row["response_json"])
+
+    def test_empty_in_progress_response_event_is_not_usage(self):
+        body = (
+            'thread.id=thread-1 turn.id=turn-1 '
+            '{"type":"response.in_progress","response":{"id":"resp-1",'
+            '"status":"in_progress","model":"gpt-5"}}'
+        )
+
+        row = parse_response_event(1, 1_700_000_000, None, body, {}, {})
+
+        self.assertIsNone(row)
+
+    def test_empty_token_usage_row_is_not_usage(self):
+        body = (
+            'instrument_name="codex.turn.token_usage" model=gpt-5 '
+            'thread.id=thread-1 turn.id=turn-1 '
+            "codex.turn.token_usage.non_cached_input_tokens=100 "
+            "codex.turn.token_usage.total_tokens=0"
+        )
+
+        row = parse_usage_row(1, 1_700_000_000, None, body, {}, {})
+
+        self.assertIsNone(row)
+
+    def test_inconsistent_token_usage_row_is_not_usage(self):
+        body = (
+            'instrument_name="codex.turn.token_usage" model=gpt-5 '
+            'thread.id=thread-1 turn.id=turn-1 '
+            "codex.turn.token_usage.input_tokens=100 "
+            "codex.turn.token_usage.output_tokens=50 "
+            "codex.turn.token_usage.total_tokens=2"
+        )
+
+        row = parse_usage_row(1, 1_700_000_000, None, body, {}, {})
+
+        self.assertIsNone(row)
 
     def test_opencode_event_normalizes_to_turn_row(self):
         payload = {

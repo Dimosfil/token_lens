@@ -79,8 +79,10 @@ may configure them with `tools/configure-local-sources.ps1`, which writes
 ignored `config.local.json`. When config values are blank and
 `auto_discover_codex_sources` is true, `app.core.codex_discovery` searches
 `CODEX_HOME`, `CODEX_CONFIG_HOME`, and the current user's `.codex` folder for
-known Codex layouts such as `.codex\sqlite\logs_2.sqlite` and
-`.codex\sessions`. Explicit `config.local.json` values override discovery.
+known Codex layouts such as `.codex\sqlite\logs_2.sqlite`,
+`.codex\logs_2.sqlite`, and `.codex\sessions`. When both Codex SQLite layouts
+exist, discovery chooses the active candidate by safe file metadata. Explicit
+`config.local.json` values override discovery.
 `app.core.config` resolves configured paths and validates Codex sources at the
 import boundary. `codex_logs_db` must be a readable SQLite file.
 `codex_session_index` may be a single JSONL file, a sessions directory, or a
@@ -94,7 +96,9 @@ empty import stats instead of crashing startup or hard-coding a fallback path.
 - `app/core/config.py`: loads `config.json`, merges `config.local.json`,
   resolves local paths, and validates source paths at runtime boundaries.
 - `app/core/codex_discovery.py`: discovers standard Codex local source layouts
-  from environment and user-profile roots when config paths are blank.
+  from environment and user-profile roots when config paths are blank, and
+  chooses the active Codex SQLite candidate when both current and legacy layouts
+  exist.
 - `app/core/types.py`: shared dataclasses such as `ImportStats`.
 - `app/storage/connection.py`: SQLite connection helper.
 - `app/storage/schema.py`: analytics schema and lightweight schema updates.
@@ -105,9 +109,14 @@ empty import stats instead of crashing startup or hard-coding a fallback path.
 - `app/sources/codex/parser.py`: parses Codex token usage and response events.
 - `app/sources/codex/reader.py`: reads configured Codex log SQLite rows read-only.
 - `app/sources/codex/thread_names.py`: loads thread display names.
-- `app/services/import_service.py`: coordinates Codex import into analytics DB.
+- `app/services/import_service.py`: coordinates source-specific imports into
+  analytics DB.
+- `app/services/data_refresh.py`: owns import/update orchestration, import
+  status, source freshness warnings, refresh payload decoration, and the
+  background auto-import loop.
 - `app/services/analytics_service.py`: API-facing analytics facade.
-- `app/services/background.py`: import lock and auto-import loop.
+- `app/services/background.py`: compatibility exports for the data refresh
+  runtime.
 - `app/api/handlers.py`: HTTP request handler and route dispatch.
 - `app/api/server.py`: server startup.
 - `web/app.js`: browser entrypoint and refresh orchestration.
@@ -158,10 +167,13 @@ PATH.
    prompt or response bodies.
 3. `app.storage.repositories` writes parsed usage rows into the `turns` table in
    `data/analytics.sqlite`.
-4. `app.services.background` records import status, timing, stats, and error
-   summaries for API observability.
+4. `app.services.data_refresh` records import status, timing, stats, errors,
+   and source freshness warnings. It also guards against silent stale local
+   overrides by comparing configured Codex paths with the discovered active
+   source path without inspecting private log contents.
 5. `app.services.analytics_service` exposes query results from
-   `app.storage.queries`.
+   `app.storage.queries` and attaches import status/source warnings to state and
+   dashboard payloads.
 6. `app.api.handlers` serves JSON API responses and static web files.
 7. `web/app.js` and `web/js/*` render the returned JSON in the browser.
 

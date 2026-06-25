@@ -7,7 +7,7 @@ from urllib.parse import parse_qs, urlparse
 
 from app.api.responses import send_json
 from app.services import analytics_service
-from app.services.background import run_import
+from app.services.data_refresh import refresh_dashboard, run_import
 from app.services.opencode_ingest import ingest_event
 from app.static_server import serve_static
 from app.storage import queries
@@ -81,8 +81,7 @@ class AnalyticsHandler(BaseHTTPRequestHandler):
                 send_json(self, stats.__dict__)
                 return
             if parsed.path == "/api/refresh":
-                stats = run_import()
-                payload = analytics_service.dashboard(
+                payload = refresh_dashboard(lambda: analytics_service.dashboard(
                     first(query, "model"),
                     first(query, "range"),
                     first(query, "bucket", "day"),
@@ -91,8 +90,7 @@ class AnalyticsHandler(BaseHTTPRequestHandler):
                     end_ts,
                     first(query, "source"),
                     time_mode,
-                )
-                payload["import_stats"] = stats.__dict__
+                ))
                 send_json(self, payload)
                 return
             if parsed.path == "/api/ingest/opencode":

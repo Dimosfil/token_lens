@@ -3,8 +3,8 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from app.core.config import load_config
-from app.services.background import import_status
 from app.services.codex_account_service import read_usage_limits
+from app.services.data_refresh import import_status, source_warnings
 from app.storage.connection import connect
 from app.storage import queries
 from app.storage.schema import init_db
@@ -25,8 +25,10 @@ def summary(range_key: str = "", start_ts: int | None = None, end_ts: int | None
 
 
 def data_state():
+    config = load_config()
     state = with_analytics_db(queries.data_state)
     state["import_status"] = import_status()
+    state["source_warnings"] = source_warnings(config)
     return state
 
 
@@ -97,7 +99,9 @@ def dashboard(
     ))
     payload["usage_limits"] = read_usage_limits(config)
     payload["state"]["import_status"] = import_status()
+    payload["state"]["source_warnings"] = source_warnings(config)
     payload["import_status"] = payload["state"]["import_status"]
+    payload["source_warnings"] = payload["state"]["source_warnings"]
     return payload
 
 

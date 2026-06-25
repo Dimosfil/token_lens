@@ -32,14 +32,14 @@ Canonical startup behavior:
   present, then auto-discovers missing or stale source paths.
 - Codex discovery checks `CODEX_HOME`, `CODEX_CONFIG_HOME`, and the current
   user's `.codex` folder.
-- For Codex logs, the preferred current layout is
-  `~\.codex\sqlite\logs_2.sqlite`; legacy fallback is
+- For Codex logs, supported layouts are `~\.codex\sqlite\logs_2.sqlite` and
   `~\.codex\logs_2.sqlite`.
-- If both Codex SQLite candidates exist, use the order implemented in
-  `app/core/codex_discovery.py`: prefer `sqlite\logs_2.sqlite` and use
-  root-level `logs_2.sqlite` only as a fallback. Do not run schema, row-count,
-  timestamp, or content-inspection queries against private Codex logs just to
-  choose between those candidates.
+- If both Codex SQLite candidates exist, use the active-file selection
+  implemented in `app/core/codex_discovery.py`: prefer `sqlite\logs_2.sqlite`
+  unless safe file metadata shows root-level `logs_2.sqlite` is the actively
+  updated source. Do not run schema, row-count, prompt, response, raw-body, or
+  content-inspection queries against private Codex logs just to choose between
+  those candidates.
 - Codex session names come from `~\.codex\sessions` when present, otherwise
   legacy `~\.codex\session_index.jsonl`.
 - OpenCode discovery checks standard user data/config locations for
