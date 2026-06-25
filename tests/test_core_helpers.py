@@ -347,13 +347,22 @@ class CodexSourceHelperTests(unittest.TestCase):
                     "{bad json",
                     json.dumps({"id": "thread-2"}),
                     json.dumps({"id": "thread-3", "thread_name": "Third"}),
+                    json.dumps({"thread_id": "thread-4", "title": "Fourth"}),
+                    json.dumps({"payload": {"id": "thread-5", "title": "Fifth"}}),
+                    json.dumps({"payload": {"session_id": "thread-6", "conversation_title": "Sixth"}}),
                 ]),
                 encoding="utf-8",
             )
 
             names = load_thread_names(str(path))
 
-        self.assertEqual(names, {"thread-1": "First", "thread-3": "Third"})
+        self.assertEqual(names, {
+            "thread-1": "First",
+            "thread-3": "Third",
+            "thread-4": "Fourth",
+            "thread-5": "Fifth",
+            "thread-6": "Sixth",
+        })
         self.assertEqual(load_thread_names("missing-file.jsonl"), {})
 
     def test_thread_names_loads_directory_and_glob_sources(self):
@@ -375,6 +384,63 @@ class CodexSourceHelperTests(unittest.TestCase):
 
         self.assertEqual(directory_names, {"thread-a": "Alpha", "thread-b": "Beta"})
         self.assertEqual(glob_names, {"thread-a": "Alpha", "thread-b": "Beta"})
+
+    def test_thread_names_legacy_index_includes_sibling_sessions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            legacy = root / "session_index.jsonl"
+            day = root / "sessions" / "2026" / "06" / "25"
+            day.mkdir(parents=True)
+            legacy.write_text(
+                json.dumps({"id": "thread-old", "thread_name": "Old title"}) + "\n",
+                encoding="utf-8",
+            )
+            (day / "rollout-new.jsonl").write_text(
+                json.dumps({"payload": {"id": "thread-new", "title": "New title"}}) + "\n",
+                encoding="utf-8",
+            )
+
+            names = load_thread_names(str(legacy))
+
+        self.assertEqual(names, {"thread-old": "Old title", "thread-new": "New title"})
+
+    def test_thread_names_derives_title_from_session_user_message(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "rollout.jsonl"
+            path.write_text(
+                "\n".join([
+                    json.dumps({"type": "session_meta", "payload": {"id": "thread-new"}}),
+                    json.dumps({
+                        "type": "response_item",
+                        "payload": {
+                            "role": "user",
+                            "content": "# AGENTS.md instructions <INSTRUCTIONS> internal setup",
+                        },
+                    }),
+                    json.dumps({
+                        "type": "response_item",
+                        "payload": {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "input_text",
+                                    "text": (
+                                        "# Files mentioned by the user:\n\n"
+                                        "## screenshot.png\n\n"
+                                        "## My request for Codex:\n"
+                                        "  Restore\nCodex chat labels in mini  "
+                                    ),
+                                },
+                            ],
+                        },
+                    }),
+                ]),
+                encoding="utf-8",
+            )
+
+            names = load_thread_names(str(path))
+
+        self.assertEqual(names, {"thread-new": "Restore Codex chat labels in mini"})
 
     def test_codex_reader_filters_usage_and_response_rows(self):
         with tempfile.TemporaryDirectory() as tmp:

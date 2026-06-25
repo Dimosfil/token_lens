@@ -24,6 +24,25 @@ class MiniClientHelperTests(unittest.TestCase):
         self.assertEqual(mini_client.setting_str({"range": 123}, "range", "24h"), "24h")
         self.assertEqual(mini_client.normalize_source("opencode"), "opencode")
         self.assertEqual(mini_client.normalize_source("bad"), "codex")
+        self.assertEqual(mini_client.setting_columns({"columns": ["task", "cost"]}), ("task", "cost"))
+        self.assertEqual(mini_client.setting_columns({"columns": "date,task,bad,task"}), ("date", "task"))
+        self.assertEqual(mini_client.setting_columns({"columns": []}), mini_client.DEFAULT_VISIBLE_COLUMNS)
+        settings = {
+            "limit": 8,
+            "columns": ["date", "task"],
+            "agents": {
+                "opencode": {
+                    "limit": 12,
+                    "columns": ["task", "total"],
+                    "signal": "Hand",
+                },
+            },
+        }
+        self.assertEqual(mini_client.setting_int_for_source(settings, "codex", "limit", 4, 1, 50), 8)
+        self.assertEqual(mini_client.setting_int_for_source(settings, "opencode", "limit", 4, 1, 50), 12)
+        self.assertEqual(mini_client.setting_columns_for_source(settings, "codex"), ("date", "task"))
+        self.assertEqual(mini_client.setting_columns_for_source(settings, "opencode"), ("task", "total"))
+        self.assertEqual(mini_client.setting_str_for_source(settings, "opencode", "signal", "Simple"), "Hand")
 
     def test_task_and_time_formatters_hide_machine_ids_when_possible(self):
         self.assertTrue(mini_client.looks_like_id("thread_abcdefghijkl"))
@@ -42,6 +61,17 @@ class MiniClientHelperTests(unittest.TestCase):
         self.assertEqual(mini_client.format_duration("bad"), "0:00")
         expected_time = datetime.fromisoformat("2026-06-19T10:25:30+00:00").astimezone().strftime("%Y-%m-%d %H:%M")
         self.assertEqual(mini_client.format_timestamp("2026-06-19T10:25:30+00:00"), expected_time)
+        expected_date = datetime.fromisoformat("2026-06-19T10:25:30+00:00").astimezone().strftime("%Y-%m-%d")
+        self.assertEqual(mini_client.format_date("2026-06-19T10:25:30+00:00"), expected_date)
+        self.assertEqual(mini_client.row_date({"day": "2026-06-20"}), "2026-06-20")
+        self.assertEqual(
+            mini_client.row_datetime({"finished_at": "2026-06-19T10:25:30+00:00"}),
+            expected_time,
+        )
+        self.assertEqual(
+            mini_client.table_cell_value("date_time", {"finished_at": "2026-06-19T10:25:30+00:00"}),
+            expected_time,
+        )
 
     def test_usage_limit_helpers_group_and_format_windows(self):
         snapshot = {

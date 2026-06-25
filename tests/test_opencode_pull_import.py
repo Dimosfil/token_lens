@@ -5,7 +5,9 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
+from app.services import import_service
 from app.sources.opencode.parser import parse_opencode_db_message, parse_opencode_jsonl_record
 from app.storage.connection import connect
 from app.storage.repositories import get_opencode_import_state, set_opencode_import_state
@@ -118,6 +120,60 @@ class OpenCodePullImportTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["id"], "message-1")
         self.assertEqual(rows[0]["session_title"], "Title")
+
+    def test_opencode_import_resets_rowid_when_source_db_changes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            analytics_db = str(root / "analytics.sqlite")
+            source_db = root / "opencode.sqlite"
+            init_db(analytics_db)
+            con = sqlite3.connect(source_db)
+            try:
+                con.execute("create table session (id text primary key, title text, directory text)")
+                con.execute(
+                    "create table message (id text primary key, session_id text, time_created integer, data text)"
+                )
+                con.execute("insert into session values ('session-1', 'Today chat', '/repo')")
+                con.execute(
+                    "insert into message values ('message-1', 'session-1', 1782366903029, ?)",
+                    [json.dumps({
+                        "role": "assistant",
+                        "modelID": "deepseek-v4-pro",
+                        "time": {"created": 1782366903029},
+                        "tokens": {"input": 10, "output": 5, "total": 15},
+                    })],
+                )
+                con.commit()
+            finally:
+                con.close()
+
+            target = connect(analytics_db)
+            try:
+                set_opencode_import_state(target, 999, 0, 0)
+                target.commit()
+            finally:
+                target.close()
+
+            with mock.patch.object(import_service, "load_config", return_value={
+                "analytics_db": analytics_db,
+                "opencode_db": str(source_db),
+                "opencode_tokens_jsonl": "",
+                "model_prices_per_million": {},
+            }):
+                stats = import_service.import_opencode_sources()
+
+            target = connect(analytics_db)
+            try:
+                state = get_opencode_import_state(target)
+                row = target.execute(
+                    "select thread_name, day, total_tokens from turns where source = 'opencode'"
+                ).fetchone()
+            finally:
+                target.close()
+
+        self.assertEqual(stats.imported, 1)
+        self.assertEqual(state["last_rowid"], 1)
+        self.assertEqual(dict(row), {"thread_name": "Today chat", "day": "2026-06-25", "total_tokens": 15})
 
 
 if __name__ == "__main__":

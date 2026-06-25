@@ -14,6 +14,41 @@ generated outputs, secrets, credentials, or private production data.
 
 ## Tasks
 
+### Mini Agent Tabs And Per-Agent Settings 2026-06-25
+
+Goal: replace source toggle buttons with Codex/OpenCode tabs and persist table
+settings separately per agent.
+
+Planned changes:
+
+- [x] Add per-agent settings helpers with migration from existing shared keys.
+- [x] Replace source buttons with tabs.
+- [x] Load/save rows, signal, sound, threshold, and columns per agent.
+- [x] Add focused tests, run verification, and restart the app set.
+
+### Mini Table Field Configuration 2026-06-25
+
+Goal: let Token Lens Mini users choose visible table fields and show both short
+date and minute-level date/time.
+
+Planned changes:
+
+- [x] Add configurable mini table column metadata and persisted visibility.
+- [x] Add a Columns UI menu for toggling fields.
+- [x] Add date/time column and focused tests.
+- [x] Run verification and restart the app set.
+
+### Mini Codex Chat Labels 2026-06-25
+
+Goal: restore Codex chat names in Token Lens Mini without changing the
+OpenCode task-label behavior.
+
+Planned changes:
+
+- [x] Expand Codex session-name loading for current JSONL metadata shapes.
+- [x] Add focused regression coverage.
+- [x] Run focused verification and restart the app set.
+
 ### Agent Launch Config Instructions 2026-06-24
 
 Goal: make project-local instructions unambiguous for agents preparing a clean

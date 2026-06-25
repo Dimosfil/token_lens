@@ -63,6 +63,19 @@ LOCAL_API_HOSTS = {"127.0.0.1", "localhost", "::1"}
 SERVER_START_TIMEOUT_SECONDS = 15
 SERVER_START_RETRY_SECONDS = 20
 LOGGER = logging.getLogger("token_lens.mini")
+TABLE_COLUMNS = (
+    {"id": "date", "label": "Date", "width": 90, "minwidth": 82, "anchor": tk.W, "stretch": False},
+    {"id": "date_time", "label": "Date/time", "width": 130, "minwidth": 118, "anchor": tk.W, "stretch": False},
+    {"id": "task", "label": "Project / task", "width": 260, "minwidth": 170, "anchor": tk.W, "stretch": True},
+    {"id": "models", "label": "Models", "width": 140, "minwidth": 100, "anchor": tk.W, "stretch": False},
+    {"id": "time", "label": "Time", "width": 80, "minwidth": 70, "anchor": tk.E, "stretch": False},
+    {"id": "calls", "label": "Calls", "width": 70, "minwidth": 60, "anchor": tk.E, "stretch": False},
+    {"id": "per_call", "label": "Total / Call", "width": 110, "minwidth": 95, "anchor": tk.E, "stretch": False},
+    {"id": "total", "label": "Total", "width": 110, "minwidth": 90, "anchor": tk.E, "stretch": False},
+    {"id": "cost", "label": "Cost", "width": 80, "minwidth": 70, "anchor": tk.E, "stretch": False},
+)
+TABLE_COLUMN_IDS = tuple(column["id"] for column in TABLE_COLUMNS)
+DEFAULT_VISIBLE_COLUMNS = TABLE_COLUMN_IDS
 
 
 def parse_args() -> argparse.Namespace:
@@ -100,7 +113,7 @@ def format_cost(value) -> str:
 
 def parse_int(value, default: int = 0) -> int:
     try:
-        return int(value or 0)
+        return int(default if value in (None, "") else value)
     except (TypeError, ValueError):
         return default
 
@@ -195,6 +208,64 @@ def setting_bool(settings: dict, key: str, default: bool) -> bool:
 def setting_str(settings: dict, key: str, default: str) -> str:
     value = settings.get(key, default)
     return value if isinstance(value, str) else default
+
+
+def setting_columns(settings: dict, key: str = "columns") -> tuple[str, ...]:
+    return normalize_table_columns(settings.get(key))
+
+
+def source_settings(settings: dict, source: str) -> dict:
+    agents = settings.get("agents")
+    if not isinstance(agents, dict):
+        return {}
+    source_config = agents.get(normalize_source(source))
+    return source_config if isinstance(source_config, dict) else {}
+
+
+def setting_int_for_source(
+    settings: dict,
+    source: str,
+    key: str,
+    default: int,
+    minimum: int,
+    maximum: int,
+) -> int:
+    source_config = source_settings(settings, source)
+    return setting_int(source_config, key, setting_int(settings, key, default, minimum, maximum), minimum, maximum)
+
+
+def setting_bool_for_source(settings: dict, source: str, key: str, default: bool) -> bool:
+    source_config = source_settings(settings, source)
+    return setting_bool(source_config, key, setting_bool(settings, key, default))
+
+
+def setting_str_for_source(settings: dict, source: str, key: str, default: str) -> str:
+    source_config = source_settings(settings, source)
+    return setting_str(source_config, key, setting_str(settings, key, default))
+
+
+def setting_columns_for_source(settings: dict, source: str) -> tuple[str, ...]:
+    source_config = source_settings(settings, source)
+    if "columns" in source_config:
+        return setting_columns(source_config)
+    return setting_columns(settings)
+
+
+def normalize_table_columns(value) -> tuple[str, ...]:
+    if isinstance(value, str):
+        candidates = [item.strip() for item in value.split(",")]
+    elif isinstance(value, (list, tuple)):
+        candidates = [str(item).strip() for item in value]
+    else:
+        return DEFAULT_VISIBLE_COLUMNS
+
+    seen = set()
+    columns = []
+    for column_id in candidates:
+        if column_id in TABLE_COLUMN_IDS and column_id not in seen:
+            seen.add(column_id)
+            columns.append(column_id)
+    return tuple(columns) if columns else DEFAULT_VISIBLE_COLUMNS
 
 
 def normalize_source(value) -> str:
@@ -316,6 +387,50 @@ def fallback_task_name(row: dict) -> str:
     if period:
         return period
     return f"Задача {format_timestamp(row.get('started_at') or row.get('finished_at'))}"
+
+
+def row_date(row: dict) -> str:
+    return format_date(row.get("finished_at") or row.get("started_at") or row.get("ts_iso") or row.get("day"))
+
+
+def row_datetime(row: dict) -> str:
+    return format_timestamp(row.get("finished_at") or row.get("started_at") or row.get("ts_iso") or row.get("day"))
+
+
+def format_date(value) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        timestamp = datetime.fromisoformat(text)
+        if timestamp.tzinfo is not None:
+            timestamp = timestamp.astimezone()
+        return timestamp.strftime("%Y-%m-%d")
+    except ValueError:
+        pass
+    return text[:10]
+
+
+def table_cell_value(column_id: str, row: dict) -> str:
+    if column_id == "date":
+        return row_date(row)
+    if column_id == "date_time":
+        return row_datetime(row)
+    if column_id == "task":
+        return task_name(row)
+    if column_id == "models":
+        return row.get("models") or ""
+    if column_id == "time":
+        return format_duration(row.get("elapsed_seconds"))
+    if column_id == "calls":
+        return format_number(row.get("model_calls"))
+    if column_id == "per_call":
+        return format_number(row.get("total_tokens_per_call"))
+    if column_id == "total":
+        return format_number(row.get("total_tokens"))
+    if column_id == "cost":
+        return format_cost(row.get("estimated_cost"))
+    return ""
 
 
 def format_timestamp(value) -> str:
@@ -512,21 +627,60 @@ class MiniClientApp:
         self.seen_signal_rows = set()
         self.signal_seen_initialized = False
         self.last_signal_key = None
-        self.limit_var = tk.IntVar(value=clamp(limit, 1, 50))
-        self.signal_enabled_var = tk.BooleanVar(value=signal_enabled)
-        self.signal_threshold_var = tk.IntVar(value=max(0, signal_threshold))
-        self.signal_name_var = tk.StringVar(
-            value=signal_name if signal_name in SIGNAL_CHOICES else "Exclamation"
-        )
-        self.source_var = tk.StringVar(value=self.active_source)
+        self.default_limit = clamp(limit, 1, 50)
+        self.default_signal_threshold = max(0, signal_threshold)
+        self.default_signal_name = signal_name if signal_name in SIGNAL_CHOICES else "Exclamation"
+        self.default_signal_enabled = signal_enabled
+        self.agent_vars = {
+            source_id: self._make_agent_vars(source_id)
+            for _label, source_id in SOURCE_CHOICES
+        }
+        self.agent_widgets: dict[str, dict] = {}
+        self.tables: dict[str, ttk.Treeview] = {}
+        self.limits_frames: dict[str, ttk.Frame] = {}
+        self.limit_bar_canvases: dict[str, list[tuple[tk.Canvas, int | None]]] = {}
         self.status_var = tk.StringVar(value="Loading data")
-        self.limits_message_var = tk.StringVar(value="Limits loading")
-        self.limit_bar_canvases: list[tuple[tk.Canvas, int | None]] = []
 
         self._build_ui()
         self._bind_settings_persistence()
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         self.refresh(import_first=False)
+
+    def _make_agent_vars(self, source: str) -> dict:
+        visible_columns = setting_columns_for_source(self.settings, source)
+        return {
+            "limit": tk.IntVar(value=setting_int_for_source(
+                self.settings,
+                source,
+                "limit",
+                self.default_limit,
+                1,
+                50,
+            )),
+            "signal_enabled": tk.BooleanVar(value=setting_bool_for_source(
+                self.settings,
+                source,
+                "signal_enabled",
+                self.default_signal_enabled,
+            )),
+            "signal_threshold": tk.IntVar(value=setting_int_for_source(
+                self.settings,
+                source,
+                "signal_threshold",
+                self.default_signal_threshold,
+                0,
+                10000000,
+            )),
+            "signal_name": tk.StringVar(value=self._configured_signal_name(source)),
+            "columns": {
+                column_id: tk.BooleanVar(value=column_id in visible_columns)
+                for column_id in TABLE_COLUMN_IDS
+            },
+            "visible_columns": visible_columns,
+        }
+
+    def active_vars(self) -> dict:
+        return self.agent_vars[self.active_source]
 
     def _build_ui(self):
         self.root.title("Token Lens Mini")
@@ -541,7 +695,22 @@ class MiniClientApp:
         outer = ttk.Frame(self.root, padding=10)
         outer.pack(fill=tk.BOTH, expand=True)
 
-        toolbar = ttk.Frame(outer)
+        self.source_tabs = ttk.Notebook(outer)
+        self.source_tab_ids = {}
+        for label, value in SOURCE_CHOICES:
+            tab = ttk.Frame(self.source_tabs, padding=(0, 8, 0, 0))
+            self.source_tabs.add(tab, text=label)
+            self.source_tab_ids[str(tab)] = value
+            self._build_agent_tab(tab, value)
+            if value == self.active_source:
+                self.source_tabs.select(tab)
+        self.source_tabs.pack(fill=tk.BOTH, expand=True)
+        self.source_tabs.bind("<<NotebookTabChanged>>", self.switch_source)
+
+    def _build_agent_tab(self, parent: ttk.Frame, source: str):
+        vars_for_source = self.agent_vars[source]
+
+        toolbar = ttk.Frame(parent)
         toolbar.pack(fill=tk.X, pady=(0, 8))
 
         ttk.Label(toolbar, text="Rows").pack(side=tk.LEFT)
@@ -550,85 +719,99 @@ class MiniClientApp:
             from_=1,
             to=50,
             width=4,
-            textvariable=self.limit_var,
-            command=lambda: self.refresh(import_first=False),
+            textvariable=vars_for_source["limit"],
+            command=lambda source_id=source: self.agent_refresh_or_save(source_id),
         )
         rows.pack(side=tk.LEFT, padx=(6, 10))
-        rows.bind("<Return>", lambda _event: self.refresh(import_first=False))
-        rows.bind("<FocusOut>", lambda _event: self.refresh(import_first=False))
-
-        source_group = ttk.Frame(toolbar)
-        source_group.pack(side=tk.LEFT, padx=(0, 10))
-        for label, value in SOURCE_CHOICES:
-            ttk.Radiobutton(
-                source_group,
-                text=label,
-                value=value,
-                variable=self.source_var,
-                command=self.switch_source,
-                style="Toolbutton",
-                width=9,
-            ).pack(side=tk.LEFT, padx=(0, 2))
+        rows.bind("<Return>", lambda _event, source_id=source: self.agent_refresh_or_save(source_id))
+        rows.bind("<FocusOut>", lambda _event, source_id=source: self.agent_refresh_or_save(source_id))
 
         ttk.Button(toolbar, text="Refresh", command=lambda: self.refresh(import_first=True)).pack(side=tk.LEFT)
-        ttk.Checkbutton(toolbar, text="Signal", variable=self.signal_enabled_var).pack(side=tk.LEFT, padx=(10, 4))
+        columns_menu = tk.Menu(self.root, tearoff=False)
+        for column in TABLE_COLUMNS:
+            column_id = column["id"]
+            columns_menu.add_checkbutton(
+                label=column["label"],
+                variable=vars_for_source["columns"][column_id],
+                command=lambda source_id=source: self.apply_column_visibility(source_id),
+            )
+        ttk.Menubutton(toolbar, text="Columns", menu=columns_menu).pack(side=tk.LEFT, padx=(6, 0))
+        ttk.Checkbutton(toolbar, text="Signal", variable=vars_for_source["signal_enabled"]).pack(side=tk.LEFT, padx=(10, 4))
         ttk.Spinbox(
             toolbar,
             from_=0,
             to=10000000,
             increment=1000,
             width=8,
-            textvariable=self.signal_threshold_var,
+            textvariable=vars_for_source["signal_threshold"],
         ).pack(side=tk.LEFT, padx=(0, 4))
         signal_picker = ttk.Combobox(
             toolbar,
             width=11,
             state="readonly",
             values=tuple(SIGNAL_CHOICES.keys()),
-            textvariable=self.signal_name_var,
+            textvariable=vars_for_source["signal_name"],
         )
         signal_picker.pack(side=tk.LEFT)
-        signal_picker.bind("<<ComboboxSelected>>", lambda _event: self.play_signal())
+        signal_picker.bind("<<ComboboxSelected>>", lambda _event, source_id=source: self.play_signal(source_id))
         ttk.Label(toolbar, textvariable=self.status_var, anchor=tk.E).pack(side=tk.RIGHT, fill=tk.X, expand=True)
 
-        self.limits_frame = ttk.Frame(outer)
-        self.limits_frame.pack(fill=tk.X, pady=(0, 8))
+        limits_frame = ttk.Frame(parent)
+        limits_frame.pack(fill=tk.X, pady=(0, 8))
         ttk.Label(
-            self.limits_frame,
-            textvariable=self.limits_message_var,
+            limits_frame,
+            text="Limits loading",
             anchor=tk.W,
         ).pack(fill=tk.X)
+        self.limits_frames[source] = limits_frame
+        self.limit_bar_canvases[source] = []
 
-        columns = ("task", "models", "time", "calls", "per_call", "total", "cost")
-        self.table = ttk.Treeview(outer, columns=columns, show="headings", height=self.limit_var.get())
-        self.table.heading("task", text="Project / task")
-        self.table.heading("models", text="Models")
-        self.table.heading("time", text="Time")
-        self.table.heading("calls", text="Calls")
-        self.table.heading("per_call", text="Total / Call")
-        self.table.heading("total", text="Total")
-        self.table.heading("cost", text="Cost")
-        self.table.column("task", width=260, minwidth=170, stretch=True)
-        self.table.column("models", width=140, minwidth=100, stretch=False)
-        self.table.column("time", width=80, minwidth=70, anchor=tk.E, stretch=False)
-        self.table.column("calls", width=70, minwidth=60, anchor=tk.E, stretch=False)
-        self.table.column("per_call", width=110, minwidth=95, anchor=tk.E, stretch=False)
-        self.table.column("total", width=110, minwidth=90, anchor=tk.E, stretch=False)
-        self.table.column("cost", width=80, minwidth=70, anchor=tk.E, stretch=False)
-        self.table.tag_configure("over-limit", background="#fff1b8")
-        self.table.pack(fill=tk.BOTH, expand=True)
+        table = ttk.Treeview(parent, columns=TABLE_COLUMN_IDS, show="headings", height=vars_for_source["limit"].get())
+        for column in TABLE_COLUMNS:
+            column_id = column["id"]
+            table.heading(column_id, text=column["label"])
+            table.column(
+                column_id,
+                width=column["width"],
+                minwidth=column["minwidth"],
+                anchor=column["anchor"],
+                stretch=column["stretch"],
+            )
+        self.tables[source] = table
+        self.apply_column_visibility(source, save=False)
+        table.tag_configure("over-limit", background="#fff1b8")
+        table.pack(fill=tk.BOTH, expand=True)
+        self.agent_widgets[source] = {"columns_menu": columns_menu}
 
     def _bind_settings_persistence(self):
-        for variable in (
-            self.limit_var,
-            self.source_var,
-            self.signal_enabled_var,
-            self.signal_threshold_var,
-            self.signal_name_var,
-        ):
-            variable.trace_add("write", lambda *_args: self.schedule_settings_save())
+        for source, vars_for_source in self.agent_vars.items():
+            for variable in (
+                vars_for_source["limit"],
+                vars_for_source["signal_enabled"],
+                vars_for_source["signal_threshold"],
+                vars_for_source["signal_name"],
+            ):
+                variable.trace_add("write", lambda *_args, source_id=source: self.schedule_settings_save())
         self.root.bind("<Configure>", lambda _event: self.schedule_settings_save(), add="+")
         self.root.after_idle(self.enable_settings_save)
+
+    def apply_column_visibility(self, source: str | None = None, save: bool = True):
+        source = normalize_source(source or self.active_source)
+        vars_for_source = self.agent_vars[source]
+        selected = tuple(
+            column_id
+            for column_id in TABLE_COLUMN_IDS
+            if vars_for_source["columns"][column_id].get()
+        )
+        if not selected:
+            selected = ("task",)
+            vars_for_source["columns"]["task"].set(True)
+        vars_for_source["visible_columns"] = selected
+        table = self.tables.get(source)
+        if table is not None:
+            table.configure(displaycolumns=selected)
+        if save:
+            self.schedule_settings_save()
 
     def enable_settings_save(self):
         self.settings_save_ready = True
@@ -688,25 +871,28 @@ class MiniClientApp:
             self.root.after_cancel(self.settings_after_id)
         self.settings_after_id = self.root.after(400, self.save_settings_now)
 
-    def save_settings_now(self):
+    def save_settings_now(self, source: str | None = None):
         self.settings_after_id = None
         if not self.settings_save_enabled or not self.settings_save_ready:
             return
+        source = normalize_source(source or self.active_source)
+        agents = self.settings.get("agents")
+        agents = dict(agents) if isinstance(agents, dict) else {}
+        for _label, source_id in SOURCE_CHOICES:
+            agents[source_id] = self.agent_settings_snapshot(source_id)
+        active_snapshot = agents[source]
         snapshot = {
             **self.settings,
             "base_url": self.api.base_url,
-            "limit": self.read_int_var(self.limit_var, DEFAULT_LIMIT, 1, 50),
+            "limit": active_snapshot["limit"],
             "refresh_ms": self.refresh_ms,
             "range": self.range_key,
-            "source": self.current_source(),
-            "signal_enabled": self.read_bool_var(self.signal_enabled_var, True),
-            "signal_threshold": self.read_int_var(
-                self.signal_threshold_var,
-                DEFAULT_SIGNAL_THRESHOLD,
-                0,
-                10000000,
-            ),
-            "signal": self.read_signal_name(),
+            "source": source,
+            "signal_enabled": active_snapshot["signal_enabled"],
+            "signal_threshold": active_snapshot["signal_threshold"],
+            "signal": active_snapshot["signal"],
+            "columns": list(active_snapshot["columns"]),
+            "agents": agents,
             "geometry": self.root.geometry(),
         }
         try:
@@ -714,6 +900,24 @@ class MiniClientApp:
             self.settings = snapshot
         except OSError:
             pass
+
+    def agent_settings_snapshot(self, source_id: str) -> dict:
+        vars_for_source = self.agent_vars[source_id]
+        signal_name = vars_for_source["signal_name"].get()
+        if signal_name not in SIGNAL_CHOICES:
+            signal_name = self.default_signal_name
+        return {
+            "limit": self.read_int_var(vars_for_source["limit"], DEFAULT_LIMIT, 1, 50),
+            "signal_enabled": self.read_bool_var(vars_for_source["signal_enabled"], True),
+            "signal_threshold": self.read_int_var(
+                vars_for_source["signal_threshold"],
+                DEFAULT_SIGNAL_THRESHOLD,
+                0,
+                10000000,
+            ),
+            "signal": signal_name,
+            "columns": list(vars_for_source["visible_columns"]),
+        }
 
     def read_int_var(self, variable: tk.IntVar, default: int, minimum: int, maximum: int) -> int:
         try:
@@ -729,16 +933,20 @@ class MiniClientApp:
             return default
 
     def read_signal_name(self) -> str:
-        signal_name = self.signal_name_var.get()
+        signal_name = self.active_vars()["signal_name"].get()
         return signal_name if signal_name in SIGNAL_CHOICES else "Exclamation"
 
-    def current_source(self) -> str:
-        source = normalize_source(self.source_var.get())
-        if self.source_var.get() != source:
-            self.source_var.set(source)
-        return source
+    def _configured_signal_name(self, source: str) -> str:
+        signal_name = setting_str_for_source(self.settings, source, "signal", self.default_signal_name)
+        return signal_name if signal_name in SIGNAL_CHOICES else self.default_signal_name
 
-    def switch_source(self):
+    def current_source(self) -> str:
+        if not hasattr(self, "source_tabs"):
+            return self.active_source
+        selected = self.source_tabs.select()
+        return normalize_source(self.source_tab_ids.get(selected, self.active_source))
+
+    def switch_source(self, _event=None):
         source = self.current_source()
         if source == self.active_source:
             return
@@ -747,7 +955,15 @@ class MiniClientApp:
         self.seen_signal_rows = set()
         self.signal_seen_initialized = False
         self.last_signal_key = None
+        self.schedule_settings_save()
         self.refresh(import_first=False)
+
+    def agent_refresh_or_save(self, source: str):
+        self.apply_column_visibility(source, save=False)
+        if source == self.active_source:
+            self.refresh(import_first=False)
+            return
+        self.schedule_settings_save()
 
     def _run_worker(self, target):
         self.worker_running = True
@@ -866,14 +1082,15 @@ class MiniClientApp:
             return {"ok": False, "error": str(error), "windows": []}
 
     def current_limit(self) -> int:
+        limit_var = self.active_vars()["limit"]
         try:
-            value = self.limit_var.get()
+            value = limit_var.get()
         except tk.TclError:
             value = DEFAULT_LIMIT
-            self.limit_var.set(value)
+            limit_var.set(value)
         value = clamp(value, 1, 50)
-        if self.limit_var.get() != value:
-            self.limit_var.set(value)
+        if limit_var.get() != value:
+            limit_var.set(value)
         return value
 
     def render_source_context(self, context: dict | None):
@@ -884,34 +1101,35 @@ class MiniClientApp:
         self.render_usage_limits(context.get("limits"))
 
     def clear_source_frame(self):
-        for child in self.limits_frame.winfo_children():
+        limits_frame = self.limits_frames[self.active_source]
+        for child in limits_frame.winfo_children():
             child.destroy()
-        self.limit_bar_canvases = []
+        self.limit_bar_canvases[self.active_source] = []
 
     def render_opencode_cost(self, summary: dict | None):
         self.clear_source_frame()
         summary = summary if isinstance(summary, dict) else {}
-        self.limits_message_var.set("")
-        self.limits_frame.columnconfigure(0, weight=1)
+        limits_frame = self.limits_frames[self.active_source]
+        limits_frame.columnconfigure(0, weight=1)
 
         ttk.Label(
-            self.limits_frame,
+            limits_frame,
             text="OpenCode spend",
             font=("TkDefaultFont", 9, "bold"),
             anchor=tk.W,
         ).grid(row=0, column=0, sticky="w", padx=(0, 12))
         ttk.Label(
-            self.limits_frame,
+            limits_frame,
             text=f"Cost {format_cost(summary.get('estimated_cost'))}",
             anchor=tk.W,
         ).grid(row=0, column=1, sticky="w", padx=(0, 12))
         ttk.Label(
-            self.limits_frame,
+            limits_frame,
             text=f"Tokens {format_number(summary.get('total_tokens'))}",
             anchor=tk.W,
         ).grid(row=0, column=2, sticky="w", padx=(0, 12))
         ttk.Label(
-            self.limits_frame,
+            limits_frame,
             text=f"Calls {format_number(summary.get('turns'))}",
             anchor=tk.W,
         ).grid(row=0, column=3, sticky="w")
@@ -921,18 +1139,17 @@ class MiniClientApp:
 
         groups = usage_limit_groups(snapshot)
         if not groups:
-            self.limits_message_var.set(usage_limits_text(snapshot))
             ttk.Label(
-                self.limits_frame,
-                textvariable=self.limits_message_var,
+                self.limits_frames[self.active_source],
+                text=usage_limits_text(snapshot),
                 anchor=tk.W,
             ).pack(fill=tk.X)
             return
 
-        self.limits_message_var.set("")
+        limits_frame = self.limits_frames[self.active_source]
         for column, group in enumerate(groups):
-            self.limits_frame.columnconfigure(column, weight=1, uniform="limits")
-            group_frame = ttk.Frame(self.limits_frame, padding=(0, 0, 12, 0))
+            limits_frame.columnconfigure(column, weight=1, uniform="limits")
+            group_frame = ttk.Frame(limits_frame, padding=(0, 0, 12, 0))
             group_frame.grid(row=0, column=column, sticky="ew")
             group_frame.columnconfigure(0, weight=1)
             ttk.Label(
@@ -968,10 +1185,11 @@ class MiniClientApp:
         )
         canvas.grid(row=1, column=0, sticky="ew", pady=(1, 0))
         canvas.bind("<Configure>", lambda _event: self.draw_limit_bars())
-        self.limit_bar_canvases.append((canvas, remaining))
+        self.limit_bar_canvases[self.active_source].append((canvas, remaining))
 
     def draw_limit_bars(self):
-        for canvas, percent in self.limit_bar_canvases:
+        canvases = [item for rows in self.limit_bar_canvases.values() for item in rows]
+        for canvas, percent in canvases:
             try:
                 width = max(1, canvas.winfo_width())
                 height = max(1, canvas.winfo_height())
@@ -1042,25 +1260,18 @@ class MiniClientApp:
         self.data_version = version
         if source_context is not None:
             self.render_source_context(source_context)
-        self.table.configure(height=self.current_limit())
+        table = self.tables[self.active_source]
+        table.configure(height=self.current_limit())
         threshold = self.current_signal_threshold()
-        for item in self.table.get_children():
-            self.table.delete(item)
+        for item in table.get_children():
+            table.delete(item)
         for row in rows[: self.current_limit()]:
             over_limit = threshold > 0 and parse_int(row.get("total_tokens_per_call")) > threshold
-            self.table.insert(
+            table.insert(
                 "",
                 tk.END,
                 tags=("over-limit",) if over_limit else (),
-                values=(
-                    task_name(row),
-                    row.get("models") or "",
-                    format_duration(row.get("elapsed_seconds")),
-                    format_number(row.get("model_calls")),
-                    format_number(row.get("total_tokens_per_call")),
-                    format_number(row.get("total_tokens")),
-                    format_cost(row.get("estimated_cost")),
-                ),
+                values=tuple(table_cell_value(column_id, row) for column_id in TABLE_COLUMN_IDS),
             )
         self.maybe_signal(rows, version, threshold)
         self.status_var.set(f"Updated {time.strftime('%H:%M:%S')}")
@@ -1072,14 +1283,15 @@ class MiniClientApp:
         self.status_var.set(f"Error: {error}")
 
     def current_signal_threshold(self) -> int:
+        threshold_var = self.active_vars()["signal_threshold"]
         try:
-            value = self.signal_threshold_var.get()
+            value = threshold_var.get()
         except tk.TclError:
             value = DEFAULT_SIGNAL_THRESHOLD
-            self.signal_threshold_var.set(value)
+            threshold_var.set(value)
         value = max(0, value)
-        if self.signal_threshold_var.get() != value:
-            self.signal_threshold_var.set(value)
+        if threshold_var.get() != value:
+            threshold_var.set(value)
         return value
 
     def signal_row_key(self, row: dict) -> tuple:
@@ -1118,14 +1330,14 @@ class MiniClientApp:
         if not self.signal_seen_initialized:
             self.signal_seen_initialized = True
             return
-        if not self.signal_enabled_var.get() or not new_over_limit_keys:
+        if not self.active_vars()["signal_enabled"].get() or not new_over_limit_keys:
             return
 
         self.signal_seen_initialized = True
         signal_key = (
             version,
             threshold,
-            self.signal_name_var.get(),
+            self.active_vars()["signal_name"].get(),
             tuple(repr(key) for key in new_over_limit_keys),
         )
         if signal_key == self.last_signal_key:
@@ -1133,8 +1345,9 @@ class MiniClientApp:
         self.last_signal_key = signal_key
         self.play_signal()
 
-    def play_signal(self):
-        signal_name = self.signal_name_var.get()
+    def play_signal(self, source: str | None = None):
+        source = normalize_source(source or self.active_source)
+        signal_name = self.agent_vars[source]["signal_name"].get()
         if winsound is not None:
             try:
                 winsound.MessageBeep(SIGNAL_CHOICES.get(signal_name, -1))

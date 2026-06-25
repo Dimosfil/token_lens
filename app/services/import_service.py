@@ -10,7 +10,7 @@ from app.sources.base import UsageSource
 from app.sources.codex.adapter import CodexUsageSource
 from app.sources.codex.parser import parse_response_event, parse_usage_row
 from app.sources.opencode.parser import parse_opencode_db_message, parse_opencode_jsonl_record
-from app.sources.opencode.reader import iter_messages_after, jsonl_file_size, read_jsonl_after
+from app.sources.opencode.reader import iter_messages_after, jsonl_file_size, max_message_rowid, read_jsonl_after
 from app.storage.connection import connect
 from app.storage.repositories import (
     get_opencode_import_state,
@@ -112,6 +112,8 @@ def import_opencode_sources() -> ImportStats:
         last_jsonl_size = state["last_jsonl_size"]
 
         if db_exists:
+            if max_message_rowid(opencode_db) < last_rowid:
+                last_rowid = 0
             max_rowid = last_rowid
             for msg in iter_messages_after(opencode_db, last_rowid):
                 stats.scanned += 1

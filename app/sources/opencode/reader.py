@@ -32,6 +32,15 @@ def iter_messages_after(db_path: str, last_rowid: int = 0) -> Iterator[dict]:
         source.close()
 
 
+def max_message_rowid(db_path: str) -> int:
+    source = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    try:
+        row = source.execute("select coalesce(max(rowid), 0) from message").fetchone()
+        return int(row[0] if row else 0)
+    finally:
+        source.close()
+
+
 def read_jsonl_after(jsonl_path: str, offset: int = 0) -> Iterator[tuple[dict, int]]:
     try:
         file_size = os.path.getsize(jsonl_path)
