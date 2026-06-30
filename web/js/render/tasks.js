@@ -25,6 +25,10 @@ function calls(row) {
   return hasUsage(row) ? number(row.model_calls) : "-";
 }
 
+function taskDuration(row) {
+  return hasUsage(row) ? duration(row.elapsed_seconds) : "-";
+}
+
 function status(row) {
   if (hasUsage(row)) return sharedEscapeHtml(row.statuses);
   const events = number(row.raw_event_calls);
@@ -38,7 +42,7 @@ function renderAggregateTasks(rows) {
       <td>${sharedEscapeHtml(row.period)}</td>
       <td>${time(row.started_at)}</td>
       <td>${time(row.finished_at)}</td>
-      <td>${duration(row.elapsed_seconds)}</td>
+      <td>${taskDuration(row)}</td>
       <td>${number(row.tasks)}</td>
       <td>${row.models}</td>
       <td>${calls(row)}</td>
@@ -61,7 +65,7 @@ function renderTaskRows(rows, targetId) {
     <tr class="detail-row ${hasUsage(row) ? "" : "is-missing-usage"}" data-thread-id="${sharedEscapeHtml(row.thread_id)}" data-turn-id="${sharedEscapeHtml(row.turn_id)}" data-has-usage="${hasUsage(row) ? "1" : "0"}" tabindex="0">
       <td>${time(row.finished_at)}</td>
       <td>${time(row.started_at)}</td>
-      <td>${duration(row.elapsed_seconds)}</td>
+      <td>${taskDuration(row)}</td>
       <td class="task-cell" title="${sharedEscapeHtml(taskDetails(row))}">${sharedEscapeHtml(sharedTaskName(row))}</td>
       <td>${row.models}</td>
       <td>${calls(row)}</td>

@@ -18,7 +18,7 @@ from app.core.types import ImportStats
 from app.services import background
 from app.services import data_refresh
 from app.sources.codex.reader import iter_log_rows_after, iter_usage_log_rows, latest_log_id
-from app.sources.codex.thread_names import load_thread_names
+from app.sources.codex.thread_names import load_thread_metadata, load_thread_names
 from app.storage.payloads import compact_event_payload, decode_json
 from app.storage.query_params import (
     DEFAULT_BUCKET,
@@ -463,6 +463,76 @@ class CodexSourceHelperTests(unittest.TestCase):
 
         self.assertEqual(names, {"thread-new": "Restore Codex chat labels in mini"})
 
+    def test_thread_names_prefers_codex_state_sidebar_title(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / ".codex"
+            sessions = root / "sessions" / "2026" / "06" / "30"
+            sessions.mkdir(parents=True)
+            (sessions / "rollout.jsonl").write_text(
+                "\n".join([
+                    json.dumps({"type": "session_meta", "payload": {"id": "thread-new"}}),
+                    json.dumps({
+                        "type": "response_item",
+                        "payload": {
+                            "role": "user",
+                            "content": "Long first request title",
+                        },
+                    }),
+                ]),
+                encoding="utf-8",
+            )
+            con = sqlite3.connect(root / "state_5.sqlite")
+            try:
+                con.execute("create table threads (id text, title text)")
+                con.execute("insert into threads values (?, ?)", ["thread-new", "Sidebar title"])
+                con.commit()
+            finally:
+                con.close()
+
+            names = load_thread_names(str(root / "sessions"))
+
+        self.assertEqual(names, {"thread-new": "Sidebar title"})
+
+    def test_thread_metadata_reads_codex_state_tokens(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / ".codex"
+            sessions = root / "sessions"
+            sessions.mkdir(parents=True)
+            con = sqlite3.connect(root / "state_5.sqlite")
+            try:
+                con.execute(
+                    """
+                    create table threads (
+                      id text, title text, preview text, tokens_used integer, model text,
+                      reasoning_effort text, cwd text, updated_at integer, recency_at integer
+                    )
+                    """
+                )
+                con.execute(
+                    "insert into threads values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    [
+                        "thread-new",
+                        "Sidebar title",
+                        "Prompt preview",
+                        6_547_215,
+                        "gpt-5.5",
+                        "high",
+                        r"\\?\D:\AI\avito-bot",
+                        1782832409,
+                        1782832231,
+                    ],
+                )
+                con.commit()
+            finally:
+                con.close()
+
+            metadata = load_thread_metadata(str(sessions))
+
+        self.assertEqual(metadata["thread-new"]["thread_name"], "Sidebar title")
+        self.assertEqual(metadata["thread-new"]["tokens_used"], 6_547_215)
+        self.assertEqual(metadata["thread-new"]["reasoning_effort"], "high")
+        self.assertEqual(metadata["thread-new"]["cwd"], r"\\?\D:\AI\avito-bot")
+
     def test_codex_reader_filters_usage_and_response_rows(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "logs.sqlite"
@@ -477,6 +547,7 @@ class CodexSourceHelperTests(unittest.TestCase):
                         (3, 102, "thread-2", '{"type":"response.completed","response":{"id":"resp-1"}}'),
                         (4, 103, "thread-3", "turn.id=turn-3 model=gpt-5 codex.turn.token_usage.total_tokens=2"),
                         (5, 104, "thread-4", "event.name=\"codex.sse_event\" event.kind=response.completed"),
+                        (6, 105, "thread-5", "post sampling token usage total_usage_tokens=3"),
                     ],
                 )
                 con.commit()
@@ -487,9 +558,9 @@ class CodexSourceHelperTests(unittest.TestCase):
             after_rows = list(iter_log_rows_after(str(db_path), 1))
             latest = latest_log_id(str(db_path))
 
-        self.assertEqual([row["id"] for row in usage_rows], [2, 3, 4, 5])
-        self.assertEqual([row["id"] for row in after_rows], [2, 3, 4, 5])
-        self.assertEqual(latest, 5)
+        self.assertEqual([row["id"] for row in usage_rows], [2, 3, 4, 5, 6])
+        self.assertEqual([row["id"] for row in after_rows], [2, 3, 4, 5, 6])
+        self.assertEqual(latest, 6)
 
 
 class BackgroundImportTests(unittest.TestCase):

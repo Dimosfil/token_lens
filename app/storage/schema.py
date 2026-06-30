@@ -59,6 +59,27 @@ create table if not exists raw_log_archive_state (
   updated_at text not null
 );
 
+create table if not exists codex_import_state (
+  id integer primary key check (id = 1),
+  last_scanned_source_log_id integer not null default 0,
+  updated_at text not null
+);
+
+create table if not exists codex_threads (
+  thread_id text primary key,
+  thread_name text,
+  preview text,
+  tokens_used integer not null default 0,
+  model text,
+  reasoning_effort text,
+  cwd text,
+  updated_at integer,
+  recency_at integer,
+  imported_at text not null
+);
+
+create index if not exists idx_codex_threads_recency on codex_threads(recency_at);
+
 create table if not exists opencode_import_state (
   id integer primary key check (id = 1),
   last_rowid integer not null default 0,
@@ -93,6 +114,23 @@ def init_db(db_path: str) -> None:
             con.execute("alter table raw_logs add column thread_name text")
         if "model" not in raw_columns:
             con.execute("alter table raw_logs add column model text")
+        con.execute(
+            """
+            create table if not exists codex_threads (
+              thread_id text primary key,
+              thread_name text,
+              preview text,
+              tokens_used integer not null default 0,
+              model text,
+              reasoning_effort text,
+              cwd text,
+              updated_at integer,
+              recency_at integer,
+              imported_at text not null
+            )
+            """
+        )
+        con.execute("create index if not exists idx_codex_threads_recency on codex_threads(recency_at)")
         con.commit()
     finally:
         con.close()

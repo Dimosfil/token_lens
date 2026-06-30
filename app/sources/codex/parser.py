@@ -12,6 +12,20 @@ TURN_RE = re.compile(r"turn\.id=([^ }]+)")
 SUBMISSION_RE = re.compile(r"submission\.id=\"?([^\" }]+)")
 EFFORT_RE = re.compile(r"codex\.turn\.reasoning_effort=([^ }]+)")
 RESPONSE_EVENT_RE = re.compile(r'\{"type":"response\.(created|in_progress|completed)"')
+RESPONSE_CREATE_REQUEST_MARKERS = (
+    'websocket request: {"type":"response.create"',
+    'websocket request: {"type": "response.create"',
+)
+USAGE_INSTRUMENT = 'instrument_name="codex.turn.token_usage"'
+TRACE_TURN_PREFIX_RE = re.compile(r"^(?:[A-Za-z0-9_.-]+\{[^{}]*\}:)*turn\{[^{}]*\}")
+POST_SAMPLING_USAGE_RE = re.compile(
+    r"^(?P<trace>(?:[A-Za-z0-9_.-]+\{[^{}]*\}:)*turn\{[^{}]*\})"
+    r":session_task\.run:run_turn: post sampling token usage (?P<fields>[^\r\n]*)"
+)
+POST_SAMPLING_INT_RE = re.compile(
+    r"\b(total_usage_tokens|auto_compact_scope_tokens|auto_compact_scope_limit)=([0-9]+)\b"
+)
+ESTIMATED_TOKEN_COUNT_RE = re.compile(r"\bestimated_token_count=Some\(([0-9]+)\)")
 
 
 def compact_json(value) -> str | None:
@@ -106,6 +120,76 @@ def usage_response_id(thread_id: str, turn_id: str, model: str) -> str:
     return f"codex-usage:{thread_id}:{turn_id}:{model}"
 
 
+def estimated_usage_response_id(thread_id: str, turn_id: str, model: str) -> str:
+    return f"codex-estimate:{thread_id}:{turn_id}:{model}"
+
+
+def usage_event_segment(body: str) -> str | None:
+    stripped = body.lstrip()
+    if stripped.startswith(USAGE_INSTRUMENT):
+        return stripped.splitlines()[0] if stripped.splitlines() else stripped
+    match = TRACE_TURN_PREFIX_RE.match(stripped)
+    if not match:
+        return None
+    segment = match.group(0)
+    return segment if "codex.turn.token_usage" in segment else None
+
+
+def parse_post_sampling_usage_row(
+    source_log_id: int,
+    ts: int,
+    thread_id: str | None,
+    body: str,
+    thread_names: dict[str, str],
+    prices: dict,
+) -> dict | None:
+    match = POST_SAMPLING_USAGE_RE.match(body.lstrip())
+    if not match:
+        return None
+
+    trace = match.group("trace")
+    fields = match.group("fields")
+    int_fields = {name: int(value) for name, value in POST_SAMPLING_INT_RE.findall(fields)}
+    total_tokens = int_fields.get("total_usage_tokens", 0)
+    if total_tokens <= 0:
+        return None
+
+    resolved_thread_id = first_match(THREAD_RE, trace) or thread_id
+    turn_id = first_match(TURN_RE, trace)
+    model = first_match(MODEL_RE, trace)
+    if not resolved_thread_id or not turn_id or not model:
+        return None
+
+    row = build_turn_row(
+        source_log_id=source_log_id,
+        response_id=estimated_usage_response_id(resolved_thread_id, turn_id, model),
+        status="estimated",
+        ts=ts,
+        thread_id=resolved_thread_id,
+        thread_names=thread_names,
+        turn_id=turn_id,
+        submission_id=first_match(SUBMISSION_RE, trace),
+        model=model,
+        reasoning_effort=first_match(EFFORT_RE, trace),
+        input_tokens=total_tokens,
+        cached_input_tokens=0,
+        non_cached_input_tokens=total_tokens,
+        output_tokens=0,
+        reasoning_output_tokens=0,
+        total_tokens=total_tokens,
+        prices=prices,
+    )
+    estimated_match = ESTIMATED_TOKEN_COUNT_RE.search(fields)
+    row["event_json"] = compact_json({
+        "type": "codex.post_sampling_token_usage",
+        "total_usage_tokens": total_tokens,
+        "auto_compact_scope_tokens": int_fields.get("auto_compact_scope_tokens"),
+        "estimated_token_count": int(estimated_match.group(1)) if estimated_match else None,
+        "auto_compact_scope_limit": int_fields.get("auto_compact_scope_limit"),
+    })
+    return row
+
+
 def parse_usage_row(
     source_log_id: int,
     ts: int,
@@ -114,16 +198,28 @@ def parse_usage_row(
     thread_names: dict[str, str],
     prices: dict,
 ) -> dict | None:
-    if "codex.turn.token_usage" not in body:
+    estimated_row = parse_post_sampling_usage_row(
+        source_log_id,
+        ts,
+        thread_id,
+        body,
+        thread_names,
+        prices,
+    )
+    if estimated_row:
+        return estimated_row
+
+    segment = usage_event_segment(body)
+    if not segment:
         return None
 
-    token_pairs = {name: int(value) for name, value in TOKEN_RE.findall(body)}
+    token_pairs = {name: int(value) for name, value in TOKEN_RE.findall(segment)}
     if not token_pairs:
         return None
 
-    resolved_thread_id = thread_id or first_match(THREAD_RE, body)
-    turn_id = first_match(TURN_RE, body)
-    model = first_match(MODEL_RE, body)
+    resolved_thread_id = first_match(THREAD_RE, segment) or thread_id
+    turn_id = first_match(TURN_RE, segment)
+    model = first_match(MODEL_RE, segment)
     if not resolved_thread_id or not turn_id or not model:
         return None
 
@@ -150,9 +246,9 @@ def parse_usage_row(
         thread_id=resolved_thread_id,
         thread_names=thread_names,
         turn_id=turn_id,
-        submission_id=first_match(SUBMISSION_RE, body),
+        submission_id=first_match(SUBMISSION_RE, segment),
         model=model,
-        reasoning_effort=first_match(EFFORT_RE, body),
+        reasoning_effort=first_match(EFFORT_RE, segment),
         input_tokens=input_tokens,
         cached_input_tokens=cached_input_tokens,
         non_cached_input_tokens=non_cached_input_tokens,
@@ -184,7 +280,7 @@ def parse_response_event(
 
     response = event.get("response") or {}
     usage = response.get("usage") or {}
-    if event_type != "completed" and not usage:
+    if not usage:
         return None
     request_payload = response.get("input") or event.get("input") or event.get("request")
     response_payload = response_output_payload(response) or response
@@ -202,6 +298,8 @@ def parse_response_event(
     output_tokens = int(usage.get("output_tokens") or 0)
     reasoning_tokens = int(output_details.get("reasoning_tokens") or 0)
     total_tokens = int(usage.get("total_tokens") or (input_tokens + output_tokens))
+    if total_tokens <= 0:
+        return None
 
     row = build_turn_row(
         source_log_id=source_log_id,
@@ -226,3 +324,40 @@ def parse_response_event(
     row["response_json"] = compact_json(response_payload)
     row["event_json"] = compact_json(event)
     return row
+
+
+def parse_response_create_request(
+    source_log_id: int,
+    ts: int,
+    thread_id: str | None,
+    body: str,
+) -> dict | None:
+    if not any(marker in body for marker in RESPONSE_CREATE_REQUEST_MARKERS):
+        return None
+
+    marker = "websocket request: "
+    marker_index = body.find(marker)
+    if marker_index < 0:
+        return None
+
+    try:
+        payload, _ = json.JSONDecoder().raw_decode(body[marker_index + len(marker):])
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict) or payload.get("type") != "response.create":
+        return None
+
+    resolved_thread_id = first_match(THREAD_RE, body) or thread_id
+    turn_id = first_match(TURN_RE, body)
+    model = payload.get("model") or first_match(MODEL_RE, body)
+    if not resolved_thread_id or not turn_id or not model:
+        return None
+
+    return {
+        "source_log_id": source_log_id,
+        "ts": ts,
+        "thread_id": resolved_thread_id,
+        "turn_id": turn_id,
+        "model": model,
+        "request_json": compact_json(payload),
+    }

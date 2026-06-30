@@ -93,6 +93,36 @@ def upsert_turn(con: sqlite3.Connection, row: dict) -> None:
     )
 
 
+def backfill_turn_request_payloads(con: sqlite3.Connection, rows: list[dict]) -> int:
+    updated = 0
+    imported_at = datetime.now(timezone.utc).isoformat()
+    for row in rows:
+        if not all(row.get(key) for key in ("thread_id", "turn_id", "model", "request_json")):
+            continue
+        cursor = con.execute(
+            """
+            update turns
+            set request_json = ?,
+                imported_at = ?
+            where source = 'codex'
+              and thread_id = ?
+              and turn_id = ?
+              and model = ?
+              and coalesce(request_json, '') != ?
+            """,
+            [
+                row["request_json"],
+                imported_at,
+                row["thread_id"],
+                row["turn_id"],
+                row["model"],
+                row["request_json"],
+            ],
+        )
+        updated += cursor.rowcount
+    return updated
+
+
 def latest_raw_log_id(con: sqlite3.Connection) -> int:
     state = con.execute(
         "select last_source_log_id from raw_log_archive_state where id = 1"
@@ -122,6 +152,26 @@ def latest_turn_source_log_id(con: sqlite3.Connection, source: str = "codex") ->
         [source],
     ).fetchone()
     return int(row["latest_id"] if row else 0)
+
+
+def get_codex_import_state(con: sqlite3.Connection) -> int:
+    row = con.execute(
+        "select last_scanned_source_log_id from codex_import_state where id = 1"
+    ).fetchone()
+    return int(row["last_scanned_source_log_id"] if row else 0)
+
+
+def set_codex_import_state(con: sqlite3.Connection, source_log_id: int) -> None:
+    con.execute(
+        """
+        insert into codex_import_state (id, last_scanned_source_log_id, updated_at)
+        values (1, ?, ?)
+        on conflict(id) do update set
+          last_scanned_source_log_id = excluded.last_scanned_source_log_id,
+          updated_at = excluded.updated_at
+        """,
+        [int(source_log_id), datetime.now(timezone.utc).isoformat()],
+    )
 
 
 def insert_raw_log(con: sqlite3.Connection, row: dict) -> bool:
@@ -165,7 +215,6 @@ def backfill_raw_log_display_fields(
         select thread_id
         from raw_logs
         where thread_id is not null
-          and thread_name is null
         group by thread_id
         order by max(source_log_id) desc
         limit ?
@@ -180,12 +229,77 @@ def backfill_raw_log_display_fields(
         cursor = con.execute(
             """
             update raw_logs
-            set thread_name = coalesce(thread_name, ?),
+            set thread_name = ?,
                 model = coalesce(model, ?)
             where thread_id = ?
-              and (thread_name is null or model is null)
+              and (coalesce(thread_name, '') != ? or model is null)
             """,
-            [thread_name, model_by_thread.get(thread_id), thread_id],
+            [thread_name, model_by_thread.get(thread_id), thread_id, thread_name],
+        )
+        updated += cursor.rowcount
+    return updated
+
+
+def backfill_turn_thread_names(
+    con: sqlite3.Connection,
+    thread_names: dict[str, str],
+    source: str = "codex",
+) -> int:
+    updated = 0
+    for thread_id, thread_name in thread_names.items():
+        cursor = con.execute(
+            """
+            update turns
+            set thread_name = ?
+            where source = ?
+              and thread_id = ?
+              and coalesce(thread_name, '') != ?
+            """,
+            [thread_name, source, thread_id, thread_name],
+        )
+        updated += cursor.rowcount
+    return updated
+
+
+def upsert_codex_threads(con: sqlite3.Connection, rows: dict[str, dict]) -> int:
+    imported_at = datetime.now(timezone.utc).isoformat()
+    updated = 0
+    for row in rows.values():
+        if not row.get("thread_id"):
+            continue
+        payload = {
+            "thread_id": row.get("thread_id"),
+            "thread_name": row.get("thread_name"),
+            "preview": row.get("preview"),
+            "tokens_used": int(row.get("tokens_used") or 0),
+            "model": row.get("model"),
+            "reasoning_effort": row.get("reasoning_effort"),
+            "cwd": row.get("cwd"),
+            "updated_at": row.get("updated_at"),
+            "recency_at": row.get("recency_at"),
+            "imported_at": imported_at,
+        }
+        cursor = con.execute(
+            """
+            insert into codex_threads (
+              thread_id, thread_name, preview, tokens_used, model, reasoning_effort,
+              cwd, updated_at, recency_at, imported_at
+            ) values (
+              :thread_id, :thread_name, :preview, :tokens_used, :model, :reasoning_effort,
+              :cwd, :updated_at, :recency_at, :imported_at
+            )
+            on conflict(thread_id) do update set
+              thread_name = excluded.thread_name,
+              preview = excluded.preview,
+              tokens_used = excluded.tokens_used,
+              model = excluded.model,
+              reasoning_effort = excluded.reasoning_effort,
+              cwd = excluded.cwd,
+              updated_at = excluded.updated_at,
+              recency_at = excluded.recency_at,
+              imported_at = excluded.imported_at
+            """,
+            payload,
         )
         updated += cursor.rowcount
     return updated

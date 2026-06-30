@@ -5,8 +5,8 @@ import { escapeHtml } from "./render/html.js";
 let detail = null;
 let selectedCall = 0;
 
-function pretty(value) {
-  if (value == null || value === "") return "No captured payload";
+function pretty(value, emptyMessage = "No captured payload") {
+  if (value == null || value === "") return emptyMessage;
   if (typeof value === "string") return value;
   return JSON.stringify(value, null, 2);
 }
@@ -20,8 +20,20 @@ function metric(label, value) {
   return `<div class="detail-metric"><span>${label}</span><strong>${escapeHtml(value)}</strong></div>`;
 }
 
-function rawEventLabel(captured) {
-  return captured ? "Captured" : "Missing";
+function isTokenUsageEvent(call) {
+  return call?.event?.type === "codex.post_sampling_token_usage";
+}
+
+function eventLabel(call) {
+  if (!call?.raw_event_captured) return "Missing";
+  return isTokenUsageEvent(call) ? "Usage only" : "Captured";
+}
+
+function emptyPayloadMessage(kind, call) {
+  if (isTokenUsageEvent(call)) {
+    return `No ${kind} payload: this row is a token-usage event only.`;
+  }
+  return `No captured ${kind} payload`;
 }
 
 function renderMeta(task) {
@@ -57,7 +69,7 @@ function renderCalls(calls) {
       <td>${number(call.cached_input_tokens)}</td>
       <td>${number(call.output_tokens)}</td>
       <td>${number(call.reasoning_output_tokens)}</td>
-      <td><span class="raw-event raw-event-${call.raw_event_captured ? "captured" : "missing"}">${rawEventLabel(call.raw_event_captured)}</span></td>
+      <td><span class="raw-event raw-event-${call.raw_event_captured ? "captured" : "missing"}">${eventLabel(call)}</span></td>
       <td class="mono">${escapeHtml(call.response_id || call.source_log_id)}</td>
     </tr>
   `).join("");
@@ -76,8 +88,8 @@ function renderPayload(call) {
     return;
   }
   title.textContent = `${call.model} · ${call.status} · ${number(call.total_tokens)} tokens`;
-  request.textContent = pretty(call.request);
-  response.textContent = pretty(call.response);
+  request.textContent = pretty(call.request, emptyPayloadMessage("request", call));
+  response.textContent = pretty(call.response, emptyPayloadMessage("response", call));
   event.textContent = pretty(call.event);
 }
 

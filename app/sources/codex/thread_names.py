@@ -3,6 +3,7 @@ from __future__ import annotations
 import glob
 import json
 import re
+import sqlite3
 from pathlib import Path
 
 
@@ -11,9 +12,20 @@ MAX_DERIVED_THREAD_NAME_LENGTH = 96
 
 def load_thread_names(path: str) -> dict[str, str]:
     names: dict[str, str] = {}
-    for index_path in _session_index_paths(path):
+    index_paths = _session_index_paths(path)
+    for index_path in index_paths:
         _load_thread_names_file(index_path, names)
+    for state_path in _state_db_candidates(path, index_paths):
+        _load_state_thread_titles(state_path, names)
     return names
+
+
+def load_thread_metadata(path: str) -> dict[str, dict]:
+    metadata: dict[str, dict] = {}
+    index_paths = _session_index_paths(path)
+    for state_path in _state_db_candidates(path, index_paths):
+        _load_state_thread_metadata(state_path, metadata)
+    return metadata
 
 
 def _session_index_paths(path: str) -> list[Path]:
@@ -38,6 +50,111 @@ def _session_index_paths(path: str) -> list[Path]:
 
 def _has_glob(value: str) -> bool:
     return any(char in value for char in ("*", "?", "["))
+
+
+def _state_db_candidates(path: str, session_paths: list[Path]) -> list[Path]:
+    candidates: list[Path] = []
+    text = str(path or "").strip()
+    if text and not _has_glob(text):
+        index_path = Path(text)
+        roots = [index_path if index_path.is_dir() else index_path.parent]
+        roots.extend(parent for parent in roots[0].parents if parent.name == ".codex")
+        for root in roots:
+            candidates.append(root / "state_5.sqlite")
+
+    for session_path in session_paths:
+        for parent in session_path.parents:
+            if parent.name == ".codex":
+                candidates.append(parent / "state_5.sqlite")
+                break
+
+    seen = set()
+    unique = []
+    for candidate in candidates:
+        resolved = str(candidate)
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        if candidate.is_file():
+            unique.append(candidate)
+    return unique
+
+
+def _load_state_thread_titles(state_path: Path, names: dict[str, str]) -> None:
+    try:
+        con = sqlite3.connect(f"file:{state_path}?mode=ro", uri=True)
+    except sqlite3.Error:
+        return
+    try:
+        rows = con.execute(
+            """
+            select id, title
+            from threads
+            where title is not null and trim(title) != ''
+            """
+        ).fetchall()
+    except sqlite3.Error:
+        return
+    finally:
+        con.close()
+
+    for thread_id, title in rows:
+        if isinstance(thread_id, str) and isinstance(title, str) and title.strip():
+            names[thread_id] = title.strip()
+
+
+def _load_state_thread_metadata(state_path: Path, metadata: dict[str, dict]) -> None:
+    try:
+        con = sqlite3.connect(f"file:{state_path}?mode=ro", uri=True)
+    except sqlite3.Error:
+        return
+    try:
+        rows = con.execute(
+            """
+            select id, title, preview, tokens_used, model, reasoning_effort, cwd, updated_at, recency_at
+            from threads
+            where id is not null and trim(id) != ''
+            """
+        ).fetchall()
+    except sqlite3.Error:
+        return
+    finally:
+        con.close()
+
+    for row in rows:
+        thread_id = row[0]
+        if not isinstance(thread_id, str) or not thread_id.strip():
+            continue
+        metadata[thread_id] = {
+            "thread_id": thread_id,
+            "thread_name": _text_or_none(row[1]),
+            "preview": _text_or_none(row[2]),
+            "tokens_used": _int_or_zero(row[3]),
+            "model": _text_or_none(row[4]),
+            "reasoning_effort": _text_or_none(row[5]),
+            "cwd": _text_or_none(row[6]),
+            "updated_at": _int_or_none(row[7]),
+            "recency_at": _int_or_none(row[8]),
+        }
+
+
+def _text_or_none(value) -> str | None:
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    return text or None
+
+
+def _int_or_zero(value) -> int:
+    parsed = _int_or_none(value)
+    return parsed if parsed is not None else 0
+
+
+def _int_or_none(value) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _load_thread_names_file(index_path: Path, names: dict[str, str]) -> None:

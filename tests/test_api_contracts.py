@@ -5,6 +5,7 @@ import queue
 import tempfile
 import time
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest import mock
 
@@ -12,11 +13,11 @@ from app.api.handlers import parse_limit
 from app.services import analytics_service, codex_account_service, import_service
 from app.services.import_service import import_usage_source
 from app.sources.opencode.parser import parse_opencode_event
-from app.sources.codex.parser import parse_response_event, parse_usage_row
+from app.sources.codex.parser import parse_response_create_request, parse_response_event, parse_usage_row
 from app.storage import queries
 from app.storage.query_params import normalize_time_mode
 from app.storage.connection import connect
-from app.storage.repositories import upsert_turn
+from app.storage.repositories import upsert_codex_threads, upsert_turn
 from app.storage.schema import init_db
 
 
@@ -141,6 +142,50 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(normalize_time_mode("unexpected"), "local")
         self.assertIn("'localtime'", queries._bucket_expr("day", "local"))
         self.assertNotIn("'localtime'", queries._bucket_expr("day", "utc"))
+
+    def test_custom_daily_range_fills_missing_days(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = str(Path(tmp) / "analytics.sqlite")
+            init_db(db_path)
+            con = connect(db_path)
+            try:
+                upsert_turn(con, sample_turn(
+                    ts=1_779_321_600,
+                    ts_iso="2026-05-21T00:00:00+00:00",
+                    day="2026-05-21",
+                ))
+                con.commit()
+
+                rows = queries.daily(
+                    con,
+                    range_key="custom",
+                    bucket="day",
+                    start_ts=int(datetime(2026, 5, 20, tzinfo=timezone.utc).timestamp()),
+                    end_ts=int(datetime(2026, 5, 23, 23, 59, 59, tzinfo=timezone.utc).timestamp()),
+                    source="codex",
+                    time_mode="utc",
+                )
+            finally:
+                con.close()
+
+        self.assertEqual([row["period"] for row in rows], [
+            "2026-05-20",
+            "2026-05-21",
+            "2026-05-22",
+            "2026-05-23",
+        ])
+        self.assertEqual([row["turns"] for row in rows], [0, 1, 0, 0])
+
+    def test_custom_month_range_fills_missing_months(self):
+        rows = queries._expected_periods(
+            "custom",
+            "month",
+            "utc",
+            start_ts=int(datetime(2026, 5, 1, tzinfo=timezone.utc).timestamp()),
+            end_ts=int(datetime(2026, 7, 31, 23, 59, 59, tzinfo=timezone.utc).timestamp()),
+        )
+
+        self.assertEqual(rows, ["2026-05", "2026-06", "2026-07"])
 
     def test_codex_account_rate_limits_are_normalized(self):
         payload = codex_account_service._normalize_rate_limits({
@@ -528,6 +573,175 @@ class ApiContractTests(unittest.TestCase):
         self.assertIsNone(raw_row["total_tokens"])
         self.assertIsNone(raw_row["total_tokens_per_call"])
 
+    def test_codex_tasks_sum_turn_rows_per_chat(self):
+        now = int(time.time())
+        con = connect(self.db_path)
+        try:
+            for index, total_tokens in enumerate((1000, 1600, 2500), start=1):
+                upsert_turn(con, sample_turn(
+                    source_log_id=100 + index,
+                    source="codex",
+                    response_id=f"codex-estimate:thread-codex:turn-{index}:gpt-5.5",
+                    status="estimated",
+                    ts=now + index,
+                    ts_iso=f"2026-06-30T14:0{index}:00+00:00",
+                    day="2026-06-30",
+                    thread_id="thread-codex",
+                    thread_name="One Codex chat",
+                    turn_id=f"turn-{index}",
+                    model="gpt-5.5",
+                    input_tokens=total_tokens,
+                    cached_input_tokens=0,
+                    non_cached_input_tokens=total_tokens,
+                    output_tokens=0,
+                    reasoning_output_tokens=10 * index,
+                    total_tokens=total_tokens,
+                ))
+            con.commit()
+
+            rows = queries.tasks(con, 10, source="codex")
+            day_buckets = queries.task_buckets(con, source="codex", bucket="day", time_mode="utc")
+            bucket_rows = queries.bucket_tasks(con, "2026-06-30", "day", source="codex", time_mode="utc")
+            detail = queries.task_detail(con, "thread-codex", "chat:thread-codex")
+        finally:
+            con.close()
+
+        row = next(item for item in rows if item["thread_id"] == "thread-codex")
+        self.assertEqual(row["thread_name"], "One Codex chat")
+        self.assertEqual(row["turn_id"], "chat:thread-codex")
+        self.assertEqual(row["model_calls"], 3)
+        self.assertEqual(row["total_tokens"], 5100)
+        self.assertEqual(row["total_tokens_per_call"], 1700)
+        self.assertEqual(row["reasoning_output_tokens"], 60)
+        bucket = next(item for item in day_buckets if item["period"] == "2026-06-30")
+        self.assertEqual(bucket["tasks"], 1)
+        self.assertEqual(bucket["model_calls"], 3)
+        bucket_row = next(item for item in bucket_rows if item["thread_id"] == "thread-codex")
+        self.assertEqual(bucket_row["turn_id"], "chat:thread-codex")
+        self.assertEqual(bucket_row["model_calls"], 3)
+        self.assertEqual(detail["task"]["model_calls"], 3)
+        self.assertEqual(detail["task"]["total_tokens"], 5100)
+
+    def test_codex_tasks_use_state_tokens_when_log_estimates_are_lower(self):
+        now = int(time.time())
+        con = connect(self.db_path)
+        try:
+            for index, total_tokens in enumerate((119_708, 137_921, 183_677), start=1):
+                upsert_turn(con, sample_turn(
+                    source_log_id=200 + index,
+                    source="codex",
+                    response_id=f"codex-estimate:thread-state:turn-{index}:gpt-5.5",
+                    status="estimated",
+                    ts=now + index,
+                    ts_iso=f"2026-06-30T15:0{index}:00+00:00",
+                    day="2026-06-30",
+                    thread_id="thread-state",
+                    thread_name="First prompt title",
+                    turn_id=f"turn-{index}",
+                    model="gpt-5.5",
+                    reasoning_effort="high",
+                    input_tokens=total_tokens,
+                    cached_input_tokens=0,
+                    non_cached_input_tokens=total_tokens,
+                    output_tokens=0,
+                    reasoning_output_tokens=0,
+                    total_tokens=total_tokens,
+                ))
+            upsert_codex_threads(con, {
+                "thread-state": {
+                    "thread_id": "thread-state",
+                    "thread_name": "Sidebar title",
+                    "tokens_used": 6_547_215,
+                    "model": "gpt-5.5",
+                    "reasoning_effort": "high",
+                }
+            })
+            con.commit()
+
+            rows = queries.tasks(con, 10, source="codex")
+            summary = queries.summary(con, source="codex")
+            day_buckets = queries.task_buckets(con, source="codex", bucket="day", time_mode="utc")
+            bucket_rows = queries.bucket_tasks(con, "2026-06-30", "day", source="codex", time_mode="utc")
+            detail = queries.task_detail(con, "thread-state", "chat:thread-state")
+        finally:
+            con.close()
+
+        row = next(item for item in rows if item["thread_id"] == "thread-state")
+        self.assertEqual(row["thread_name"], "Sidebar title")
+        self.assertEqual(row["total_tokens"], 6_547_215)
+        self.assertEqual(row["state_tokens_used"], 6_547_215)
+        self.assertEqual(row["log_total_tokens"], 441_306)
+        self.assertEqual(row["total_tokens_per_call"], 2_182_405)
+        self.assertIn("codex-state", row["statuses"])
+        self.assertGreaterEqual(summary["summary"]["total_tokens"], 6_547_215)
+        top = next(item for item in summary["top_turns"] if item["thread_id"] == "thread-state")
+        self.assertEqual(top["total_tokens"], 6_547_215)
+        self.assertEqual(top["log_total_tokens"], 441_306)
+        bucket = next(item for item in day_buckets if item["period"] == "2026-06-30")
+        self.assertGreaterEqual(bucket["total_tokens"], 6_547_215)
+        bucket_row = next(item for item in bucket_rows if item["thread_id"] == "thread-state")
+        self.assertEqual(bucket_row["total_tokens"], 6_547_215)
+        self.assertEqual(bucket_row["log_total_tokens"], 441_306)
+        self.assertEqual(detail["task"]["total_tokens"], 6_547_215)
+        self.assertEqual(detail["task"]["log_total_tokens"], 441_306)
+
+    def test_codex_bucket_tasks_apply_state_delta_to_latest_bucket_only(self):
+        early_ts = int(datetime(2026, 6, 30, 14, 5, tzinfo=timezone.utc).timestamp())
+        late_ts = int(datetime(2026, 6, 30, 15, 10, tzinfo=timezone.utc).timestamp())
+        con = connect(self.db_path)
+        try:
+            for index, (ts, total_tokens) in enumerate(((early_ts, 100), (late_ts, 200)), start=1):
+                upsert_turn(con, sample_turn(
+                    source_log_id=300 + index,
+                    source="codex",
+                    response_id=f"codex-estimate:thread-state-bucket:turn-{index}:gpt-5.5",
+                    status="estimated",
+                    ts=ts,
+                    ts_iso=datetime.fromtimestamp(ts, timezone.utc).isoformat(),
+                    day="2026-06-30",
+                    thread_id="thread-state-bucket",
+                    thread_name="State bucket chat",
+                    turn_id=f"turn-{index}",
+                    model="gpt-5.5",
+                    input_tokens=total_tokens,
+                    cached_input_tokens=0,
+                    non_cached_input_tokens=total_tokens,
+                    output_tokens=0,
+                    reasoning_output_tokens=0,
+                    total_tokens=total_tokens,
+                ))
+            upsert_codex_threads(con, {
+                "thread-state-bucket": {
+                    "thread_id": "thread-state-bucket",
+                    "thread_name": "State bucket chat",
+                    "tokens_used": 1_000,
+                    "model": "gpt-5.5",
+                    "reasoning_effort": "high",
+                }
+            })
+            con.commit()
+
+            early_rows = queries.bucket_tasks(
+                con, "2026-06-30 14:00", "hour", range_key="all", source="codex", time_mode="utc"
+            )
+            late_rows = queries.bucket_tasks(
+                con, "2026-06-30 15:00", "hour", range_key="all", source="codex", time_mode="utc"
+            )
+        finally:
+            con.close()
+
+        early = next(item for item in early_rows if item["thread_id"] == "thread-state-bucket")
+        late = next(item for item in late_rows if item["thread_id"] == "thread-state-bucket")
+        self.assertEqual(early["model_calls"], 1)
+        self.assertEqual(early["total_tokens"], 100)
+        self.assertEqual(early["total_tokens_per_call"], 100)
+        self.assertNotIn("codex-state", early["statuses"])
+        self.assertEqual(late["model_calls"], 1)
+        self.assertEqual(late["total_tokens"], 900)
+        self.assertEqual(late["total_tokens_per_call"], 900)
+        self.assertEqual(late["log_total_tokens"], 200)
+        self.assertIn("codex-state", late["statuses"])
+
     def test_opencode_tasks_and_summary_sum_request_rows_per_chat(self):
         now = int(time.time())
         con = connect(self.db_path)
@@ -556,18 +770,22 @@ class ApiContractTests(unittest.TestCase):
 
             rows = queries.tasks(con, 10, source="opencode")
             summary = queries.summary(con, source="opencode")["summary"]
+            detail = queries.task_detail(con, "opencode-session-1", "chat:opencode-session-1")
         finally:
             con.close()
 
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["thread_id"], "opencode-session-1")
         self.assertEqual(rows[0]["thread_name"], "One OpenCode chat")
+        self.assertEqual(rows[0]["turn_id"], "chat:opencode-session-1")
         self.assertEqual(rows[0]["model_calls"], 3)
         self.assertEqual(rows[0]["total_tokens"], 5100)
         self.assertEqual(rows[0]["total_tokens_per_call"], 1700)
         self.assertEqual(summary["turns"], 3)
         self.assertEqual(summary["threads"], 1)
         self.assertEqual(summary["total_tokens"], 5100)
+        self.assertEqual(detail["task"]["model_calls"], 3)
+        self.assertEqual(detail["task"]["total_tokens"], 5100)
 
     def test_bucket_tasks_returns_tasks_for_selected_period(self):
         con = connect(self.db_path)
@@ -635,7 +853,7 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(raw_count, 2)
         self.assertEqual(raw_body, "unrecognized raw event")
 
-    def test_codex_import_scans_only_rows_after_latest_imported_turn(self):
+    def test_codex_import_scans_only_rows_after_latest_scanned_log(self):
         class Source:
             def __init__(self):
                 self.rows = [
@@ -686,6 +904,9 @@ class ApiContractTests(unittest.TestCase):
             imported = con.execute(
                 "select count(*) from turns where thread_id = 'thread-new'"
             ).fetchone()[0]
+            last_scanned = con.execute(
+                "select last_scanned_source_log_id from codex_import_state where id = 1"
+            ).fetchone()[0]
         finally:
             con.close()
 
@@ -694,6 +915,26 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(stats.skipped, 1)
         self.assertEqual(stats.archived, 3)
         self.assertEqual(imported, 1)
+        self.assertEqual(last_scanned, 4)
+
+        source = Source()
+        source.rows.append({
+            "id": 5,
+            "ts": int(time.time()) - 2,
+            "thread_id": "thread-newer",
+            "feedback_log_body": (
+                'instrument_name="codex.turn.token_usage" model=gpt-5 '
+                'thread.id=thread-newer turn.id=turn-newer '
+                "codex.turn.token_usage.input_tokens=4 "
+                "codex.turn.token_usage.output_tokens=2 "
+                "codex.turn.token_usage.total_tokens=6"
+            ),
+        })
+
+        second_stats = import_usage_source(source, self.db_path, {})
+
+        self.assertEqual(second_stats.scanned, 1)
+        self.assertEqual(second_stats.imported, 1)
 
     def test_response_event_backfills_matching_usage_row_payloads(self):
         class Source:
@@ -753,6 +994,58 @@ class ApiContractTests(unittest.TestCase):
         self.assertTrue(detail["calls"][0]["raw_event_captured"])
         self.assertEqual(detail["calls"][0]["response_id"], "resp-merge")
         self.assertIn("inspect", str(detail["calls"][0]["request"]))
+
+    def test_task_detail_loads_request_payload_from_archived_response_create(self):
+        con = connect(self.db_path)
+        try:
+            upsert_turn(con, sample_turn(
+                source_log_id=40,
+                response_id="codex-estimate:thread-request:turn-request:gpt-5.5",
+                status="estimated",
+                thread_id="thread-request",
+                thread_name="Request payload chat",
+                turn_id="turn-request",
+                model="gpt-5.5",
+                input_tokens=123,
+                cached_input_tokens=0,
+                non_cached_input_tokens=123,
+                output_tokens=0,
+                reasoning_output_tokens=0,
+                total_tokens=123,
+                event_json='{"type":"codex.post_sampling_token_usage","total_usage_tokens":123}',
+            ))
+            con.execute(
+                """
+                insert into raw_logs (
+                  source_log_id, ts, ts_iso, day, thread_id, thread_name, model,
+                  feedback_log_body, archived_at
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    39,
+                    int(time.time()) - 61,
+                    "2026-06-30T14:00:00+00:00",
+                    "2026-06-30",
+                    "thread-request",
+                    "Request payload chat",
+                    "gpt-5.5",
+                    (
+                        'session_loop{thread_id=thread-request}:'
+                        'turn{thread.id=thread-request turn.id=turn-request model=gpt-5.5}: '
+                        'websocket request: {"type":"response.create","model":"gpt-5.5",'
+                        '"input":[{"role":"user","content":"show payload"}],"store":false}'
+                    ),
+                    "2026-06-30T14:00:01+00:00",
+                ],
+            )
+            con.commit()
+
+            detail = queries.task_detail(con, "thread-request", "chat:thread-request")
+        finally:
+            con.close()
+
+        self.assertEqual(detail["calls"][0]["request"]["input"][0]["content"], "show payload")
+        self.assertIsNone(detail["calls"][0]["response"])
 
 
 class ImportConfigurationTests(unittest.TestCase):
@@ -816,6 +1109,22 @@ class ParserContractTests(unittest.TestCase):
             self.assertEqual(usage_row[key], response_row[key])
         self.assertIn("hi", response_row["request_json"])
         self.assertIn("hello", response_row["response_json"])
+
+    def test_response_create_request_parser_extracts_request_payload(self):
+        body = (
+            'session_loop{thread_id=thread-1}:'
+            'turn{thread.id=thread-1 turn.id=turn-1 model=gpt-5}: '
+            'websocket request: {"type":"response.create","model":"gpt-5",'
+            '"input":[{"role":"user","content":"hi"}],"store":false}'
+        )
+
+        row = parse_response_create_request(1, 1_700_000_000, None, body)
+
+        self.assertIsNotNone(row)
+        self.assertEqual(row["thread_id"], "thread-1")
+        self.assertEqual(row["turn_id"], "turn-1")
+        self.assertEqual(row["model"], "gpt-5")
+        self.assertIn("hi", row["request_json"])
 
     def test_empty_in_progress_response_event_is_not_usage(self):
         body = (

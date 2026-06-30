@@ -49,6 +49,15 @@ class MiniClientHelperTests(unittest.TestCase):
         self.assertFalse(mini_client.looks_like_id("Human task"))
         self.assertEqual(mini_client.task_name({"thread_name": "Investigate costs"}), "Investigate costs")
         self.assertEqual(mini_client.task_name({"thread_name": "thread_abcdefghijkl", "period": "2026-06-19"}), "2026-06-19")
+        self.assertEqual(mini_client.task_name({"thread_id": "019f18d1-dbb8-7921-ae8c-324cc9077520", "turn_id": "chat:019f18d1-dbb8-7921-ae8c-324cc9077520"}), "Chat 077520")
+        self.assertEqual(
+            mini_client.task_name({
+                "thread_id": "019f1938-86f9-7c91-afac-d6006ee07941",
+                "turn_id": "chat:019f1938-86f9-7c91-afac-d6006ee07941",
+                "models": "gpt-5.4-mini",
+            }),
+            "Mini call e07941",
+        )
         self.assertEqual(
             mini_client.task_name({
                 "source": "opencode",
@@ -73,6 +82,7 @@ class MiniClientHelperTests(unittest.TestCase):
             expected_time,
         )
         raw_only = {"has_usage": 0, "model_calls": 0, "total_tokens_per_call": None, "total_tokens": None}
+        self.assertEqual(mini_client.table_cell_value("time", raw_only), "-")
         self.assertEqual(mini_client.table_cell_value("calls", raw_only), "-")
         self.assertEqual(mini_client.table_cell_value("per_call", raw_only), "-")
         self.assertEqual(mini_client.table_cell_value("total", raw_only), "-")

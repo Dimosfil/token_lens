@@ -14,6 +14,41 @@ generated outputs, secrets, credentials, or private production data.
 
 ## Tasks
 
+### Source-Specific Analytics Separation 2026-06-30
+
+Goal: keep Codex and OpenCode query behavior separate so source tabs cannot
+break each other's task aggregation semantics.
+
+Planned changes:
+
+- [x] Split Codex task list and bucket-detail aggregation from OpenCode task
+      aggregation.
+- [x] Aggregate Codex visible task rows by chat/thread with call and token sums.
+- [x] Keep OpenCode on its own session/message aggregation path.
+- [x] Expand `chat:{thread_id}` detail rows to all imported calls for the chat.
+- [x] Add regression tests for Codex and OpenCode per-chat aggregation.
+
+### Codex Token Usage Parser Hardening 2026-06-30
+
+Goal: prevent Codex response text, command output, or test fixtures that mention
+`codex.turn.token_usage.*` or `post sampling token usage` from being imported
+as real token usage unless they appear in the initial telemetry trace.
+
+Planned changes:
+
+- [x] Verify the bad 743544-token row against the archived/source log record.
+- [x] Restrict token-usage parsing to real telemetry spans or standalone
+      token-usage log events.
+- [x] Add regression tests for quoted token-usage snippets in response output.
+- [x] Remove already imported false-positive Codex usage rows from the local
+      analytics database and recheck the dashboard.
+- [x] Add support for Codex post-sampling `total_usage_tokens` estimates.
+- [x] Track the last scanned Codex source log id separately from imported turn
+      ids so skipped rows are not rescanned forever.
+- [x] Remove zero-token response events and current false positives from the
+      local analytics database, then backfill current-day Codex estimates.
+- [x] Run focused/full verification and update durable import contract memory.
+
 ### Persistent Codex Account Limit Client 2026-06-30
 
 Goal: query Codex account limits through one reusable local

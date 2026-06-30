@@ -22,6 +22,8 @@ def iter_usage_log_rows(source_path: str) -> Iterator[sqlite3.Row]:
               feedback_log_body like '%"type":"response.completed"%'
             ) or (
               feedback_log_body like '%response.completed%'
+            ) or (
+              feedback_log_body like '%post sampling token usage%'
             )
             order by id
             """

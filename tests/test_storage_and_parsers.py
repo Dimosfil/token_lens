@@ -109,15 +109,15 @@ class CodexParserUnitTests(unittest.TestCase):
 
     def test_usage_parser_accepts_current_rows_without_instrument_name(self):
         body = (
-            "session_loop{thread_id=thread-1}: "
-            "turn.id=turn-1 model=gpt-5.5 "
-            "codex.turn.reasoning_effort=medium "
+            "session_loop{thread_id=thread-1}:submission_dispatch{otel.name=\"op.dispatch.user_input\"}:"
+            "turn{otel.name=\"session_task.turn\" thread.id=thread-1 turn.id=turn-1 "
+            "model=gpt-5.5 codex.turn.reasoning_effort=medium "
             "codex.turn.token_usage.input_tokens=742224 "
             "codex.turn.token_usage.cached_input_tokens=570880 "
             "codex.turn.token_usage.non_cached_input_tokens=171344 "
             "codex.turn.token_usage.output_tokens=1320 "
             "codex.turn.token_usage.reasoning_output_tokens=512 "
-            "codex.turn.token_usage.total_tokens=743544"
+            "codex.turn.token_usage.total_tokens=743544}:session_task.run"
         )
 
         row = parse_usage_row(1, 1_700_000_000, "thread-1", body, {}, {})
@@ -128,6 +128,74 @@ class CodexParserUnitTests(unittest.TestCase):
         self.assertEqual(row["cached_input_tokens"], 570880)
         self.assertEqual(row["non_cached_input_tokens"], 171344)
         self.assertEqual(row["response_id"], "codex-usage:thread-1:turn-1:gpt-5.5")
+
+    def test_usage_parser_accepts_post_sampling_usage_estimate(self):
+        body = (
+            "session_loop{thread_id=thread-1}:submission_dispatch{otel.name=\"op.dispatch.user_input\" "
+            "submission.id=\"sub-1\"}:turn{otel.name=\"session_task.turn\" thread.id=thread-1 "
+            "turn.id=turn-1 model=gpt-5.5 codex.turn.reasoning_effort=high}:"
+            "session_task.run:run_turn: post sampling token usage turn_id=turn-1 "
+            "total_usage_tokens=45007 auto_compact_scope_tokens=45007 "
+            "estimated_token_count=Some(50203) auto_compact_scope_limit=244800 "
+            "full_context_window_limit_reached=false token_limit_reached=false"
+        )
+
+        row = parse_usage_row(1, 1_700_000_000, "thread-1", body, {"thread-1": "Thread"}, {})
+
+        self.assertIsNotNone(row)
+        self.assertEqual(row["status"], "estimated")
+        self.assertEqual(row["thread_name"], "Thread")
+        self.assertEqual(row["input_tokens"], 45007)
+        self.assertEqual(row["output_tokens"], 0)
+        self.assertEqual(row["total_tokens"], 45007)
+        self.assertEqual(row["response_id"], "codex-estimate:thread-1:turn-1:gpt-5.5")
+        self.assertIn('"estimated_token_count":50203', row["event_json"])
+
+    def test_usage_parser_rejects_token_usage_text_inside_response_output(self):
+        body = (
+            "session_loop{thread_id=thread-real}:submission_dispatch{otel.name=\"op.dispatch.user_input\"}:"
+            "turn{otel.name=\"session_task.turn\" thread.id=thread-real turn.id=turn-real "
+            "model=gpt-5.5 codex.turn.reasoning_effort=high}:session_task.run:"
+            "run_sampling_request{turn_id=turn-real model=gpt-5.5}:"
+            "response.completed output=\"tests\\\\test_storage_and_parsers.py:115: "
+            "\\\"codex.turn.token_usage.input_tokens=742224 \\\"\\n"
+            "tests\\\\test_storage_and_parsers.py:120: "
+            "\\\"codex.turn.token_usage.total_tokens=743544\\\"\""
+        )
+
+        row = parse_usage_row(1, 1_700_000_000, "thread-real", body, {}, {})
+
+        self.assertIsNone(row)
+
+    def test_usage_parser_rejects_quoted_trace_usage_inside_response_output(self):
+        body = (
+            "session_loop{thread_id=thread-real}:submission_dispatch{otel.name=\"op.dispatch.user_input\"}:"
+            "turn{otel.name=\"session_task.turn\" thread.id=thread-real turn.id=turn-real "
+            "model=gpt-5.5 codex.turn.reasoning_effort=high}:session_task.run:"
+            "response.output=\"session_loop{thread_id=old-thread}:submission_dispatch{otel.name=\\\"op.dispatch.user_input\\\"}:"
+            "turn{otel.name=\\\"session_task.turn\\\" thread.id=old-thread turn.id=old-turn "
+            "model=gpt-5.4-mini codex.turn.token_usage.input_tokens=10457 "
+            "codex.turn.token_usage.output_tokens=79 codex.turn.token_usage.total_tokens=10536}\""
+        )
+
+        row = parse_usage_row(1, 1_700_000_000, "thread-real", body, {}, {})
+
+        self.assertIsNone(row)
+
+    def test_usage_parser_rejects_post_sampling_usage_inside_response_output(self):
+        body = (
+            "session_loop{thread_id=thread-real}:submission_dispatch{otel.name=\"op.dispatch.user_input\"}:"
+            "turn{otel.name=\"session_task.turn\" thread.id=thread-real turn.id=turn-real "
+            "model=gpt-5.5 codex.turn.reasoning_effort=high}:session_task.run:"
+            "response.completed output=\"session_loop{thread_id=old-thread}:submission_dispatch{otel.name=\\\"op.dispatch.user_input\\\"}:"
+            "turn{otel.name=\\\"session_task.turn\\\" thread.id=old-thread turn.id=old-turn "
+            "model=gpt-5.5}:session_task.run:run_turn: post sampling token usage "
+            "total_usage_tokens=45007 auto_compact_scope_tokens=45007\""
+        )
+
+        row = parse_usage_row(1, 1_700_000_000, "thread-real", body, {}, {})
+
+        self.assertIsNone(row)
 
     def test_synthetic_usage_response_id_deduplicates_reimported_rows(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -172,6 +240,17 @@ class CodexParserUnitTests(unittest.TestCase):
         self.assertEqual(row["total_tokens"], 5)
         self.assertIsNone(parse_response_event(3, 1_700_000_000, None, invalid_json, {}, {}))
         self.assertIsNone(parse_response_event(4, 1_700_000_000, None, missing_model, {}, {}))
+
+    def test_response_event_parser_rejects_completed_without_usage(self):
+        body = (
+            'thread.id=thread-1 turn.id=turn-1 '
+            '{"type":"response.completed","response":{"id":"resp-1",'
+            '"status":"completed","model":"gpt-5"}}'
+        )
+
+        row = parse_response_event(2, 1_700_000_000, None, body, {}, {})
+
+        self.assertIsNone(row)
 
 
 class OpenCodeParserUnitTests(unittest.TestCase):

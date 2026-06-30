@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 import sqlite3
 import time
 
+from app.sources.codex.parser import parse_response_create_request
 from app.storage.payloads import compact_event_payload, decode_json
 from app.storage.query_params import (
     BUCKETS,
@@ -101,15 +102,49 @@ def _shift_month(dt: datetime, months: int) -> datetime:
     return dt.replace(year=year, month=month)
 
 
-def _expected_periods(range_key: str, bucket: str, time_mode: str = TIME_MODE_LOCAL) -> list[str]:
+def _expected_periods(
+    range_key: str,
+    bucket: str,
+    time_mode: str = TIME_MODE_LOCAL,
+    start_ts: int | None = None,
+    end_ts: int | None = None,
+) -> list[str]:
+    tz = timezone.utc if normalize_time_mode(time_mode) == "utc" else None
     if normalize_range(range_key) == CUSTOM_RANGE:
+        if start_ts is None or end_ts is None:
+            return []
+        lower, upper = sorted((int(start_ts), int(end_ts)))
+        start = datetime.fromtimestamp(lower, tz)
+        end = datetime.fromtimestamp(upper, tz)
+        periods = []
+        if bucket == "hour":
+            cursor = start.replace(minute=0, second=0, microsecond=0)
+            last = end.replace(minute=0, second=0, microsecond=0)
+            while cursor <= last:
+                periods.append(cursor.strftime("%Y-%m-%d %H:00"))
+                cursor += timedelta(hours=1)
+            return periods
+        if bucket == "day":
+            cursor = start.replace(hour=0, minute=0, second=0, microsecond=0)
+            last = end.replace(hour=0, minute=0, second=0, microsecond=0)
+            while cursor <= last:
+                periods.append(cursor.date().isoformat())
+                cursor += timedelta(days=1)
+            return periods
+        if bucket == "month":
+            cursor = start.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            last = end.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            while cursor <= last:
+                periods.append(cursor.strftime("%Y-%m"))
+                cursor = _shift_month(cursor, 1)
+            return periods
         return []
+
     count = MAX_BUCKETS.get((normalize_range(range_key), bucket))
     if not count:
         return []
 
     now = time.time()
-    tz = timezone.utc if normalize_time_mode(time_mode) == "utc" else None
     if bucket == "hour":
         end = datetime.fromtimestamp(now, tz).replace(minute=0, second=0, microsecond=0)
         return [
@@ -147,8 +182,15 @@ def _empty_bucket_row(period: str, bucket: str) -> dict:
     }
 
 
-def _fill_bucket_rows(rows: list[dict], range_key: str, bucket: str, time_mode: str = TIME_MODE_LOCAL) -> list[dict]:
-    periods = _expected_periods(range_key, bucket, time_mode)
+def _fill_bucket_rows(
+    rows: list[dict],
+    range_key: str,
+    bucket: str,
+    time_mode: str = TIME_MODE_LOCAL,
+    start_ts: int | None = None,
+    end_ts: int | None = None,
+) -> list[dict]:
+    periods = _expected_periods(range_key, bucket, time_mode, start_ts, end_ts)
     if not periods:
         return _trim_bucket_rows(rows, range_key, bucket)
 
@@ -159,6 +201,8 @@ def _fill_bucket_rows(rows: list[dict], range_key: str, bucket: str, time_mode: 
 def summary(con: sqlite3.Connection, range_key: str = "", start_ts: int | None = None, end_ts: int | None = None, source: str = ""):
     if source == "opencode":
         return opencode_summary(con, range_key, start_ts, end_ts)
+    if source == "codex":
+        return codex_summary(con, range_key, start_ts, end_ts)
 
     where, params = _range_clause(range_key, start_ts, end_ts)
     where, params = _source_clause(where, params, source)
@@ -186,6 +230,88 @@ def summary(con: sqlite3.Connection, range_key: str = "", start_ts: int | None =
         from turns
         {where}
         order by total_tokens desc
+        limit 10
+        """,
+        params,
+    ).fetchall()
+    return {"summary": dict(row), "top_turns": rows_to_dicts(top)}
+
+
+def codex_summary(
+    con: sqlite3.Connection,
+    range_key: str = "",
+    start_ts: int | None = None,
+    end_ts: int | None = None,
+):
+    where, params = _range_clause(range_key, start_ts, end_ts)
+    where, params = _source_clause(where, params, "codex")
+    where = _usage_clause(where)
+    cte = f"""
+        with aggregates as (
+            select thread_id,
+                   max(thread_name) as thread_name,
+                   max(ts_iso) as latest_turn,
+                   group_concat(distinct model) as models,
+                   group_concat(distinct status) as statuses,
+                   count(*) as model_calls,
+                   sum(input_tokens) as input_tokens,
+                   sum(cached_input_tokens) as cached_input_tokens,
+                   sum(output_tokens) as output_tokens,
+                   sum(reasoning_output_tokens) as reasoning_output_tokens,
+                   sum(total_tokens) as log_total_tokens,
+                   sum(estimated_cost) as estimated_cost
+            from turns
+            {where}
+            group by thread_id
+        ),
+        adjusted as (
+            select aggregates.*,
+                   coalesce(nullif(codex_threads.thread_name, ''), aggregates.thread_name) as display_thread_name,
+                   case
+                     when coalesce(codex_threads.tokens_used, 0) > coalesce(aggregates.log_total_tokens, 0)
+                       then codex_threads.tokens_used
+                     else aggregates.log_total_tokens
+                   end as adjusted_total_tokens,
+                   codex_threads.tokens_used as state_tokens_used
+            from aggregates
+            left join codex_threads on codex_threads.thread_id = aggregates.thread_id
+        )
+    """
+    row = con.execute(
+        cte
+        + """
+        select coalesce(sum(model_calls), 0) as turns,
+               count(*) as threads,
+               coalesce(sum(input_tokens), 0) as input_tokens,
+               coalesce(sum(output_tokens), 0) as output_tokens,
+               coalesce(sum(cached_input_tokens), 0) as cached_input_tokens,
+               coalesce(sum(reasoning_output_tokens), 0) as reasoning_output_tokens,
+               coalesce(sum(adjusted_total_tokens), 0) as total_tokens,
+               coalesce(sum(estimated_cost), 0) as estimated_cost,
+               max(latest_turn) as latest_turn
+        from adjusted
+        """,
+        params,
+    ).fetchone()
+    top = con.execute(
+        cte
+        + """
+        select 'codex' as source,
+               latest_turn as ts_iso,
+               thread_id,
+               display_thread_name as thread_name,
+               'chat:' || thread_id as turn_id,
+               null as response_id,
+               statuses as status,
+               models as model,
+               adjusted_total_tokens as total_tokens,
+               input_tokens,
+               output_tokens,
+               reasoning_output_tokens,
+               state_tokens_used,
+               log_total_tokens
+        from adjusted
+        order by adjusted_total_tokens desc
         limit 10
         """,
         params,
@@ -265,7 +391,7 @@ def daily(
         """,
         params,
     ).fetchall())
-    return _fill_bucket_rows(rows, range_key, normalized_bucket, time_mode)
+    return _fill_bucket_rows(rows, range_key, normalized_bucket, time_mode, start_ts, end_ts)
 
 
 def turns(con: sqlite3.Connection, limit: int, model: str = "", range_key: str = "", start_ts: int | None = None, end_ts: int | None = None, source: str = ""):
@@ -296,55 +422,110 @@ def turns(con: sqlite3.Connection, limit: int, model: str = "", range_key: str =
 def tasks(con: sqlite3.Connection, limit: int | None, range_key: str = "", start_ts: int | None = None, end_ts: int | None = None, source: str = ""):
     if source == "opencode":
         return opencode_tasks(con, limit, range_key, start_ts, end_ts)
+    return codex_tasks(con, limit, range_key, start_ts, end_ts)
 
+
+def codex_tasks(
+    con: sqlite3.Connection,
+    limit: int | None,
+    range_key: str = "",
+    start_ts: int | None = None,
+    end_ts: int | None = None,
+):
     where, params = _range_clause(range_key, start_ts, end_ts)
-    where, params = _source_clause(where, params, source)
+    where, params = _source_clause(where, params, "codex")
     where = _usage_clause(where)
     limit_clause = ""
     usage_params = list(params)
     if limit is not None:
         limit_clause = "limit ?"
-        usage_params.append(limit if source not in {"", "codex"} else max(limit * TASK_USAGE_SCAN_MULTIPLIER, limit + 20))
+        usage_params.append(max(limit * TASK_USAGE_SCAN_MULTIPLIER, limit + 20))
+
     usage_rows = rows_to_dicts(con.execute(
         f"""
-        select min(ts_iso) as started_at,
-               max(ts_iso) as finished_at,
-               max(ts) - min(ts) as elapsed_seconds,
-               max(source) as source,
-               min(source_log_id) as first_source_log_id,
-               max(source_log_id) as last_source_log_id,
-               thread_id,
-               max(thread_name) as thread_name,
-               turn_id,
-               group_concat(distinct submission_id) as submission_ids,
-               group_concat(distinct response_id) as response_ids,
-               group_concat(distinct model) as models,
-               group_concat(distinct status) as statuses,
+        with aggregates as (
+            select min(ts_iso) as started_at,
+                   max(ts_iso) as finished_at,
+                   max(ts) - min(ts) as elapsed_seconds,
+                   min(source_log_id) as first_source_log_id,
+                   max(source_log_id) as last_source_log_id,
+                   thread_id,
+                   max(thread_name) as thread_name,
+                   group_concat(distinct turn_id) as turn_ids,
+                   group_concat(distinct submission_id) as submission_ids,
+                   group_concat(distinct response_id) as response_ids,
+                   group_concat(distinct model) as models,
+                   group_concat(distinct status) as statuses,
+                   group_concat(distinct reasoning_effort) as efforts,
+                   count(*) as model_calls,
+                   sum(input_tokens) as input_tokens,
+                   sum(cached_input_tokens) as cached_input_tokens,
+                   sum(non_cached_input_tokens) as non_cached_input_tokens,
+                   sum(output_tokens) as output_tokens,
+                   sum(reasoning_output_tokens) as reasoning_output_tokens,
+                   sum(total_tokens) as log_total_tokens,
+                   sum(estimated_cost) as estimated_cost,
+                   max(ts) as latest_ts
+            from turns
+            {where}
+            group by thread_id
+            order by max(ts) desc
+            {limit_clause}
+        )
+        select aggregates.started_at,
+               aggregates.finished_at,
+               aggregates.elapsed_seconds,
+               'codex' as source,
+               aggregates.first_source_log_id,
+               aggregates.last_source_log_id,
+               aggregates.thread_id,
+               coalesce(nullif(codex_threads.thread_name, ''), aggregates.thread_name) as thread_name,
+               'chat:' || aggregates.thread_id as turn_id,
+               aggregates.turn_ids,
+               aggregates.submission_ids,
+               aggregates.response_ids,
+               coalesce(nullif(aggregates.models, ''), codex_threads.model) as models,
+               case
+                 when coalesce(codex_threads.tokens_used, 0) > coalesce(aggregates.log_total_tokens, 0)
+                   then trim(coalesce(aggregates.statuses || ',', '') || 'codex-state')
+                 else aggregates.statuses
+               end as statuses,
+               coalesce(nullif(aggregates.efforts, ''), codex_threads.reasoning_effort) as efforts,
                1 as has_usage,
-               count(*) as model_calls,
+               aggregates.model_calls,
                0 as raw_event_calls,
-               sum(input_tokens) as input_tokens,
-               sum(cached_input_tokens) as cached_input_tokens,
-               sum(non_cached_input_tokens) as non_cached_input_tokens,
-               sum(output_tokens) as output_tokens,
-               sum(reasoning_output_tokens) as reasoning_output_tokens,
-               sum(total_tokens) as total_tokens,
-               cast(round(sum(total_tokens) * 1.0 / count(*), 0) as integer) as total_tokens_per_call,
-               sum(estimated_cost) as estimated_cost
-        from turns
-        {where}
-        group by thread_id, turn_id
-        order by max(ts) desc
-        {limit_clause}
+               aggregates.input_tokens,
+               aggregates.cached_input_tokens,
+               aggregates.non_cached_input_tokens,
+               aggregates.output_tokens,
+               aggregates.reasoning_output_tokens,
+               case
+                 when coalesce(codex_threads.tokens_used, 0) > coalesce(aggregates.log_total_tokens, 0)
+                   then codex_threads.tokens_used
+                 else aggregates.log_total_tokens
+               end as total_tokens,
+               cast(round(
+                 (case
+                   when coalesce(codex_threads.tokens_used, 0) > coalesce(aggregates.log_total_tokens, 0)
+                     then codex_threads.tokens_used
+                   else aggregates.log_total_tokens
+                 end) * 1.0 / aggregates.model_calls,
+                 0
+               ) as integer) as total_tokens_per_call,
+               aggregates.estimated_cost,
+               codex_threads.tokens_used as state_tokens_used,
+               aggregates.log_total_tokens
+        from aggregates
+        left join codex_threads on codex_threads.thread_id = aggregates.thread_id
+        order by aggregates.latest_ts desc
         """,
         usage_params,
     ).fetchall())
-    if source not in {"", "codex"}:
-        return usage_rows
 
     rows = usage_rows + raw_only_tasks(con, range_key, start_ts, end_ts)
     rows.sort(key=lambda row: (row.get("finished_at") or "", row.get("last_source_log_id") or 0), reverse=True)
     return rows[:limit] if limit is not None else rows
+
 
 
 def raw_only_tasks(
@@ -447,6 +628,7 @@ def opencode_tasks(
                    min(source_log_id) as first_source_log_id,
                    max(source_log_id) as last_source_log_id,
                    thread_id,
+                   group_concat(distinct turn_id) as turn_ids,
                    group_concat(distinct submission_id) as submission_ids,
                    group_concat(distinct response_id) as response_ids,
                    group_concat(distinct model) as models,
@@ -471,7 +653,8 @@ def opencode_tasks(
                aggregates.last_source_log_id,
                aggregates.thread_id,
                ranked.thread_name,
-               ranked.turn_id,
+               'chat:' || aggregates.thread_id as turn_id,
+               aggregates.turn_ids,
                aggregates.submission_ids,
                aggregates.response_ids,
                aggregates.models,
@@ -506,12 +689,115 @@ def task_buckets(
     source: str = "",
     time_mode: str = TIME_MODE_LOCAL,
 ):
+    if source == "opencode":
+        return opencode_task_buckets(con, range_key, bucket, start_ts, end_ts, time_mode)
+    return codex_task_buckets(con, range_key, bucket, start_ts, end_ts, time_mode)
+
+
+def codex_task_buckets(
+    con: sqlite3.Connection,
+    range_key: str = "",
+    bucket: str = "day",
+    start_ts: int | None = None,
+    end_ts: int | None = None,
+    time_mode: str = TIME_MODE_LOCAL,
+):
     normalized_bucket = normalize_bucket(bucket, range_key)
     period_expr = _bucket_expr(normalized_bucket, time_mode)
     where, params = _range_clause(range_key, start_ts, end_ts)
-    where, params = _source_clause(where, params, source)
+    where, params = _source_clause(where, params, "codex")
     where = _usage_clause(where)
-    rows = rows_to_dicts(con.execute(
+    return rows_to_dicts(con.execute(
+        f"""
+        with scoped as (
+            select {period_expr} as period, *
+            from turns
+            {where}
+        ),
+        thread_totals as (
+            select thread_id,
+                   sum(total_tokens) as log_total_tokens,
+                   max(ts) as thread_latest_ts
+            from scoped
+            group by thread_id
+        ),
+        thread_periods as (
+            select period,
+                   min(ts_iso) as started_at,
+                   max(ts_iso) as finished_at,
+                   max(ts) - min(ts) as elapsed_seconds,
+                   min(ts) as bucket_start_ts,
+                   max(ts) as bucket_end_ts,
+                   thread_id,
+                   count(*) as model_calls,
+                   group_concat(distinct model) as models,
+                   group_concat(distinct status) as statuses,
+                   group_concat(distinct reasoning_effort) as efforts,
+                   sum(input_tokens) as input_tokens,
+                   sum(cached_input_tokens) as cached_input_tokens,
+                   sum(non_cached_input_tokens) as non_cached_input_tokens,
+                   sum(output_tokens) as output_tokens,
+                   sum(reasoning_output_tokens) as reasoning_output_tokens,
+                   sum(total_tokens) as period_log_total_tokens,
+                   sum(estimated_cost) as estimated_cost
+            from scoped
+            group by period, thread_id
+        ),
+        adjusted as (
+            select thread_periods.*,
+                   case
+                     when thread_periods.bucket_end_ts = thread_totals.thread_latest_ts
+                          and coalesce(codex_threads.tokens_used, 0) > coalesce(thread_totals.log_total_tokens, 0)
+                       then thread_periods.period_log_total_tokens
+                            + codex_threads.tokens_used
+                            - thread_totals.log_total_tokens
+                     else thread_periods.period_log_total_tokens
+                   end as adjusted_total_tokens,
+                   codex_threads.tokens_used as state_tokens_used
+            from thread_periods
+            join thread_totals on thread_totals.thread_id = thread_periods.thread_id
+            left join codex_threads on codex_threads.thread_id = thread_periods.thread_id
+        )
+        select period,
+               min(started_at) as started_at,
+               max(finished_at) as finished_at,
+               max(bucket_end_ts) - min(bucket_start_ts) as elapsed_seconds,
+               min(bucket_start_ts) as bucket_start_ts,
+               max(bucket_end_ts) as bucket_end_ts,
+               count(distinct thread_id) as tasks,
+               sum(model_calls) as model_calls,
+               group_concat(distinct models) as models,
+               group_concat(distinct statuses) as statuses,
+               group_concat(distinct efforts) as efforts,
+               sum(input_tokens) as input_tokens,
+               sum(cached_input_tokens) as cached_input_tokens,
+               sum(non_cached_input_tokens) as non_cached_input_tokens,
+               sum(output_tokens) as output_tokens,
+               sum(reasoning_output_tokens) as reasoning_output_tokens,
+               sum(adjusted_total_tokens) as total_tokens,
+               cast(round(sum(adjusted_total_tokens) * 1.0 / sum(model_calls), 0) as integer) as total_tokens_per_call,
+               sum(estimated_cost) as estimated_cost
+        from adjusted
+        group by period
+        order by period desc
+        """,
+        params,
+    ).fetchall())
+
+
+def opencode_task_buckets(
+    con: sqlite3.Connection,
+    range_key: str = "",
+    bucket: str = "day",
+    start_ts: int | None = None,
+    end_ts: int | None = None,
+    time_mode: str = TIME_MODE_LOCAL,
+):
+    normalized_bucket = normalize_bucket(bucket, range_key)
+    period_expr = _bucket_expr(normalized_bucket, time_mode)
+    where, params = _range_clause(range_key, start_ts, end_ts)
+    where, params = _source_clause(where, params, "opencode")
+    return rows_to_dicts(con.execute(
         f"""
         select {period_expr} as period,
                min(ts_iso) as started_at,
@@ -519,7 +805,7 @@ def task_buckets(
                max(ts) - min(ts) as elapsed_seconds,
                min(ts) as bucket_start_ts,
                max(ts) as bucket_end_ts,
-               count(distinct thread_id || ':' || turn_id) as tasks,
+               count(distinct thread_id) as tasks,
                count(*) as model_calls,
                group_concat(distinct model) as models,
                group_concat(distinct status) as statuses,
@@ -539,7 +825,6 @@ def task_buckets(
         """,
         params,
     ).fetchall())
-    return rows
 
 
 def bucket_tasks(
@@ -552,60 +837,239 @@ def bucket_tasks(
     source: str = "",
     time_mode: str = TIME_MODE_LOCAL,
 ):
+    if source == "opencode":
+        return opencode_bucket_tasks(con, period, bucket, range_key, start_ts, end_ts, time_mode)
+    return codex_bucket_tasks(con, period, bucket, range_key, start_ts, end_ts, time_mode)
+
+
+def codex_bucket_tasks(
+    con: sqlite3.Connection,
+    period: str,
+    bucket: str = "day",
+    range_key: str = "",
+    start_ts: int | None = None,
+    end_ts: int | None = None,
+    time_mode: str = TIME_MODE_LOCAL,
+):
     normalized_bucket = normalize_bucket(bucket, range_key)
     period_expr = _bucket_expr(normalized_bucket, time_mode)
     where, params = _range_clause(range_key, start_ts, end_ts)
-    where, params = _source_clause(where, params, source)
+    where, params = _source_clause(where, params, "codex")
     where = _usage_clause(where)
+    query_params = list(params)
+    query_params.append(period)
+    return rows_to_dicts(con.execute(
+        f"""
+        with scoped as (
+            select {period_expr} as period, *
+            from turns
+            {where}
+        ),
+        thread_totals as (
+            select thread_id,
+                   sum(total_tokens) as log_total_tokens,
+                   max(ts) as thread_latest_ts
+            from scoped
+            group by thread_id
+        ),
+        aggregates as (
+            select min(ts_iso) as started_at,
+                   max(ts_iso) as finished_at,
+                   max(ts) - min(ts) as elapsed_seconds,
+                   min(source_log_id) as first_source_log_id,
+                   max(source_log_id) as last_source_log_id,
+                   thread_id,
+                   max(thread_name) as thread_name,
+                   group_concat(distinct turn_id) as turn_ids,
+                   group_concat(distinct submission_id) as submission_ids,
+                   group_concat(distinct response_id) as response_ids,
+                   group_concat(distinct model) as models,
+                   group_concat(distinct status) as statuses,
+                   group_concat(distinct reasoning_effort) as efforts,
+                   count(*) as model_calls,
+                   sum(input_tokens) as input_tokens,
+                   sum(cached_input_tokens) as cached_input_tokens,
+                   sum(non_cached_input_tokens) as non_cached_input_tokens,
+                   sum(output_tokens) as output_tokens,
+                   sum(reasoning_output_tokens) as reasoning_output_tokens,
+                   sum(total_tokens) as period_log_total_tokens,
+                   sum(estimated_cost) as estimated_cost,
+                   max(ts) as latest_ts,
+                   period
+            from scoped
+            group by period, thread_id
+        ),
+        adjusted as (
+            select aggregates.*,
+                   case
+                     when aggregates.latest_ts = thread_totals.thread_latest_ts
+                          and coalesce(codex_threads.tokens_used, 0) > coalesce(thread_totals.log_total_tokens, 0)
+                       then aggregates.period_log_total_tokens
+                            + codex_threads.tokens_used
+                            - thread_totals.log_total_tokens
+                     else aggregates.period_log_total_tokens
+                   end as adjusted_total_tokens,
+                   codex_threads.tokens_used as state_tokens_used,
+                   thread_totals.log_total_tokens as thread_log_total_tokens
+            from aggregates
+            join thread_totals on thread_totals.thread_id = aggregates.thread_id
+            left join codex_threads on codex_threads.thread_id = aggregates.thread_id
+        )
+        select adjusted.started_at,
+               adjusted.finished_at,
+               adjusted.elapsed_seconds,
+               adjusted.first_source_log_id,
+               adjusted.last_source_log_id,
+               adjusted.thread_id,
+               coalesce(nullif(codex_threads.thread_name, ''), adjusted.thread_name) as thread_name,
+               'chat:' || adjusted.thread_id as turn_id,
+               adjusted.turn_ids,
+               adjusted.submission_ids,
+               adjusted.response_ids,
+               coalesce(nullif(adjusted.models, ''), codex_threads.model) as models,
+               case
+                 when adjusted.adjusted_total_tokens > adjusted.period_log_total_tokens
+                   then trim(coalesce(adjusted.statuses || ',', '') || 'codex-state')
+                 else adjusted.statuses
+               end as statuses,
+               coalesce(nullif(adjusted.efforts, ''), codex_threads.reasoning_effort) as efforts,
+               adjusted.model_calls,
+               adjusted.input_tokens,
+               adjusted.cached_input_tokens,
+               adjusted.non_cached_input_tokens,
+               adjusted.output_tokens,
+               adjusted.reasoning_output_tokens,
+               adjusted.adjusted_total_tokens as total_tokens,
+               cast(round(adjusted.adjusted_total_tokens * 1.0 / adjusted.model_calls, 0) as integer) as total_tokens_per_call,
+               adjusted.estimated_cost,
+               adjusted.state_tokens_used,
+               adjusted.period_log_total_tokens as log_total_tokens
+        from adjusted
+        left join codex_threads on codex_threads.thread_id = adjusted.thread_id
+        where adjusted.period = ?
+        order by adjusted.latest_ts desc
+        """,
+        query_params,
+    ).fetchall())
+
+
+def opencode_bucket_tasks(
+    con: sqlite3.Connection,
+    period: str,
+    bucket: str = "day",
+    range_key: str = "",
+    start_ts: int | None = None,
+    end_ts: int | None = None,
+    time_mode: str = TIME_MODE_LOCAL,
+):
+    normalized_bucket = normalize_bucket(bucket, range_key)
+    period_expr = _bucket_expr(normalized_bucket, time_mode)
+    where, params = _range_clause(range_key, start_ts, end_ts)
+    where, params = _source_clause(where, params, "opencode")
     where = _and_clause(where, f"{period_expr} = ?")
     params.append(period)
     return rows_to_dicts(con.execute(
         f"""
-        select min(ts_iso) as started_at,
-               max(ts_iso) as finished_at,
-               max(ts) - min(ts) as elapsed_seconds,
-               min(source_log_id) as first_source_log_id,
-               max(source_log_id) as last_source_log_id,
-               thread_id,
-               max(thread_name) as thread_name,
-               turn_id,
-               group_concat(distinct submission_id) as submission_ids,
-               group_concat(distinct response_id) as response_ids,
-               group_concat(distinct model) as models,
-               group_concat(distinct status) as statuses,
-               group_concat(distinct reasoning_effort) as efforts,
-               count(*) as model_calls,
-               sum(input_tokens) as input_tokens,
-               sum(cached_input_tokens) as cached_input_tokens,
-               sum(non_cached_input_tokens) as non_cached_input_tokens,
-               sum(output_tokens) as output_tokens,
-               sum(reasoning_output_tokens) as reasoning_output_tokens,
-               sum(total_tokens) as total_tokens,
-               cast(round(sum(total_tokens) * 1.0 / count(*), 0) as integer) as total_tokens_per_call,
-               sum(estimated_cost) as estimated_cost
-        from turns
-        {where}
-        group by thread_id, turn_id
-        order by max(ts) desc
+        with scoped as (
+            select *
+            from turns
+            {where}
+        ),
+        ranked as (
+            select scoped.*,
+                   row_number() over (
+                       partition by thread_id
+                       order by ts desc, source_log_id desc
+                   ) as row_rank
+            from scoped
+        ),
+        aggregates as (
+            select min(ts_iso) as started_at,
+                   max(ts_iso) as finished_at,
+                   max(ts) - min(ts) as elapsed_seconds,
+                   min(source_log_id) as first_source_log_id,
+                   max(source_log_id) as last_source_log_id,
+                   thread_id,
+                   group_concat(distinct turn_id) as turn_ids,
+                   group_concat(distinct submission_id) as submission_ids,
+                   group_concat(distinct response_id) as response_ids,
+                   group_concat(distinct model) as models,
+                   group_concat(distinct status) as statuses,
+                   group_concat(distinct reasoning_effort) as efforts,
+                   count(*) as model_calls,
+                   sum(input_tokens) as input_tokens,
+                   sum(cached_input_tokens) as cached_input_tokens,
+                   sum(non_cached_input_tokens) as non_cached_input_tokens,
+                   sum(output_tokens) as output_tokens,
+                   sum(reasoning_output_tokens) as reasoning_output_tokens,
+                   sum(total_tokens) as total_tokens,
+                   sum(estimated_cost) as estimated_cost
+            from scoped
+            group by thread_id
+        )
+        select aggregates.started_at,
+               aggregates.finished_at,
+               aggregates.elapsed_seconds,
+               'opencode' as source,
+               aggregates.first_source_log_id,
+               aggregates.last_source_log_id,
+               aggregates.thread_id,
+               ranked.thread_name,
+               'chat:' || aggregates.thread_id as turn_id,
+               aggregates.turn_ids,
+               aggregates.submission_ids,
+               aggregates.response_ids,
+               aggregates.models,
+               aggregates.statuses,
+               aggregates.efforts,
+               1 as has_usage,
+               aggregates.model_calls,
+               0 as raw_event_calls,
+               aggregates.input_tokens,
+               aggregates.cached_input_tokens,
+               aggregates.non_cached_input_tokens,
+               aggregates.output_tokens,
+               aggregates.reasoning_output_tokens,
+               aggregates.total_tokens,
+               cast(round(aggregates.total_tokens * 1.0 / aggregates.model_calls, 0) as integer) as total_tokens_per_call,
+               aggregates.estimated_cost
+        from aggregates
+        join ranked on ranked.thread_id = aggregates.thread_id and ranked.row_rank = 1
+        order by ranked.ts desc
         """,
         params,
     ).fetchall())
 
 
 def task_detail(con: sqlite3.Connection, thread_id: str, turn_id: str):
-    rows = rows_to_dicts(con.execute(
-        """
-        select source_log_id, ts, ts_iso, day, thread_id, thread_name, turn_id, response_id,
-               submission_id, status, model, reasoning_effort, input_tokens,
-               cached_input_tokens, non_cached_input_tokens, output_tokens,
-               reasoning_output_tokens, total_tokens, estimated_cost,
-               request_json, response_json, event_json
-        from turns
-        where thread_id = ? and turn_id = ?
-        order by ts, source_log_id
-        """,
-        [thread_id, turn_id],
-    ).fetchall())
+    if str(turn_id or "").startswith("chat:"):
+        rows = rows_to_dicts(con.execute(
+            """
+            select source, source_log_id, ts, ts_iso, day, thread_id, thread_name, turn_id, response_id,
+                   submission_id, status, model, reasoning_effort, input_tokens,
+                   cached_input_tokens, non_cached_input_tokens, output_tokens,
+                   reasoning_output_tokens, total_tokens, estimated_cost,
+                   request_json, response_json, event_json
+            from turns
+            where thread_id = ?
+            order by ts, source_log_id
+            """,
+            [thread_id],
+        ).fetchall())
+    else:
+        rows = rows_to_dicts(con.execute(
+            """
+            select source, source_log_id, ts, ts_iso, day, thread_id, thread_name, turn_id, response_id,
+                   submission_id, status, model, reasoning_effort, input_tokens,
+                   cached_input_tokens, non_cached_input_tokens, output_tokens,
+                   reasoning_output_tokens, total_tokens, estimated_cost,
+                   request_json, response_json, event_json
+            from turns
+            where thread_id = ? and turn_id = ?
+            order by ts, source_log_id
+            """,
+            [thread_id, turn_id],
+        ).fetchall())
     if not rows:
         return {"task": None, "calls": []}
 
@@ -613,6 +1077,8 @@ def task_detail(con: sqlite3.Connection, thread_id: str, turn_id: str):
         row["request"] = decode_json(row.pop("request_json"))
         row["response"] = decode_json(row.pop("response_json"))
         row["event"] = compact_event_payload(decode_json(row.pop("event_json")))
+        if row["request"] is None and row.get("source") == "codex":
+            row["request"] = _request_payload_from_raw_logs(con, row)
         row["raw_event_captured"] = row["event"] is not None
 
     task = {
@@ -636,9 +1102,62 @@ def task_detail(con: sqlite3.Connection, thread_id: str, turn_id: str):
         "total_tokens": sum(row["total_tokens"] for row in rows),
         "estimated_cost": sum(row["estimated_cost"] for row in rows),
     }
+    state_row = con.execute(
+        """
+        select thread_name, tokens_used, model, reasoning_effort
+        from codex_threads
+        where thread_id = ?
+        """,
+        [thread_id],
+    ).fetchone()
+    if state_row:
+        if state_row["thread_name"]:
+            task["thread_name"] = state_row["thread_name"]
+        state_tokens = int(state_row["tokens_used"] or 0)
+        if state_tokens > task["total_tokens"]:
+            task["log_total_tokens"] = task["total_tokens"]
+            task["state_tokens_used"] = state_tokens
+            task["total_tokens"] = state_tokens
+            if "codex-state" not in task["statuses"]:
+                task["statuses"].append("codex-state")
+        if state_row["model"]:
+            task["models"] = sorted(set(task["models"]) | {state_row["model"]})
+        if state_row["reasoning_effort"]:
+            task["efforts"] = sorted(
+                set(row["reasoning_effort"] for row in rows if row["reasoning_effort"])
+                | {state_row["reasoning_effort"]}
+            )
     task["raw_event_captured"] = task["raw_event_calls"] == task["model_calls"]
     task["total_tokens_per_call"] = round(task["total_tokens"] / task["model_calls"]) if task["model_calls"] else 0
     return {"task": task, "calls": rows}
+
+
+def _request_payload_from_raw_logs(con: sqlite3.Connection, row: dict):
+    candidates = con.execute(
+        """
+        select source_log_id, ts, feedback_log_body
+        from raw_logs
+        where thread_id = ?
+          and feedback_log_body like ?
+          and (
+            feedback_log_body like '%websocket request: {"type":"response.create"%'
+            or feedback_log_body like '%websocket request: {"type": "response.create"%'
+          )
+        order by source_log_id desc
+        limit 10
+        """,
+        [row["thread_id"], f"%turn.id={row['turn_id']}%"],
+    ).fetchall()
+    for candidate in candidates:
+        payload = parse_response_create_request(
+            candidate["source_log_id"],
+            candidate["ts"],
+            row["thread_id"],
+            candidate["feedback_log_body"] or "",
+        )
+        if payload and payload.get("model") == row.get("model"):
+            return decode_json(payload.get("request_json"))
+    return None
 
 
 def models(con: sqlite3.Connection, range_key: str = "", start_ts: int | None = None, end_ts: int | None = None, source: str = ""):

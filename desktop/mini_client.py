@@ -66,9 +66,9 @@ LOGGER = logging.getLogger("token_lens.mini")
 TABLE_COLUMNS = (
     {"id": "date", "label": "Date", "width": 90, "minwidth": 82, "anchor": tk.W, "stretch": False},
     {"id": "date_time", "label": "Date/time", "width": 130, "minwidth": 118, "anchor": tk.W, "stretch": False},
-    {"id": "task", "label": "Project / task", "width": 260, "minwidth": 170, "anchor": tk.W, "stretch": True},
+    {"id": "task", "label": "Chat / task", "width": 260, "minwidth": 170, "anchor": tk.W, "stretch": True},
     {"id": "models", "label": "Models", "width": 140, "minwidth": 100, "anchor": tk.W, "stretch": False},
-    {"id": "time", "label": "Time", "width": 80, "minwidth": 70, "anchor": tk.E, "stretch": False},
+    {"id": "time", "label": "Duration", "width": 80, "minwidth": 70, "anchor": tk.E, "stretch": False},
     {"id": "calls", "label": "Calls", "width": 70, "minwidth": 60, "anchor": tk.E, "stretch": False},
     {"id": "per_call", "label": "Total / Call", "width": 110, "minwidth": 95, "anchor": tk.E, "stretch": False},
     {"id": "total", "label": "Total", "width": 110, "minwidth": 90, "anchor": tk.E, "stretch": False},
@@ -379,10 +379,19 @@ def task_name(row: dict) -> str:
     name = str(row.get("thread_name") or "").strip()
     if name and not looks_like_id(name):
         return name
+    if is_mini_model_row(row) and row.get("thread_id"):
+        return f"Mini call {str(row.get('thread_id'))[-6:]}"
     return fallback_task_name(row)
 
 
+def is_mini_model_row(row: dict) -> bool:
+    models = str(row.get("models") or row.get("model") or "").lower()
+    return "mini" in models
+
+
 def fallback_task_name(row: dict) -> str:
+    if str(row.get("turn_id") or "").startswith("chat:") and row.get("thread_id"):
+        return f"Chat {str(row.get('thread_id'))[-6:]}"
     period = str(row.get("period") or row.get("day") or "").strip()
     if period:
         return period
@@ -422,7 +431,7 @@ def table_cell_value(column_id: str, row: dict) -> str:
     if column_id == "models":
         return row.get("models") or ""
     if column_id == "time":
-        return format_duration(row.get("elapsed_seconds"))
+        return format_duration(row.get("elapsed_seconds")) if has_usage else "-"
     if column_id == "calls":
         return format_number(row.get("model_calls")) if has_usage else "-"
     if column_id == "per_call":

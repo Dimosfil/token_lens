@@ -8,18 +8,23 @@ from app.core.config import load_config, validate_codex_source_config
 from app.core.types import ImportStats
 from app.sources.base import UsageSource
 from app.sources.codex.adapter import CodexUsageSource
-from app.sources.codex.parser import MODEL_RE, first_match, parse_response_event, parse_usage_row
+from app.sources.codex.parser import MODEL_RE, first_match, parse_response_create_request, parse_response_event, parse_usage_row
 from app.sources.opencode.parser import parse_opencode_db_message, parse_opencode_jsonl_record
 from app.sources.opencode.reader import iter_messages_after, jsonl_file_size, max_message_rowid, read_jsonl_after
 from app.storage.connection import connect
 from app.storage.repositories import (
     get_opencode_import_state,
+    get_codex_import_state,
+    backfill_turn_request_payloads,
     backfill_raw_log_display_fields,
+    backfill_turn_thread_names,
     insert_raw_log,
     latest_raw_log_id,
     latest_turn_source_log_id,
     set_latest_raw_log_id,
+    set_codex_import_state,
     set_opencode_import_state,
+    upsert_codex_threads,
     upsert_turn,
 )
 from app.storage.schema import init_db
@@ -57,20 +62,35 @@ def archive_raw_logs(source: UsageSource, target, thread_names: dict[str, str] |
 def import_usage_source(source: UsageSource, analytics_db: str, prices: dict) -> ImportStats:
     init_db(analytics_db)
     thread_names = source.load_thread_names()
+    load_thread_metadata = getattr(source, "load_thread_metadata", None)
+    thread_metadata = load_thread_metadata() if load_thread_metadata else {}
     stats = ImportStats()
 
     target = connect(analytics_db)
     try:
+        if thread_metadata:
+            upsert_codex_threads(target, thread_metadata)
         stats.archived = archive_raw_logs(source, target, thread_names)
         backfill_raw_log_display_fields(target, thread_names)
+        backfill_turn_thread_names(target, thread_names, "codex")
         iter_rows = source.iter_rows
         iter_rows_after = getattr(source, "iter_rows_after", None)
+        max_scanned_source_log_id = 0
+        request_payloads: list[dict] = []
         if iter_rows_after:
-            last_turn_id = latest_turn_source_log_id(target, "codex")
-            iter_rows = lambda: iter_rows_after(last_turn_id)
+            last_scanned_id = get_codex_import_state(target)
+            if last_scanned_id == 0:
+                last_scanned_id = latest_turn_source_log_id(target, "codex")
+            max_scanned_source_log_id = last_scanned_id
+            iter_rows = lambda: iter_rows_after(last_scanned_id)
         for item in iter_rows():
             stats.scanned += 1
+            max_scanned_source_log_id = max(max_scanned_source_log_id, int(item["id"]))
             body = item["feedback_log_body"] or ""
+            request_payload = parse_response_create_request(item["id"], item["ts"], item["thread_id"], body)
+            if request_payload:
+                request_payloads.append(request_payload)
+                continue
             parsed = parse_response_event(
                 item["id"],
                 item["ts"],
@@ -84,6 +104,10 @@ def import_usage_source(source: UsageSource, analytics_db: str, prices: dict) ->
                 continue
             upsert_turn(target, parsed)
             stats.imported += 1
+        if request_payloads:
+            backfill_turn_request_payloads(target, request_payloads)
+        if iter_rows_after and max_scanned_source_log_id:
+            set_codex_import_state(target, max_scanned_source_log_id)
         target.commit()
     finally:
         target.close()
