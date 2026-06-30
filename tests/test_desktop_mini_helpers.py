@@ -72,6 +72,11 @@ class MiniClientHelperTests(unittest.TestCase):
             mini_client.table_cell_value("date_time", {"finished_at": "2026-06-19T10:25:30+00:00"}),
             expected_time,
         )
+        raw_only = {"has_usage": 0, "model_calls": 0, "total_tokens_per_call": None, "total_tokens": None}
+        self.assertEqual(mini_client.table_cell_value("calls", raw_only), "-")
+        self.assertEqual(mini_client.table_cell_value("per_call", raw_only), "-")
+        self.assertEqual(mini_client.table_cell_value("total", raw_only), "-")
+        self.assertEqual(mini_client.table_cell_value("cost", raw_only), "-")
 
     def test_usage_limit_helpers_group_and_format_windows(self):
         snapshot = {
@@ -95,6 +100,9 @@ class MiniClientHelperTests(unittest.TestCase):
     def test_import_status_error_text_is_compact(self):
         self.assertEqual(mini_client.import_status_error_text(None), "")
         self.assertEqual(mini_client.import_status_error_text({"status": "succeeded"}), "")
+        self.assertEqual(mini_client.backend_status_text("online", "Checked 10:00"), "Backend online · Checked 10:00")
+        self.assertEqual(mini_client.backend_status_text("busy", "Importing data"), "Backend busy · Importing data")
+        self.assertEqual(mini_client.backend_status_text("offline", "Error: refused"), "Backend offline · Error: refused")
         self.assertEqual(
             mini_client.import_status_error_text({"status": "failed", "error": "codex: locked"}),
             "Import error: codex: locked",
@@ -204,7 +212,7 @@ class MiniClientHelperTests(unittest.TestCase):
         self.assertTrue(recovered)
         start.assert_called_once()
         wait.assert_called_once_with(app.api)
-        self.assertEqual(app.status_var.values[-1], "Local server restarted")
+        self.assertEqual(app.status_var.values[-1], "Backend online · Local server restarted")
 
         with (
             mock.patch.object(mini_client.time, "monotonic", return_value=105.0),

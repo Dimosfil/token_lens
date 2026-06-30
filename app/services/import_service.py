@@ -8,14 +8,16 @@ from app.core.config import load_config, validate_codex_source_config
 from app.core.types import ImportStats
 from app.sources.base import UsageSource
 from app.sources.codex.adapter import CodexUsageSource
-from app.sources.codex.parser import parse_response_event, parse_usage_row
+from app.sources.codex.parser import MODEL_RE, first_match, parse_response_event, parse_usage_row
 from app.sources.opencode.parser import parse_opencode_db_message, parse_opencode_jsonl_record
 from app.sources.opencode.reader import iter_messages_after, jsonl_file_size, max_message_rowid, read_jsonl_after
 from app.storage.connection import connect
 from app.storage.repositories import (
     get_opencode_import_state,
+    backfill_raw_log_display_fields,
     insert_raw_log,
     latest_raw_log_id,
+    latest_turn_source_log_id,
     set_latest_raw_log_id,
     set_opencode_import_state,
     upsert_turn,
@@ -24,14 +26,16 @@ from app.storage.schema import init_db
 
 
 LOGGER = logging.getLogger("token_lens.import")
+OPENCODE_DB_ROWID_LOOKBACK = 100
 
 
-def archive_raw_logs(source: UsageSource, target) -> int:
+def archive_raw_logs(source: UsageSource, target, thread_names: dict[str, str] | None = None) -> int:
     iter_rows_after = getattr(source, "iter_rows_after", None)
     if not iter_rows_after:
         return 0
 
     archived = 0
+    thread_names = thread_names or {}
     last_id = latest_raw_log_id(target)
     if last_id == 0:
         latest_source_id = getattr(source, "latest_log_id", lambda: 0)()
@@ -40,7 +44,12 @@ def archive_raw_logs(source: UsageSource, target) -> int:
             return 0
 
     for item in iter_rows_after(last_id):
-        if insert_raw_log(target, item):
+        row = dict(item)
+        thread_id = row.get("thread_id")
+        body = row.get("feedback_log_body") or ""
+        row["thread_name"] = thread_names.get(thread_id)
+        row["model"] = first_match(MODEL_RE, body)
+        if insert_raw_log(target, row):
             archived += 1
     return archived
 
@@ -52,8 +61,14 @@ def import_usage_source(source: UsageSource, analytics_db: str, prices: dict) ->
 
     target = connect(analytics_db)
     try:
-        stats.archived = archive_raw_logs(source, target)
-        for item in source.iter_rows():
+        stats.archived = archive_raw_logs(source, target, thread_names)
+        backfill_raw_log_display_fields(target, thread_names)
+        iter_rows = source.iter_rows
+        iter_rows_after = getattr(source, "iter_rows_after", None)
+        if iter_rows_after:
+            last_turn_id = latest_turn_source_log_id(target, "codex")
+            iter_rows = lambda: iter_rows_after(last_turn_id)
+        for item in iter_rows():
             stats.scanned += 1
             body = item["feedback_log_body"] or ""
             parsed = parse_response_event(
@@ -114,8 +129,9 @@ def import_opencode_sources() -> ImportStats:
         if db_exists:
             if max_message_rowid(opencode_db) < last_rowid:
                 last_rowid = 0
+            scan_after_rowid = max(last_rowid - OPENCODE_DB_ROWID_LOOKBACK, 0)
             max_rowid = last_rowid
-            for msg in iter_messages_after(opencode_db, last_rowid):
+            for msg in iter_messages_after(opencode_db, scan_after_rowid):
                 stats.scanned += 1
                 row = parse_opencode_db_message(msg, prices)
                 if not row:

@@ -29,6 +29,61 @@ Planned changes:
 - [x] Add regression tests for process reuse, stale-client restart, and cleanup.
 - [x] Update architecture memory and run focused/full verification.
 
+### Raw-Only Codex Task Display Correction 2026-06-30
+
+Goal: stop showing missing Codex usage as real zero-token model calls.
+
+Planned changes:
+
+- [x] Mark raw-only Codex task rows as missing usage data in the API contract.
+- [x] Show unknown token values as `-` in the web dashboard and desktop mini.
+- [x] Keep raw event counts separate from model call counts.
+- [x] Run focused regression tests and restart the app set.
+
+### Backend Freshness And Connection Indicators 2026-06-26
+
+Goal: make stale Token Lens data and backend connectivity visible in both the
+web dashboard and desktop mini client.
+
+Planned changes:
+
+- [x] Diagnose why the visible tables stopped at 2026-06-25 while raw logs
+      continued updating on 2026-06-26.
+- [x] Make Codex usage import process only new log rows after the last imported
+      Codex usage source id.
+- [x] Add a backend connection indicator to the web dashboard.
+- [x] Add a backend connection indicator to Token Lens Mini.
+- [x] Run focused tests, restart the app set, and verify live endpoints.
+
+### Codex Raw Activity Visibility 2026-06-26
+
+Goal: show recent Codex chats in Mini even when Codex logs contain activity but
+no token-usage completion record yet.
+
+Planned changes:
+
+- [x] Confirm `Update ht,en` has raw Codex activity but no parsed usage turn.
+- [x] Preserve safe raw-log display metadata for thread names and models.
+- [x] Add raw-only Codex task fallback rows with zero tokens.
+- [x] Verify Mini/API show the raw-only row after restart.
+
+### OpenCode Spend Aggregation Correction 2026-06-25
+
+Goal: make OpenCode spend and task totals comparable to provider billing by
+summing request rows instead of using only the latest message row in a session.
+
+Planned changes:
+
+- [x] Verify the local OpenCode DB has per-request `message.data.tokens` rows
+      and session aggregates equal the sum of those rows.
+- [x] Change OpenCode summary and task queries to sum all scoped request rows.
+- [x] Keep latest row metadata for display labels while using aggregate token
+      and cost totals.
+- [x] Add an OpenCode import rowid lookback so recently updated message rows are
+      reprocessed after the cursor advances.
+- [x] Run focused and full regression tests, reimport current OpenCode rows, and
+      restart the app set.
+
 ### Data Refresh Freshness Module 2026-06-25
 
 Goal: make Token Lens data freshness explicit so mini and web refreshes do not

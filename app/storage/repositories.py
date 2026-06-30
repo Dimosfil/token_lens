@@ -12,6 +12,13 @@ DETAIL_DEFAULTS = {
 }
 
 
+def _row_get(row, key: str, default=None):
+    try:
+        return row[key]
+    except (KeyError, IndexError, TypeError):
+        return default
+
+
 def upsert_turn(con: sqlite3.Connection, row: dict) -> None:
     row = {**DETAIL_DEFAULTS, **row}
     if row["event_json"]:
@@ -109,15 +116,23 @@ def set_latest_raw_log_id(con: sqlite3.Connection, source_log_id: int) -> None:
     )
 
 
+def latest_turn_source_log_id(con: sqlite3.Connection, source: str = "codex") -> int:
+    row = con.execute(
+        "select coalesce(max(source_log_id), 0) as latest_id from turns where source = ?",
+        [source],
+    ).fetchone()
+    return int(row["latest_id"] if row else 0)
+
+
 def insert_raw_log(con: sqlite3.Connection, row: dict) -> bool:
     ts = int(row["ts"])
     dt = datetime.fromtimestamp(ts, timezone.utc)
     cursor = con.execute(
         """
         insert or ignore into raw_logs (
-          source_log_id, ts, ts_iso, day, thread_id, feedback_log_body, archived_at
+          source_log_id, ts, ts_iso, day, thread_id, thread_name, model, feedback_log_body, archived_at
         ) values (
-          :source_log_id, :ts, :ts_iso, :day, :thread_id, :feedback_log_body, :archived_at
+          :source_log_id, :ts, :ts_iso, :day, :thread_id, :thread_name, :model, :feedback_log_body, :archived_at
         )
         """,
         {
@@ -126,6 +141,8 @@ def insert_raw_log(con: sqlite3.Connection, row: dict) -> bool:
             "ts_iso": dt.isoformat(),
             "day": dt.date().isoformat(),
             "thread_id": row["thread_id"],
+            "thread_name": _row_get(row, "thread_name"),
+            "model": _row_get(row, "model"),
             "feedback_log_body": row["feedback_log_body"] or "",
             "archived_at": datetime.now(timezone.utc).isoformat(),
         },
@@ -133,6 +150,45 @@ def insert_raw_log(con: sqlite3.Connection, row: dict) -> bool:
     if cursor.rowcount > 0:
         set_latest_raw_log_id(con, row["id"])
     return cursor.rowcount > 0
+
+
+def backfill_raw_log_display_fields(
+    con: sqlite3.Connection,
+    thread_names: dict[str, str],
+    model_by_thread: dict[str, str] | None = None,
+    limit: int = 2000,
+) -> int:
+    updated = 0
+    model_by_thread = model_by_thread or {}
+    rows = con.execute(
+        """
+        select thread_id
+        from raw_logs
+        where thread_id is not null
+          and thread_name is null
+        group by thread_id
+        order by max(source_log_id) desc
+        limit ?
+        """,
+        [limit],
+    ).fetchall()
+    for row in rows:
+        thread_id = row["thread_id"]
+        thread_name = thread_names.get(thread_id)
+        if not thread_name:
+            continue
+        cursor = con.execute(
+            """
+            update raw_logs
+            set thread_name = coalesce(thread_name, ?),
+                model = coalesce(model, ?)
+            where thread_id = ?
+              and (thread_name is null or model is null)
+            """,
+            [thread_name, model_by_thread.get(thread_id), thread_id],
+        )
+        updated += cursor.rowcount
+    return updated
 
 
 def get_opencode_import_state(con: sqlite3.Connection) -> dict:

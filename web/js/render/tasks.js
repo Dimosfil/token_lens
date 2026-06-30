@@ -7,9 +7,28 @@ function taskDetails(row) {
     `Thread ID: ${sharedValue(row.thread_id)}`,
     `Turn ID: ${sharedValue(row.turn_id)}`,
     `Source logs: ${sharedValue(row.first_source_log_id)}-${sharedValue(row.last_source_log_id)}`,
+    `Raw events: ${sharedValue(row.raw_event_calls)}`,
     `Submission IDs: ${sharedValue(row.submission_ids)}`,
     `Response IDs: ${sharedValue(row.response_ids)}`,
   ]);
+}
+
+function hasUsage(row) {
+  return row.has_usage !== 0 && row.has_usage !== false;
+}
+
+function metricNumber(row, key) {
+  return hasUsage(row) ? number(row[key]) : "-";
+}
+
+function calls(row) {
+  return hasUsage(row) ? number(row.model_calls) : "-";
+}
+
+function status(row) {
+  if (hasUsage(row)) return sharedEscapeHtml(row.statuses);
+  const events = number(row.raw_event_calls);
+  return `<span class="status-pill status-missing" title="${events} raw events without usage metadata">Usage missing</span>`;
 }
 
 function renderAggregateTasks(rows) {
@@ -22,16 +41,16 @@ function renderAggregateTasks(rows) {
       <td>${duration(row.elapsed_seconds)}</td>
       <td>${number(row.tasks)}</td>
       <td>${row.models}</td>
-      <td>${number(row.model_calls)}</td>
-      <td>${number(row.total_tokens_per_call)}</td>
-      <td>${number(row.total_tokens)}</td>
-      <td>${number(row.input_tokens)}</td>
-      <td>${number(row.cached_input_tokens)}</td>
-      <td>${number(row.non_cached_input_tokens)}</td>
-      <td>${number(row.output_tokens)}</td>
-      <td>${number(row.reasoning_output_tokens)}</td>
+      <td>${calls(row)}</td>
+      <td>${metricNumber(row, "total_tokens_per_call")}</td>
+      <td>${metricNumber(row, "total_tokens")}</td>
+      <td>${metricNumber(row, "input_tokens")}</td>
+      <td>${metricNumber(row, "cached_input_tokens")}</td>
+      <td>${metricNumber(row, "non_cached_input_tokens")}</td>
+      <td>${metricNumber(row, "output_tokens")}</td>
+      <td>${metricNumber(row, "reasoning_output_tokens")}</td>
       <td>${sharedValue(row.efforts)}</td>
-      <td>${row.statuses}</td>
+      <td>${status(row)}</td>
     </tr>
   `).join("");
 }
@@ -39,22 +58,22 @@ function renderAggregateTasks(rows) {
 function renderTaskRows(rows, targetId) {
   const el = document.getElementById(targetId);
   el.innerHTML = rows.map(row => `
-    <tr class="detail-row" data-thread-id="${sharedEscapeHtml(row.thread_id)}" data-turn-id="${sharedEscapeHtml(row.turn_id)}" tabindex="0">
+    <tr class="detail-row ${hasUsage(row) ? "" : "is-missing-usage"}" data-thread-id="${sharedEscapeHtml(row.thread_id)}" data-turn-id="${sharedEscapeHtml(row.turn_id)}" data-has-usage="${hasUsage(row) ? "1" : "0"}" tabindex="0">
       <td>${time(row.finished_at)}</td>
       <td>${time(row.started_at)}</td>
       <td>${duration(row.elapsed_seconds)}</td>
       <td class="task-cell" title="${sharedEscapeHtml(taskDetails(row))}">${sharedEscapeHtml(sharedTaskName(row))}</td>
       <td>${row.models}</td>
-      <td>${number(row.model_calls)}</td>
-      <td>${number(row.total_tokens_per_call)}</td>
-      <td>${number(row.total_tokens)}</td>
-      <td>${number(row.input_tokens)}</td>
-      <td>${number(row.cached_input_tokens)}</td>
-      <td>${number(row.non_cached_input_tokens)}</td>
-      <td>${number(row.output_tokens)}</td>
-      <td>${number(row.reasoning_output_tokens)}</td>
+      <td>${calls(row)}</td>
+      <td>${metricNumber(row, "total_tokens_per_call")}</td>
+      <td>${metricNumber(row, "total_tokens")}</td>
+      <td>${metricNumber(row, "input_tokens")}</td>
+      <td>${metricNumber(row, "cached_input_tokens")}</td>
+      <td>${metricNumber(row, "non_cached_input_tokens")}</td>
+      <td>${metricNumber(row, "output_tokens")}</td>
+      <td>${metricNumber(row, "reasoning_output_tokens")}</td>
       <td>${sharedValue(row.efforts)}</td>
-      <td>${row.statuses}</td>
+      <td>${status(row)}</td>
     </tr>
   `).join("");
 }

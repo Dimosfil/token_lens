@@ -490,7 +490,45 @@ class ApiContractTests(unittest.TestCase):
         self.assertNotIn("thread-inconsistent-completed", {row["thread_id"] for row in turns})
         self.assertNotIn("thread-inconsistent-completed", {row["thread_id"] for row in tasks})
 
-    def test_opencode_tasks_use_latest_cumulative_snapshot_per_chat(self):
+    def test_codex_tasks_include_raw_only_threads_without_usage(self):
+        now = int(time.time())
+        con = connect(self.db_path)
+        try:
+            con.execute(
+                """
+                insert into raw_logs (
+                  source_log_id, ts, ts_iso, day, thread_id, thread_name, model, feedback_log_body, archived_at
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    10,
+                    now + 10,
+                    "2026-06-26T08:20:00+00:00",
+                    "2026-06-26",
+                    "thread-raw-only",
+                    "Update ht,en",
+                    "gpt-5.5",
+                    "thread.id=thread-raw-only turn.id=turn-raw model=gpt-5.5",
+                    "2026-06-26T08:20:01+00:00",
+                ],
+            )
+            con.commit()
+
+            rows = queries.tasks(con, 10, source="codex")
+        finally:
+            con.close()
+
+        raw_row = next(row for row in rows if row["thread_id"] == "thread-raw-only")
+        self.assertEqual(raw_row["thread_name"], "Update ht,en")
+        self.assertEqual(raw_row["statuses"], "usage-missing")
+        self.assertEqual(raw_row["models"], "gpt-5.5")
+        self.assertEqual(raw_row["has_usage"], 0)
+        self.assertEqual(raw_row["model_calls"], 0)
+        self.assertEqual(raw_row["raw_event_calls"], 1)
+        self.assertIsNone(raw_row["total_tokens"])
+        self.assertIsNone(raw_row["total_tokens_per_call"])
+
+    def test_opencode_tasks_and_summary_sum_request_rows_per_chat(self):
         now = int(time.time())
         con = connect(self.db_path)
         try:
@@ -525,11 +563,11 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(rows[0]["thread_id"], "opencode-session-1")
         self.assertEqual(rows[0]["thread_name"], "One OpenCode chat")
         self.assertEqual(rows[0]["model_calls"], 3)
-        self.assertEqual(rows[0]["total_tokens"], 2500)
-        self.assertEqual(rows[0]["total_tokens_per_call"], 833)
-        self.assertEqual(summary["turns"], 1)
+        self.assertEqual(rows[0]["total_tokens"], 5100)
+        self.assertEqual(rows[0]["total_tokens_per_call"], 1700)
+        self.assertEqual(summary["turns"], 3)
         self.assertEqual(summary["threads"], 1)
-        self.assertEqual(summary["total_tokens"], 2500)
+        self.assertEqual(summary["total_tokens"], 5100)
 
     def test_bucket_tasks_returns_tasks_for_selected_period(self):
         con = connect(self.db_path)
@@ -596,6 +634,66 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(stats.imported, 1)
         self.assertEqual(raw_count, 2)
         self.assertEqual(raw_body, "unrecognized raw event")
+
+    def test_codex_import_scans_only_rows_after_latest_imported_turn(self):
+        class Source:
+            def __init__(self):
+                self.rows = [
+                    {
+                        "id": 1,
+                        "ts": int(time.time()) - 5,
+                        "thread_id": "thread-old",
+                        "feedback_log_body": (
+                            'instrument_name="codex.turn.token_usage" model=gpt-5 '
+                            'thread.id=thread-old turn.id=turn-old '
+                            "codex.turn.token_usage.input_tokens=1 "
+                            "codex.turn.token_usage.output_tokens=1 "
+                            "codex.turn.token_usage.total_tokens=2"
+                        ),
+                    },
+                    {
+                        "id": 3,
+                        "ts": int(time.time()) - 4,
+                        "thread_id": "thread-new",
+                        "feedback_log_body": (
+                            'instrument_name="codex.turn.token_usage" model=gpt-5 '
+                            'thread.id=thread-new turn.id=turn-new '
+                            "codex.turn.token_usage.input_tokens=3 "
+                            "codex.turn.token_usage.output_tokens=2 "
+                            "codex.turn.token_usage.total_tokens=5"
+                        ),
+                    },
+                    {
+                        "id": 4,
+                        "ts": int(time.time()) - 3,
+                        "thread_id": "thread-new",
+                        "feedback_log_body": "unrecognized raw event",
+                    },
+                ]
+
+            def iter_rows(self):
+                raise AssertionError("full Codex scan should not run when incremental rows are available")
+
+            def iter_rows_after(self, last_id=0):
+                return (row for row in self.rows if row["id"] > last_id)
+
+            def load_thread_names(self):
+                return {}
+
+        stats = import_usage_source(Source(), self.db_path, {})
+        con = connect(self.db_path)
+        try:
+            imported = con.execute(
+                "select count(*) from turns where thread_id = 'thread-new'"
+            ).fetchone()[0]
+        finally:
+            con.close()
+
+        self.assertEqual(stats.scanned, 2)
+        self.assertEqual(stats.imported, 1)
+        self.assertEqual(stats.skipped, 1)
+        self.assertEqual(stats.archived, 3)
+        self.assertEqual(imported, 1)
 
     def test_response_event_backfills_matching_usage_row_payloads(self):
         class Source:
@@ -792,7 +890,6 @@ class ParserContractTests(unittest.TestCase):
         self.assertEqual(row["reasoning_output_tokens"], 5)
         self.assertEqual(row["total_tokens"], 150)
         self.assertIn("message.updated", row["event_json"])
-
 
 class FakeCodexPopen:
     def __init__(self):

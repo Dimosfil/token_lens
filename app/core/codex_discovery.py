@@ -5,6 +5,9 @@ import shutil
 from pathlib import Path
 
 
+ACTIVE_LOG_MTIME_MARGIN_SECONDS = 2
+
+
 def discover_codex_paths(env: dict[str, str] | None = None) -> dict[str, str]:
     env = env or os.environ
     roots = _candidate_roots(env)
@@ -36,7 +39,11 @@ def _active_codex_logs_db(roots: list[Path]) -> Path | None:
         root / "logs_2.sqlite"
         for root in roots
     ])
-    if preferred and legacy and _file_mtime(legacy) > _file_mtime(preferred):
+    if (
+        preferred
+        and legacy
+        and _file_mtime(legacy) > _file_mtime(preferred) + ACTIVE_LOG_MTIME_MARGIN_SECONDS
+    ):
         return legacy
     return preferred or legacy
 

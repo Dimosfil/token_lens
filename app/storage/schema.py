@@ -35,6 +35,7 @@ create index if not exists idx_turns_ts on turns(ts);
 create index if not exists idx_turns_day on turns(day);
 create index if not exists idx_turns_model on turns(model);
 create index if not exists idx_turns_thread on turns(thread_id);
+create index if not exists idx_turns_source_thread on turns(source, thread_id);
 
 create table if not exists raw_logs (
   source_log_id integer primary key,
@@ -42,12 +43,15 @@ create table if not exists raw_logs (
   ts_iso text not null,
   day text not null,
   thread_id text,
+  thread_name text,
+  model text,
   feedback_log_body text not null,
   archived_at text not null
 );
 
 create index if not exists idx_raw_logs_ts on raw_logs(ts);
 create index if not exists idx_raw_logs_thread on raw_logs(thread_id);
+create index if not exists idx_raw_logs_thread_source on raw_logs(thread_id, source_log_id);
 
 create table if not exists raw_log_archive_state (
   id integer primary key check (id = 1),
@@ -84,6 +88,11 @@ def init_db(db_path: str) -> None:
             if detail_column not in columns:
                 con.execute(f"alter table turns add column {detail_column} text")
         con.execute("create index if not exists idx_turns_source on turns(source)")
+        raw_columns = {row["name"] for row in con.execute("pragma table_info(raw_logs)").fetchall()}
+        if "thread_name" not in raw_columns:
+            con.execute("alter table raw_logs add column thread_name text")
+        if "model" not in raw_columns:
+            con.execute("alter table raw_logs add column model text")
         con.commit()
     finally:
         con.close()

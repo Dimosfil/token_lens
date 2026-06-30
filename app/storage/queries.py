@@ -23,6 +23,10 @@ from app.storage.query_params import (
 )
 
 
+RAW_ONLY_TASK_SCAN_LIMIT = 10000
+TASK_USAGE_SCAN_MULTIPLIER = 4
+
+
 def rows_to_dicts(rows):
     return [dict(row) for row in rows]
 
@@ -197,20 +201,6 @@ def opencode_summary(
 ):
     where, params = _range_clause(range_key, start_ts, end_ts)
     where, params = _source_clause(where, params, "opencode")
-    scoped_latest = f"""
-        with ranked as (
-            select turns.*,
-                   row_number() over (
-                       partition by thread_id
-                       order by ts desc, source_log_id desc
-                   ) as row_rank
-            from turns
-            {where}
-        )
-        select *
-        from ranked
-        where row_rank = 1
-    """
     row = con.execute(
         f"""
         select count(*) as turns,
@@ -222,7 +212,8 @@ def opencode_summary(
                coalesce(sum(total_tokens), 0) as total_tokens,
                coalesce(sum(estimated_cost), 0) as estimated_cost,
                max(ts_iso) as latest_turn
-        from ({scoped_latest})
+        from turns
+        {where}
         """,
         params,
     ).fetchone()
@@ -230,7 +221,8 @@ def opencode_summary(
         f"""
         select source, ts_iso, thread_id, thread_name, turn_id, response_id, status, model, total_tokens,
                input_tokens, output_tokens, reasoning_output_tokens
-        from ({scoped_latest})
+        from turns
+        {where}
         order by total_tokens desc
         limit 10
         """,
@@ -309,10 +301,11 @@ def tasks(con: sqlite3.Connection, limit: int | None, range_key: str = "", start
     where, params = _source_clause(where, params, source)
     where = _usage_clause(where)
     limit_clause = ""
+    usage_params = list(params)
     if limit is not None:
         limit_clause = "limit ?"
-        params.append(limit)
-    return rows_to_dicts(con.execute(
+        usage_params.append(limit if source not in {"", "codex"} else max(limit * TASK_USAGE_SCAN_MULTIPLIER, limit + 20))
+    usage_rows = rows_to_dicts(con.execute(
         f"""
         select min(ts_iso) as started_at,
                max(ts_iso) as finished_at,
@@ -327,7 +320,9 @@ def tasks(con: sqlite3.Connection, limit: int | None, range_key: str = "", start
                group_concat(distinct response_id) as response_ids,
                group_concat(distinct model) as models,
                group_concat(distinct status) as statuses,
+               1 as has_usage,
                count(*) as model_calls,
+               0 as raw_event_calls,
                sum(input_tokens) as input_tokens,
                sum(cached_input_tokens) as cached_input_tokens,
                sum(non_cached_input_tokens) as non_cached_input_tokens,
@@ -341,6 +336,77 @@ def tasks(con: sqlite3.Connection, limit: int | None, range_key: str = "", start
         group by thread_id, turn_id
         order by max(ts) desc
         {limit_clause}
+        """,
+        usage_params,
+    ).fetchall())
+    if source not in {"", "codex"}:
+        return usage_rows
+
+    rows = usage_rows + raw_only_tasks(con, range_key, start_ts, end_ts)
+    rows.sort(key=lambda row: (row.get("finished_at") or "", row.get("last_source_log_id") or 0), reverse=True)
+    return rows[:limit] if limit is not None else rows
+
+
+def raw_only_tasks(
+    con: sqlite3.Connection,
+    range_key: str = "",
+    start_ts: int | None = None,
+    end_ts: int | None = None,
+):
+    where, params = _range_clause(range_key, start_ts, end_ts)
+    where = _and_clause(
+        where,
+        "thread_name is not null",
+    )
+    where = _and_clause(
+        where,
+        """
+        not exists (
+          select 1
+          from turns
+          where turns.source = 'codex'
+            and turns.thread_id = recent_raw.thread_id
+        )
+        """,
+    )
+    params = [RAW_ONLY_TASK_SCAN_LIMIT, *params]
+    return rows_to_dicts(con.execute(
+        f"""
+        with recent_raw as (
+            select source_log_id, ts, ts_iso, thread_id, thread_name, model
+            from raw_logs
+            where thread_id is not null
+            order by source_log_id desc
+            limit ?
+        )
+        select min(ts_iso) as started_at,
+               max(ts_iso) as finished_at,
+               max(ts) - min(ts) as elapsed_seconds,
+               'codex' as source,
+               min(source_log_id) as first_source_log_id,
+               max(source_log_id) as last_source_log_id,
+               thread_id,
+               max(thread_name) as thread_name,
+               'raw:' || thread_id as turn_id,
+               null as submission_ids,
+               null as response_ids,
+               group_concat(distinct model) as models,
+               'usage-missing' as statuses,
+               0 as has_usage,
+               0 as model_calls,
+               count(*) as raw_event_calls,
+               null as input_tokens,
+               null as cached_input_tokens,
+               null as non_cached_input_tokens,
+               null as output_tokens,
+               null as reasoning_output_tokens,
+               null as total_tokens,
+               null as total_tokens_per_call,
+               null as estimated_cost
+        from recent_raw
+        {where}
+        group by thread_id
+        order by max(ts) desc
         """,
         params,
     ).fetchall())
@@ -386,7 +452,14 @@ def opencode_tasks(
                    group_concat(distinct model) as models,
                    group_concat(distinct status) as statuses,
                    group_concat(distinct reasoning_effort) as efforts,
-                   count(*) as model_calls
+                   count(*) as model_calls,
+                   sum(input_tokens) as input_tokens,
+                   sum(cached_input_tokens) as cached_input_tokens,
+                   sum(non_cached_input_tokens) as non_cached_input_tokens,
+                   sum(output_tokens) as output_tokens,
+                   sum(reasoning_output_tokens) as reasoning_output_tokens,
+                   sum(total_tokens) as total_tokens,
+                   sum(estimated_cost) as estimated_cost
             from scoped
             group by thread_id
         )
@@ -404,15 +477,17 @@ def opencode_tasks(
                aggregates.models,
                aggregates.statuses,
                aggregates.efforts,
+               1 as has_usage,
                aggregates.model_calls,
-               ranked.input_tokens,
-               ranked.cached_input_tokens,
-               ranked.non_cached_input_tokens,
-               ranked.output_tokens,
-               ranked.reasoning_output_tokens,
-               ranked.total_tokens,
-               cast(round(ranked.total_tokens * 1.0 / aggregates.model_calls, 0) as integer) as total_tokens_per_call,
-               ranked.estimated_cost
+               0 as raw_event_calls,
+               aggregates.input_tokens,
+               aggregates.cached_input_tokens,
+               aggregates.non_cached_input_tokens,
+               aggregates.output_tokens,
+               aggregates.reasoning_output_tokens,
+               aggregates.total_tokens,
+               cast(round(aggregates.total_tokens * 1.0 / aggregates.model_calls, 0) as integer) as total_tokens_per_call,
+               aggregates.estimated_cost
         from aggregates
         join ranked on ranked.thread_id = aggregates.thread_id and ranked.row_rank = 1
         order by ranked.ts desc

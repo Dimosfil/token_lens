@@ -412,6 +412,7 @@ def format_date(value) -> str:
 
 
 def table_cell_value(column_id: str, row: dict) -> str:
+    has_usage = row.get("has_usage", 1) not in (0, False)
     if column_id == "date":
         return row_date(row)
     if column_id == "date_time":
@@ -423,13 +424,13 @@ def table_cell_value(column_id: str, row: dict) -> str:
     if column_id == "time":
         return format_duration(row.get("elapsed_seconds"))
     if column_id == "calls":
-        return format_number(row.get("model_calls"))
+        return format_number(row.get("model_calls")) if has_usage else "-"
     if column_id == "per_call":
-        return format_number(row.get("total_tokens_per_call"))
+        return format_number(row.get("total_tokens_per_call")) if has_usage else "-"
     if column_id == "total":
-        return format_number(row.get("total_tokens"))
+        return format_number(row.get("total_tokens")) if has_usage else "-"
     if column_id == "cost":
-        return format_cost(row.get("estimated_cost"))
+        return format_cost(row.get("estimated_cost")) if has_usage else "-"
     return ""
 
 
@@ -588,6 +589,17 @@ def refresh_status_text(status: dict | None, warnings: list | None = None) -> st
     return ""
 
 
+def backend_status_text(state: str, detail: str) -> str:
+    labels = {
+        "online": "Backend online",
+        "busy": "Backend busy",
+        "offline": "Backend offline",
+    }
+    label = labels.get(state, labels["online"])
+    detail = str(detail or "").strip()
+    return f"{label} · {detail}" if detail else label
+
+
 class ApiClient:
     def __init__(self, base_url: str, timeout: float = 4.0):
         self.base_url = base_url.rstrip("/")
@@ -659,7 +671,7 @@ class MiniClientApp:
         self.tables: dict[str, ttk.Treeview] = {}
         self.limits_frames: dict[str, ttk.Frame] = {}
         self.limit_bar_canvases: dict[str, list[tuple[tk.Canvas, int | None]]] = {}
-        self.status_var = tk.StringVar(value="Loading data")
+        self.status_var = tk.StringVar(value=backend_status_text("busy", "Loading data"))
 
         self._build_ui()
         self._bind_settings_persistence()
@@ -886,7 +898,7 @@ class MiniClientApp:
         if self.poll_after_id is not None:
             self.root.after_cancel(self.poll_after_id)
             self.poll_after_id = None
-        self.status_var.set("Importing data" if import_first else "Loading data")
+        self.status_var.set(backend_status_text("busy", "Importing data" if import_first else "Loading data"))
         self._run_worker(lambda: self._refresh_worker(import_first))
 
     def schedule_settings_save(self):
@@ -1056,7 +1068,7 @@ class MiniClientApp:
             LOGGER.warning("local server recovery skipped retry_window_seconds=%s error=%s", SERVER_START_RETRY_SECONDS, error)
             return False
         self.last_server_start_attempt = now
-        self._ui(lambda: self.status_var.set("Starting local server"))
+        self._ui(lambda: self.status_var.set(backend_status_text("busy", "Starting local server")))
         LOGGER.warning("local server connection refused; attempting recovery base_url=%s error=%s", self.api.base_url, error)
         try:
             start_local_server_process()
@@ -1066,7 +1078,7 @@ class MiniClientApp:
         if not wait_for_api(self.api):
             LOGGER.error("local server recovery failed waiting for api base_url=%s", self.api.base_url)
             return False
-        self._ui(lambda: self.status_var.set("Local server restarted"))
+        self._ui(lambda: self.status_var.set(backend_status_text("online", "Local server restarted")))
         LOGGER.info("local server recovery succeeded base_url=%s", self.api.base_url)
         return True
 
@@ -1305,7 +1317,11 @@ class MiniClientApp:
         for item in table.get_children():
             table.delete(item)
         for row in rows[: self.current_limit()]:
-            over_limit = threshold > 0 and parse_int(row.get("total_tokens_per_call")) > threshold
+            over_limit = (
+                row.get("has_usage", 1) not in (0, False)
+                and threshold > 0
+                and parse_int(row.get("total_tokens_per_call")) > threshold
+            )
             table.insert(
                 "",
                 tk.END,
@@ -1314,14 +1330,16 @@ class MiniClientApp:
             )
         self.maybe_signal(rows, version, threshold)
         status_text = refresh_status_text(import_status, source_warnings)
-        self.status_var.set(status_text or f"Updated {time.strftime('%H:%M:%S')}")
+        state = "busy" if isinstance(import_status, dict) and import_status.get("status") == "running" else "online"
+        self.status_var.set(backend_status_text(state, status_text or f"Updated {time.strftime('%H:%M:%S')}"))
 
     def set_checked_status(self, import_status: dict | None = None, source_warnings: list | None = None):
         status_text = refresh_status_text(import_status, source_warnings)
-        self.status_var.set(status_text or f"Checked {time.strftime('%H:%M:%S')}")
+        state = "busy" if isinstance(import_status, dict) and import_status.get("status") == "running" else "online"
+        self.status_var.set(backend_status_text(state, status_text or f"Checked {time.strftime('%H:%M:%S')}"))
 
     def set_error(self, error: Exception):
-        self.status_var.set(f"Error: {error}")
+        self.status_var.set(backend_status_text("offline", f"Error: {error}"))
 
     def current_signal_threshold(self) -> int:
         threshold_var = self.active_vars()["signal_threshold"]
@@ -1363,6 +1381,8 @@ class MiniClientApp:
         for row in visible_rows:
             row_key = self.signal_row_key(row)
             if row_key in self.seen_signal_rows:
+                continue
+            if row.get("has_usage", 1) in (0, False):
                 continue
             if parse_int(row.get("total_tokens_per_call")) > threshold:
                 new_over_limit_keys.append(row_key)

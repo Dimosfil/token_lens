@@ -21,14 +21,15 @@ function text(value) {
     .replaceAll("'", "&#39;");
 }
 
-function tooltipRows(row, value, unit) {
+function tooltipRows(row, value, unit, mode) {
   const cached = row.cached_input_tokens || 0;
   const input = row.input_tokens || 0;
   const nonCached = Math.max(input - cached, 0);
   const cost = Number(row.estimated_cost || 0);
+  const valueLabel = mode === "per-call" ? "Avg / call" : "Total";
   return [
-    ["Value", `${number(value)} ${unit}`],
-    ["Calls", number(row.turns)],
+    [valueLabel, `${number(value)} ${unit}`],
+    ["Calls in bucket", number(row.turns)],
     ["Input", number(input)],
     ["Cached", number(cached)],
     ["Non-cached", number(nonCached)],
@@ -66,7 +67,7 @@ export function renderDaily(rows, mode = "total", bucket = "day") {
     const period = row.period || row.day;
     const label = chartLabel(row, bucket);
     const unit = mode === "per-call" ? "tokens / call" : "tokens";
-    const details = tooltipRows(row, value, unit)
+    const details = tooltipRows(row, value, unit, mode)
       .map(([name, detail]) => `
           <div>
             <span>${text(name)}</span>

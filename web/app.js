@@ -63,7 +63,7 @@ async function refresh(importFirst = false) {
 
 
 async function refreshNow(importFirst = false) {
-  setAutoStatus(importFirst ? "Importing data" : "Loading data");
+  setAutoStatus(importFirst ? "Importing data" : "Loading data", false, "busy");
   const query = currentDashboardQuery();
   const url = importFirst ? `/api/refresh${query}` : `/api/dashboard${query}`;
   const options = importFirst ? { method: "POST" } : {};
@@ -71,29 +71,33 @@ async function refreshNow(importFirst = false) {
   lastDashboard = dashboard;
   renderDashboard(dashboard);
   dataVersion = dashboard.state.version;
-  setAutoStatus(`Updated ${new Date().toLocaleTimeString("ru-RU")}`);
+  setAutoStatus(`Updated ${new Date().toLocaleTimeString("ru-RU")}`, false, "online");
 }
 
 
 async function pollForUpdates() {
   if (refreshPromise || hasActiveRequests()) {
-    setAutoStatus("Waiting for current request");
+    setAutoStatus("Waiting for current request", false, "busy");
     return;
   }
 
-  setAutoStatus("Checking for updates");
+  setAutoStatus("Checking for updates", false, "busy");
 
   getJson("/api/state")
     .then(state => {
       if (!dataVersion || state.version !== dataVersion) {
         return refresh(false);
       }
-      setAutoStatus(`Checked ${new Date().toLocaleTimeString("ru-RU")}`);
+      setAutoStatus(`Checked ${new Date().toLocaleTimeString("ru-RU")}`, false, "online");
       return null;
     })
     .catch(err => {
       const transient = err.message === "Failed to fetch" || err.message.startsWith("Request timed out");
-      setAutoStatus(transient ? `Will retry auto refresh` : `Auto refresh error: ${err.message}`, !transient);
+      setAutoStatus(
+        transient ? `Will retry auto refresh` : `Auto refresh error: ${err.message}`,
+        true,
+        "offline",
+      );
     });
 }
 
@@ -151,6 +155,7 @@ document.addEventListener("click", event => {
   }
   const row = event.target.closest(".detail-row");
   if (!row) return;
+  if (row.dataset.hasUsage === "0") return;
   openTaskDetail(row.dataset.threadId, row.dataset.turnId);
 });
 document.addEventListener("keydown", event => {
@@ -163,13 +168,14 @@ document.addEventListener("keydown", event => {
   }
   const row = event.target.closest(".detail-row");
   if (!row) return;
+  if (row.dataset.hasUsage === "0") return;
   event.preventDefault();
   openTaskDetail(row.dataset.threadId, row.dataset.turnId);
 });
 document.addEventListener("token-lens:tab-change", event => {
   activeSource = event.detail.tab === "opencode" ? "opencode" : "codex";
   lastDashboard = null;
-  refresh(false).catch(err => setAutoStatus(`${activeSource} refresh error: ${err.message}`, true));
+  refresh(false).catch(err => setAutoStatus(`${activeSource} refresh error: ${err.message}`, true, "offline"));
 });
 
 restorePageSettings();
@@ -182,7 +188,7 @@ initDetailModal();
 initBucketModal();
 initResizableTables();
 refresh(false).catch(err => {
-  setAutoStatus(`Refresh error: ${err.message}`, true);
+  setAutoStatus(`Refresh error: ${err.message}`, true, "offline");
   document.body.insertAdjacentHTML("beforeend", `<pre>${err.message}</pre>`);
 });
 setInterval(pollForUpdates, AUTO_REFRESH_MS);
