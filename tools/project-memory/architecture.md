@@ -50,6 +50,10 @@ for summaries, daily trends, model calls, and grouped tasks.
 processes and records their PIDs under `data/`. Server stdout and stderr are
 captured in `data/server.out.log` and `data/server.err.log` so future unexpected
 exits have local diagnostic evidence.
+Runtime stop/restart paths must stop the full process tree for the web/API
+server and mini client. The web/API server may own a persistent child
+`codex app-server --stdio` process for account-limit reads, so stopping only
+the Python PID can leave Codex CLI descendants behind.
 
 The Python runtime configures standard `logging` with a rotating UTF-8 log file.
 By default it writes `data/token-lens.log`, keeps five backups, and rotates at
@@ -157,6 +161,16 @@ separate from the SQLite analytics data used by tables and charts. The Codex
 command is resolved from `codex_app_server_command` when configured, then from
 standard user-local locations such as `.codex\bin`, user npm bin folders, and
 PATH.
+`app.services.codex_account_service` keeps one reusable
+`codex app-server --stdio` stdio process by default. It initializes the Codex
+app-server once, serializes account-limit requests through that process, caches
+successful snapshots for `codex_rate_limits_cache_seconds`, and closes the
+client after `codex_rate_limits_idle_seconds` of inactivity. If the process
+exits, breaks its pipe, or times out, the client closes the process tree and the
+next request starts a fresh app-server. On Windows, cleanup must stop the full
+process tree because npm `.cmd` launchers create a
+`cmd.exe -> node.exe -> codex.exe` chain, and killing only the wrapper can leave
+orphaned Node/Codex processes that accumulate memory.
 
 ## Data Flow
 

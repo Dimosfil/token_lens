@@ -14,6 +14,21 @@ generated outputs, secrets, credentials, or private production data.
 
 ## Tasks
 
+### Persistent Codex Account Limit Client 2026-06-30
+
+Goal: query Codex account limits through one reusable local
+`codex app-server --stdio` process instead of spawning a process for every
+uncached HTTP request.
+
+Planned changes:
+
+- [x] Add a persistent stdio client with request serialization, timeout
+      handling, restart-on-failure, and Windows process-tree cleanup.
+- [x] Keep configuration boundaries for cache, request timeout, idle timeout,
+      and optional persistent mode.
+- [x] Add regression tests for process reuse, stale-client restart, and cleanup.
+- [x] Update architecture memory and run focused/full verification.
+
 ### Data Refresh Freshness Module 2026-06-25
 
 Goal: make Token Lens data freshness explicit so mini and web refreshes do not

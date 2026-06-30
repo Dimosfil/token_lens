@@ -139,10 +139,10 @@ function Stop-TokenLensProcess($Process, [string]$Name) {
     return
   }
 
-  Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
+  & taskkill.exe /PID $Process.Id /F /T | Out-Null
   [void]$Process.WaitForExit(5000)
   if (Get-Process -Id $Process.Id -ErrorAction SilentlyContinue) {
-    & taskkill.exe /PID $Process.Id /F /T | Out-Null
+    Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
   }
   Write-Host "$Name stopped. PID: $($Process.Id)"
 }

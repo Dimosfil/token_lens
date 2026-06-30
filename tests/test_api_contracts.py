@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import queue
 import tempfile
 import time
 import unittest
@@ -77,6 +78,7 @@ class ApiContractTests(unittest.TestCase):
             con.close()
 
     def tearDown(self):
+        codex_account_service.close_codex_account_client()
         self.tmp.cleanup()
 
     def test_query_response_shapes(self):
@@ -198,6 +200,87 @@ class ApiContractTests(unittest.TestCase):
 
         self.assertFalse(payload["ok"])
         self.assertIn("avoid WindowsApps aliases", payload["error"])
+
+    def test_codex_account_persistent_client_reuses_process(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            command = Path(tmp) / "codex.cmd"
+            command.write_text("", encoding="utf-8")
+            fake_popen = FakeCodexPopen()
+            config = {
+                "codex_app_server_command": str(command),
+                "codex_rate_limits_cache_seconds": 0,
+            }
+
+            with (
+                mock.patch.object(codex_account_service.subprocess, "Popen", fake_popen),
+                mock.patch.object(codex_account_service.subprocess, "run"),
+            ):
+                first = codex_account_service.read_usage_limits(config)
+                second = codex_account_service.read_usage_limits(config)
+                codex_account_service.close_codex_account_client()
+
+        self.assertTrue(first["ok"])
+        self.assertTrue(second["ok"])
+        self.assertEqual(fake_popen.call_count, 1)
+        self.assertEqual(fake_popen.processes[0].read_requests, 2)
+        self.assertEqual(fake_popen.processes[0].initialize_requests, 1)
+
+    def test_codex_account_persistent_client_restarts_exited_process(self):
+        fake_popen = FakeCodexPopen()
+        client = codex_account_service.CodexAppServerClient("codex.cmd")
+
+        with (
+            mock.patch.object(codex_account_service.subprocess, "Popen", fake_popen),
+            mock.patch.object(codex_account_service.subprocess, "run"),
+        ):
+            first = client.request_rate_limits(3)
+            fake_popen.processes[0].returncode = 1
+            second = client.request_rate_limits(3)
+            client.close()
+
+        self.assertEqual(first["result"]["rateLimits"]["limitId"], "codex")
+        self.assertEqual(second["result"]["rateLimits"]["limitId"], "codex")
+        self.assertEqual(fake_popen.call_count, 2)
+
+    def test_codex_account_global_client_cleanup_stops_process_tree(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            command = Path(tmp) / "codex.cmd"
+            command.write_text("", encoding="utf-8")
+            fake_popen = FakeCodexPopen()
+            config = {
+                "codex_app_server_command": str(command),
+                "codex_rate_limits_cache_seconds": 0,
+            }
+
+            with (
+                mock.patch.object(codex_account_service.subprocess, "Popen", fake_popen),
+                mock.patch.object(codex_account_service.subprocess, "run"),
+            ):
+                payload = codex_account_service.read_usage_limits(config)
+                codex_account_service.close_codex_account_client()
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(fake_popen.call_count, 1)
+        self.assertTrue(fake_popen.processes[0].killed)
+
+    def test_codex_account_stop_process_uses_taskkill_tree_on_windows(self):
+        class FakeProcess:
+            pid = 1234
+
+            def poll(self):
+                return 1
+
+            def kill(self):
+                raise AssertionError("taskkill should handle the Windows process tree")
+
+        with (
+            mock.patch.object(codex_account_service.os, "name", "nt"),
+            mock.patch.object(codex_account_service.subprocess, "run") as run,
+        ):
+            codex_account_service._stop_process(FakeProcess())
+
+        run.assert_called_once()
+        self.assertEqual(run.call_args.args[0], ["taskkill", "/F", "/T", "/PID", "1234"])
 
     def test_task_detail_returns_calls_and_payloads(self):
         con = connect(self.db_path)
@@ -709,6 +792,98 @@ class ParserContractTests(unittest.TestCase):
         self.assertEqual(row["reasoning_output_tokens"], 5)
         self.assertEqual(row["total_tokens"], 150)
         self.assertIn("message.updated", row["event_json"])
+
+
+class FakeCodexPopen:
+    def __init__(self):
+        self.processes = []
+
+    @property
+    def call_count(self):
+        return len(self.processes)
+
+    def __call__(self, *args, **_kwargs):
+        process = FakeCodexProcess(pid=1000 + len(self.processes))
+        self.processes.append(process)
+        return process
+
+
+class FakeCodexProcess:
+    def __init__(self, pid: int):
+        self.pid = pid
+        self.returncode = None
+        self.killed = False
+        self.initialize_requests = 0
+        self.read_requests = 0
+        self.stdout = FakeCodexStdout()
+        self.stdin = FakeCodexStdin(self)
+
+    def poll(self):
+        return self.returncode
+
+    def kill(self):
+        self.killed = True
+        self.returncode = -9
+        self.stdout.close()
+
+    def wait(self, timeout=None):
+        return self.returncode
+
+    def handle_message(self, message: dict) -> None:
+        message_id = message.get("id")
+        method = message.get("method")
+        if method == "initialize":
+            self.initialize_requests += 1
+            self.stdout.push({"id": message_id, "result": {}})
+        elif method == "account/rateLimits/read":
+            self.read_requests += 1
+            self.stdout.push({
+                "id": message_id,
+                "result": {
+                    "rateLimits": {
+                        "limitId": "codex",
+                        "planType": "prolite",
+                        "primary": {
+                            "usedPercent": 25,
+                            "windowDurationMins": 300,
+                            "resetsAt": int(time.time()) + 60,
+                        },
+                    },
+                    "rateLimitsByLimitId": {},
+                },
+            })
+
+
+class FakeCodexStdin:
+    def __init__(self, process: FakeCodexProcess):
+        self.process = process
+
+    def write(self, text: str):
+        message = json.loads(text)
+        self.process.handle_message(message)
+
+    def flush(self):
+        pass
+
+
+class FakeCodexStdout:
+    def __init__(self):
+        self.lines = queue.Queue()
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        line = self.lines.get(timeout=5)
+        if line is None:
+            raise StopIteration
+        return line
+
+    def push(self, message: dict) -> None:
+        self.lines.put(json.dumps(message) + "\n")
+
+    def close(self) -> None:
+        self.lines.put(None)
 
 
 if __name__ == "__main__":

@@ -134,7 +134,9 @@ Live account limits use `codex app-server --stdio`; the Codex command is
 auto-discovered from `.codex\bin`, user npm bin folders, or PATH and persisted
 to ignored `config.local.json` when found. WindowsApps aliases are ignored
 because they can fail with access denied. Set `codex_app_server_command` in
-`config.local.json` only when a machine uses a custom command path.
+`config.local.json` only when a machine uses a custom command path. By default,
+Token Lens keeps one reusable app-server process for live limit reads, restarts
+it on timeout or pipe failure, and closes it after the configured idle timeout.
 These Codex 5h/weekly/Spark limits are not OpenAI API usage/costs/rate limits
 and do not use `OPENAI_API_KEY`. To verify them locally:
 

@@ -7,5 +7,9 @@
   "analytics_db": "data\\analytics.sqlite",
   "host": "127.0.0.1",
   "port": 8765,
-  "auto_import_seconds": 30
+  "auto_import_seconds": 30,
+  "codex_rate_limits_persistent": true,
+  "codex_rate_limits_cache_seconds": 3,
+  "codex_rate_limits_timeout_seconds": 20,
+  "codex_rate_limits_idle_seconds": 300
 }

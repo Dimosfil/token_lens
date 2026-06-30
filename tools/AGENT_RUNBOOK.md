@@ -66,6 +66,10 @@ Important distinction:
 - They do not come from `OPENAI_API_KEY`, OpenAI Admin API, OpenAI usage/costs
   endpoints, or `data\analytics.sqlite`.
 - OpenAI API usage/costs/rate limits are a separate future integration.
+- Token Lens keeps one reusable `codex app-server --stdio` process by default
+  and sends repeated `account/rateLimits/read` requests through it. The process
+  is restarted on timeout or pipe failure and closed after the configured idle
+  timeout.
 
 Read these files before changing limit behavior:
 

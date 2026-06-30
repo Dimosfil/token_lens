@@ -11,7 +11,10 @@ if (-not (Test-Path $pidFile)) {
 $pidValue = Get-Content $pidFile
 $proc = Get-Process -Id $pidValue
 if ($proc) {
-  Stop-Process -Id $pidValue -Force
+  & taskkill.exe /PID $pidValue /F /T | Out-Null
+  if (Get-Process -Id $pidValue -ErrorAction SilentlyContinue) {
+    Stop-Process -Id $pidValue -Force
+  }
   Write-Host "Stopped Token Lens. PID: $pidValue"
 } else {
   Write-Host "No running process for PID: $pidValue"
