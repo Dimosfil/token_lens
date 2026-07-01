@@ -16,8 +16,6 @@ telemetry contexts:
 
 - a standalone old-format log event whose body starts with
   `instrument_name="codex.turn.token_usage"`;
-- a Codex `turn{...}` telemetry span that itself contains
-  `codex.turn.token_usage.*` fields;
 - a Codex initial trace prefix followed immediately by
   `:session_task.run:run_turn: post sampling token usage ...`.
 
@@ -49,10 +47,12 @@ could later import stale quoted snippets if the parser contract changes.
 
 If this contract changes, existing `turns` rows with
 `response_id like 'codex-usage:%'`, `response_id like 'codex-estimate:%'`, or
-zero token totals may need validation against the archived
+zero token totals must be revalidated against the archived
 `raw_logs.feedback_log_body` or the current Codex source log row. Rows that no
 longer parse under the contract should be deleted from `turns`; raw archive rows
-should be kept.
+should be kept. In particular, older trace-only `turn{...codex.turn.token_usage...}`
+synthetic rows must be removed because they can report cumulative multi-million
+totals that do not correspond to one request payload.
 
 ## Verification
 

@@ -134,7 +134,7 @@
               <th>Models</th>
               <th>Calls</th>
               <th>Total / call</th>
-              <th>Total</th>
+              <th>Event/log total</th>
               <th>Input</th>
               <th>Cached</th>
               <th>Non-cached</th>
@@ -187,15 +187,25 @@
       <h3 id="detailPayloadTitle">Call details</h3>
       <div class="payload-grid">
         <section>
-          <h4>Request</h4>
+          <div class="payload-head">
+            <h4>Request</h4>
+            <button type="button" class="secondary-button payload-copy-button" data-copy-target="detailRequest">Copy</button>
+          </div>
+          <p id="detailRequestStats" class="payload-stats"></p>
           <pre id="detailRequest"></pre>
         </section>
         <section>
-          <h4>Response</h4>
+          <div class="payload-head">
+            <h4>Response</h4>
+            <button type="button" class="secondary-button payload-copy-button" data-copy-target="detailResponse">Copy</button>
+          </div>
           <pre id="detailResponse"></pre>
         </section>
         <section>
-          <h4>Event</h4>
+          <div class="payload-head">
+            <h4>Event</h4>
+            <button type="button" class="secondary-button payload-copy-button" data-copy-target="detailEvent">Copy</button>
+          </div>
           <pre id="detailEvent"></pre>
         </section>
       </div>

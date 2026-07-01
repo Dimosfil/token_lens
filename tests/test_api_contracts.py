@@ -17,7 +17,7 @@ from app.sources.codex.parser import parse_response_create_request, parse_respon
 from app.storage import queries
 from app.storage.query_params import normalize_time_mode
 from app.storage.connection import connect
-from app.storage.repositories import upsert_codex_threads, upsert_turn
+from app.storage.repositories import insert_raw_log, upsert_codex_threads, upsert_turn
 from app.storage.schema import init_db
 
 
@@ -622,7 +622,7 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(detail["task"]["model_calls"], 3)
         self.assertEqual(detail["task"]["total_tokens"], 5100)
 
-    def test_codex_tasks_use_state_tokens_when_log_estimates_are_lower(self):
+    def test_codex_tasks_keep_state_tokens_separate_from_log_totals(self):
         now = int(time.time())
         con = connect(self.db_path)
         try:
@@ -668,24 +668,27 @@ class ApiContractTests(unittest.TestCase):
 
         row = next(item for item in rows if item["thread_id"] == "thread-state")
         self.assertEqual(row["thread_name"], "Sidebar title")
-        self.assertEqual(row["total_tokens"], 6_547_215)
+        self.assertEqual(row["total_tokens"], 441_306)
         self.assertEqual(row["state_tokens_used"], 6_547_215)
         self.assertEqual(row["log_total_tokens"], 441_306)
-        self.assertEqual(row["total_tokens_per_call"], 2_182_405)
-        self.assertIn("codex-state", row["statuses"])
-        self.assertGreaterEqual(summary["summary"]["total_tokens"], 6_547_215)
+        self.assertEqual(row["total_tokens_per_call"], 147_102)
+        self.assertNotIn("codex-state", row["statuses"])
+        self.assertGreaterEqual(summary["summary"]["total_tokens"], 441_306)
         top = next(item for item in summary["top_turns"] if item["thread_id"] == "thread-state")
-        self.assertEqual(top["total_tokens"], 6_547_215)
+        self.assertEqual(top["total_tokens"], 441_306)
+        self.assertEqual(top["state_tokens_used"], 6_547_215)
         self.assertEqual(top["log_total_tokens"], 441_306)
         bucket = next(item for item in day_buckets if item["period"] == "2026-06-30")
-        self.assertGreaterEqual(bucket["total_tokens"], 6_547_215)
+        self.assertGreaterEqual(bucket["total_tokens"], 441_306)
         bucket_row = next(item for item in bucket_rows if item["thread_id"] == "thread-state")
-        self.assertEqual(bucket_row["total_tokens"], 6_547_215)
+        self.assertEqual(bucket_row["total_tokens"], 441_306)
+        self.assertEqual(bucket_row["state_tokens_used"], 6_547_215)
         self.assertEqual(bucket_row["log_total_tokens"], 441_306)
-        self.assertEqual(detail["task"]["total_tokens"], 6_547_215)
+        self.assertEqual(detail["task"]["total_tokens"], 441_306)
+        self.assertEqual(detail["task"]["state_tokens_used"], 6_547_215)
         self.assertEqual(detail["task"]["log_total_tokens"], 441_306)
 
-    def test_codex_bucket_tasks_apply_state_delta_to_latest_bucket_only(self):
+    def test_codex_bucket_tasks_do_not_apply_state_delta_to_latest_bucket(self):
         early_ts = int(datetime(2026, 6, 30, 14, 5, tzinfo=timezone.utc).timestamp())
         late_ts = int(datetime(2026, 6, 30, 15, 10, tzinfo=timezone.utc).timestamp())
         con = connect(self.db_path)
@@ -737,10 +740,11 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(early["total_tokens_per_call"], 100)
         self.assertNotIn("codex-state", early["statuses"])
         self.assertEqual(late["model_calls"], 1)
-        self.assertEqual(late["total_tokens"], 900)
-        self.assertEqual(late["total_tokens_per_call"], 900)
+        self.assertEqual(late["total_tokens"], 200)
+        self.assertEqual(late["total_tokens_per_call"], 200)
         self.assertEqual(late["log_total_tokens"], 200)
-        self.assertIn("codex-state", late["statuses"])
+        self.assertEqual(late["state_tokens_used"], 1_000)
+        self.assertNotIn("codex-state", late["statuses"])
 
     def test_opencode_tasks_and_summary_sum_request_rows_per_chat(self):
         now = int(time.time())
@@ -994,6 +998,68 @@ class ApiContractTests(unittest.TestCase):
         self.assertTrue(detail["calls"][0]["raw_event_captured"])
         self.assertEqual(detail["calls"][0]["response_id"], "resp-merge")
         self.assertIn("inspect", str(detail["calls"][0]["request"]))
+
+    def test_codex_import_repairs_trace_only_synthetic_usage_rows(self):
+        con = connect(self.db_path)
+        try:
+            insert_raw_log(con, {
+                "id": 60,
+                "ts": int(time.time()) - 5,
+                "ts_iso": "2026-06-30T15:33:08+00:00",
+                "thread_id": "thread-bad",
+                "thread_name": "Bad synthetic row",
+                "model": "gpt-5.5",
+                "feedback_log_body": (
+                    "session_loop{thread_id=thread-bad}:submission_dispatch{otel.name=\"op.dispatch.user_input\"}:"
+                    "turn{otel.name=\"session_task.turn\" thread.id=thread-bad turn.id=turn-bad "
+                    "model=gpt-5.5 codex.turn.reasoning_effort=high "
+                    "codex.turn.token_usage.input_tokens=4769573 "
+                    "codex.turn.token_usage.cached_input_tokens=4516224 "
+                    "codex.turn.token_usage.non_cached_input_tokens=253349 "
+                    "codex.turn.token_usage.output_tokens=19668 "
+                    "codex.turn.token_usage.reasoning_output_tokens=4754 "
+                    "codex.turn.token_usage.total_tokens=4789241}:session_task.run"
+                ),
+            })
+            upsert_turn(con, sample_turn(
+                source_log_id=60,
+                response_id="codex-usage:thread-bad:turn-bad:gpt-5.5",
+                status="completed",
+                thread_id="thread-bad",
+                thread_name="Bad synthetic row",
+                turn_id="turn-bad",
+                model="gpt-5.5",
+                reasoning_effort="high",
+                input_tokens=4_769_573,
+                cached_input_tokens=4_516_224,
+                non_cached_input_tokens=253_349,
+                output_tokens=19_668,
+                reasoning_output_tokens=4_754,
+                total_tokens=4_789_241,
+            ))
+            con.commit()
+        finally:
+            con.close()
+
+        class Source:
+            def iter_rows(self):
+                return iter(())
+
+            def load_thread_names(self):
+                return {}
+
+        stats = import_usage_source(Source(), self.db_path, {})
+
+        con = connect(self.db_path)
+        try:
+            repaired = con.execute(
+                "select count(*) from turns where response_id = 'codex-usage:thread-bad:turn-bad:gpt-5.5'"
+            ).fetchone()[0]
+        finally:
+            con.close()
+
+        self.assertEqual(stats.imported, 0)
+        self.assertEqual(repaired, 0)
 
     def test_task_detail_loads_request_payload_from_archived_response_create(self):
         con = connect(self.db_path)

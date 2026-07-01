@@ -17,7 +17,6 @@ RESPONSE_CREATE_REQUEST_MARKERS = (
     'websocket request: {"type": "response.create"',
 )
 USAGE_INSTRUMENT = 'instrument_name="codex.turn.token_usage"'
-TRACE_TURN_PREFIX_RE = re.compile(r"^(?:[A-Za-z0-9_.-]+\{[^{}]*\}:)*turn\{[^{}]*\}")
 POST_SAMPLING_USAGE_RE = re.compile(
     r"^(?P<trace>(?:[A-Za-z0-9_.-]+\{[^{}]*\}:)*turn\{[^{}]*\})"
     r":session_task\.run:run_turn: post sampling token usage (?P<fields>[^\r\n]*)"
@@ -128,11 +127,7 @@ def usage_event_segment(body: str) -> str | None:
     stripped = body.lstrip()
     if stripped.startswith(USAGE_INSTRUMENT):
         return stripped.splitlines()[0] if stripped.splitlines() else stripped
-    match = TRACE_TURN_PREFIX_RE.match(stripped)
-    if not match:
-        return None
-    segment = match.group(0)
-    return segment if "codex.turn.token_usage" in segment else None
+    return None
 
 
 def parse_post_sampling_usage_row(

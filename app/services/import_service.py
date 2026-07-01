@@ -34,6 +34,49 @@ LOGGER = logging.getLogger("token_lens.import")
 OPENCODE_DB_ROWID_LOOKBACK = 100
 
 
+def repair_codex_usage_rows(target, thread_names: dict[str, str], prices: dict) -> int:
+    candidates = target.execute(
+        """
+        select turns.source_log_id,
+               turns.response_id,
+               raw_logs.ts,
+               coalesce(raw_logs.thread_id, turns.thread_id) as thread_id,
+               raw_logs.feedback_log_body
+        from turns
+        join raw_logs on raw_logs.source_log_id = turns.source_log_id
+        where turns.source = 'codex'
+          and (
+            turns.response_id like 'codex-usage:%'
+            or turns.response_id like 'codex-estimate:%'
+            or turns.total_tokens <= 0
+          )
+        """
+    ).fetchall()
+
+    invalid_response_ids: list[str] = []
+    for row in candidates:
+        parsed = parse_usage_row(
+            row["source_log_id"],
+            row["ts"],
+            row["thread_id"],
+            row["feedback_log_body"] or "",
+            thread_names,
+            prices,
+        )
+        if not parsed and row["response_id"]:
+            invalid_response_ids.append(row["response_id"])
+
+    if not invalid_response_ids:
+        return 0
+
+    placeholders = ", ".join("?" for _ in invalid_response_ids)
+    target.execute(
+        f"delete from turns where source = 'codex' and response_id in ({placeholders})",
+        invalid_response_ids,
+    )
+    return len(invalid_response_ids)
+
+
 def archive_raw_logs(source: UsageSource, target, thread_names: dict[str, str] | None = None) -> int:
     iter_rows_after = getattr(source, "iter_rows_after", None)
     if not iter_rows_after:
@@ -71,6 +114,7 @@ def import_usage_source(source: UsageSource, analytics_db: str, prices: dict) ->
         if thread_metadata:
             upsert_codex_threads(target, thread_metadata)
         stats.archived = archive_raw_logs(source, target, thread_names)
+        repair_codex_usage_rows(target, thread_names, prices)
         backfill_raw_log_display_fields(target, thread_names)
         backfill_turn_thread_names(target, thread_names, "codex")
         iter_rows = source.iter_rows

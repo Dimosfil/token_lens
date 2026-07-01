@@ -4,11 +4,26 @@ import { escapeHtml } from "./render/html.js";
 
 let detail = null;
 let selectedCall = 0;
+const copyResetTimers = new WeakMap();
+const compactNumber = new Intl.NumberFormat("ru-RU", {
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
 
 function pretty(value, emptyMessage = "No captured payload") {
   if (value == null || value === "") return emptyMessage;
   if (typeof value === "string") return value;
   return JSON.stringify(value, null, 2);
+}
+
+function compactPayload(value) {
+  if (value == null || value === "") return "";
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return pretty(value, "");
+  }
 }
 
 function joinList(value) {
@@ -36,17 +51,92 @@ function emptyPayloadMessage(kind, call) {
   return `No captured ${kind} payload`;
 }
 
+function estimateRequestTokens(value) {
+  const text = compactPayload(value).trim();
+  if (!text) return 0;
+
+  const chars = text.length;
+  const cjkChars = (text.match(/[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff]/g) || []).length;
+  const punctuationChars = (text.match(/[{}\[\]":,]/g) || []).length;
+  const lineBreaks = (text.match(/\n/g) || []).length;
+  const whitespaceChars = (text.match(/\s/g) || []).length;
+  const compactChars = Math.max(chars - whitespaceChars, 0);
+  const jsonLike = punctuationChars > chars * 0.08 || (text.startsWith("{") && text.includes("\"model\""));
+
+  if (cjkChars > chars * 0.2) {
+    return Math.max(1, Math.round(cjkChars + (chars - cjkChars) / 3.2));
+  }
+
+  const divisor = jsonLike ? 1.7 : 3.8;
+  const linePenalty = jsonLike ? lineBreaks * 0.15 : lineBreaks * 0.05;
+  return Math.max(1, Math.round(compactChars / divisor + linePenalty));
+}
+
+function signedNumber(value) {
+  if (!Number.isFinite(value) || value === 0) return "0";
+  return `${value > 0 ? "+" : ""}${number(value)}`;
+}
+
+function formatCompactTokens(value, prefix = "~") {
+  if (!Number.isFinite(value) || value <= 0) return null;
+  return `${prefix}${compactNumber.format(value)} tok`;
+}
+
+function setCopyButtonBaseLabel(button, label) {
+  button.dataset.copyLabel = label;
+  button.textContent = label;
+}
+
+function renderRequestStats(call) {
+  const stats = document.getElementById("detailRequestStats");
+  const requestButton = document.querySelector('[data-copy-target="detailRequest"]');
+  const eventButton = document.querySelector('[data-copy-target="detailEvent"]');
+  if (!stats || !requestButton || !eventButton) return;
+
+  if (!call) {
+    stats.textContent = "";
+    stats.className = "payload-stats";
+    setCopyButtonBaseLabel(requestButton, "Copy");
+    setCopyButtonBaseLabel(eventButton, "Copy");
+    return;
+  }
+
+  const requestEstimate = estimateRequestTokens(call.request);
+  const tableTotal = Number(call.total_tokens || 0);
+  const eventEstimate = Number(call.event?.estimated_token_count || 0);
+  const delta = requestEstimate && tableTotal ? requestEstimate - tableTotal : 0;
+  const ratio = requestEstimate && tableTotal ? Math.abs(delta) / tableTotal : null;
+  const isClose = ratio != null && ratio <= 0.12;
+
+  const parts = [];
+  if (requestEstimate > 0) parts.push(`Request est. ${number(requestEstimate)}`);
+  if (tableTotal > 0) parts.push(`Table total ${number(tableTotal)}`);
+  if (requestEstimate > 0 && tableTotal > 0) parts.push(`Delta ${signedNumber(delta)}`);
+  if (eventEstimate > 0) parts.push(`Event est. ${number(eventEstimate)}`);
+  stats.textContent = parts.join(" · ");
+  stats.className = `payload-stats${requestEstimate > 0 && tableTotal > 0 ? (isClose ? " is-close" : " is-drift") : ""}`;
+
+  setCopyButtonBaseLabel(requestButton, `Copy ${formatCompactTokens(requestEstimate) || ""}`.trim());
+  setCopyButtonBaseLabel(eventButton, `Copy ${formatCompactTokens(eventEstimate, "") || ""}`.trim());
+}
+
 function renderMeta(task) {
   const el = document.getElementById("detailMeta");
   if (!task) {
     el.innerHTML = "";
     return;
   }
+  const stateTokens = Number(task.state_tokens_used || 0);
+  const totalTokens = Number(task.total_tokens || 0);
+  const stateMetric = stateTokens > 0 && stateTokens !== totalTokens
+    ? metric("State estimate", number(stateTokens))
+    : "";
   el.innerHTML = [
     metric("Start", time(task.started_at)),
     metric("Finish", time(task.finished_at)),
     metric("Calls", number(task.model_calls)),
     metric("Total tokens", number(task.total_tokens)),
+    stateMetric,
     metric("Total / call", number(task.total_tokens_per_call)),
     metric("Raw events", `${number(task.raw_event_calls)} / ${number(task.model_calls)}`),
     metric("Models", joinList(task.models)),
@@ -85,12 +175,61 @@ function renderPayload(call) {
     request.textContent = "";
     response.textContent = "";
     event.textContent = "";
+    renderRequestStats(null);
     return;
   }
   title.textContent = `${call.model} · ${call.status} · ${number(call.total_tokens)} tokens`;
   request.textContent = pretty(call.request, emptyPayloadMessage("request", call));
   response.textContent = pretty(call.response, emptyPayloadMessage("response", call));
   event.textContent = pretty(call.event);
+  renderRequestStats(call);
+}
+
+async function writeClipboardText(text) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const input = document.createElement("textarea");
+  input.value = text;
+  input.setAttribute("readonly", "");
+  input.style.position = "fixed";
+  input.style.opacity = "0";
+  document.body.appendChild(input);
+  input.select();
+  try {
+    document.execCommand("copy");
+  } finally {
+    input.remove();
+  }
+}
+
+function resetCopyButtons() {
+  document.querySelectorAll(".payload-copy-button").forEach(button => {
+    button.textContent = button.dataset.copyLabel || "Copy";
+  });
+}
+
+function showCopyState(button, label) {
+  button.textContent = label;
+  const timerId = copyResetTimers.get(button);
+  if (timerId) window.clearTimeout(timerId);
+  copyResetTimers.set(button, window.setTimeout(() => {
+    button.textContent = "Copy";
+    copyResetTimers.delete(button);
+  }, 1400));
+}
+
+async function copyPayload(button) {
+  const targetId = button.dataset.copyTarget;
+  const target = targetId ? document.getElementById(targetId) : null;
+  if (!target) return;
+  try {
+    await writeClipboardText(target.textContent || "");
+    showCopyState(button, "Copied");
+  } catch (_error) {
+    showCopyState(button, "Failed");
+  }
 }
 
 function renderDetail() {
@@ -133,14 +272,17 @@ export async function openTaskDetail(threadId, turnId) {
 export function initDetailModal() {
   const dialog = document.getElementById("detailDialog");
   document.getElementById("detailClose").addEventListener("click", () => dialog.close());
+  resetCopyButtons();
   dialog.addEventListener("close", () => {
     detail = null;
     selectedCall = 0;
+    resetCopyButtons();
     document.getElementById("detailMeta").innerHTML = "";
     document.getElementById("detailCalls").innerHTML = "";
     document.getElementById("detailRequest").textContent = "";
     document.getElementById("detailResponse").textContent = "";
     document.getElementById("detailEvent").textContent = "";
+    document.getElementById("detailRequestStats").textContent = "";
   });
   document.getElementById("detailCalls").addEventListener("click", event => {
     const row = event.target.closest("[data-call-index]");
@@ -152,5 +294,9 @@ export function initDetailModal() {
     if (!row) return;
     event.preventDefault();
     selectCall(Number(row.dataset.callIndex));
+  });
+  dialog.addEventListener("click", event => {
+    const button = event.target.closest(".payload-copy-button");
+    if (button) copyPayload(button);
   });
 }

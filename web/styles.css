@@ -791,10 +791,41 @@ table[data-reorderable] th.is-drag-over {
   min-width: 0;
 }
 
+.payload-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
 .payload-grid h4 {
-  margin: 0 0 6px;
+  margin: 0;
   color: var(--muted);
   font-size: 13px;
+}
+
+.payload-copy-button {
+  height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.payload-stats {
+  min-height: 18px;
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.payload-stats.is-close {
+  color: #0b6b52;
+}
+
+.payload-stats.is-drift {
+  color: #8b2f3d;
 }
 
 .payload-grid pre {

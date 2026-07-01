@@ -107,7 +107,7 @@ class CodexParserUnitTests(unittest.TestCase):
         self.assertEqual(row["thread_name"], "Thread")
         self.assertEqual(row["response_id"], "codex-usage:thread-1:turn-1:gpt-5")
 
-    def test_usage_parser_accepts_current_rows_without_instrument_name(self):
+    def test_usage_parser_rejects_trace_only_usage_spans_without_instrument_name(self):
         body = (
             "session_loop{thread_id=thread-1}:submission_dispatch{otel.name=\"op.dispatch.user_input\"}:"
             "turn{otel.name=\"session_task.turn\" thread.id=thread-1 turn.id=turn-1 "
@@ -122,12 +122,7 @@ class CodexParserUnitTests(unittest.TestCase):
 
         row = parse_usage_row(1, 1_700_000_000, "thread-1", body, {}, {})
 
-        self.assertIsNotNone(row)
-        self.assertEqual(row["model"], "gpt-5.5")
-        self.assertEqual(row["input_tokens"], 742224)
-        self.assertEqual(row["cached_input_tokens"], 570880)
-        self.assertEqual(row["non_cached_input_tokens"], 171344)
-        self.assertEqual(row["response_id"], "codex-usage:thread-1:turn-1:gpt-5.5")
+        self.assertIsNone(row)
 
     def test_usage_parser_accepts_post_sampling_usage_estimate(self):
         body = (

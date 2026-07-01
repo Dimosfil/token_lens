@@ -14,6 +14,17 @@ generated outputs, secrets, credentials, or private production data.
 
 ## Tasks
 
+### Detail Modal Request Token Comparison 2026-06-30
+
+Goal: make the call-detail modal explain how the visible `Request` payload size
+relates to the token totals shown in the table.
+
+Planned changes:
+
+- [x] Add an approximate request-token estimate derived from the request payload.
+- [x] Compare that estimate with the row `Total` directly in the modal.
+- [x] Surface short token-count labels near the payload copy buttons.
+
 ### Source-Specific Analytics Separation 2026-06-30
 
 Goal: keep Codex and OpenCode query behavior separate so source tabs cannot
@@ -1251,3 +1262,14 @@ Planned changes:
 - [x] Deduplicate parsed token usage rows with a stable synthetic response id.
 - [x] Add regression coverage and run focused verification.
 - [x] Reimport and recheck 2026-06-24 totals.
+
+### Codex State Total Display Fix 2026-07-01
+
+Goal: stop Codex thread state token estimates from replacing real usage-log totals in task/detail summaries.
+
+Planned changes:
+
+- [x] Change Codex task/detail/summary aggregation so `total_tokens` and `total_tokens_per_call` use usage-log rows.
+- [x] Preserve `state_tokens_used` as separate reference metadata when available.
+- [x] Update UI labels to make log total primary and state estimate secondary.
+- [x] Update regression tests and run focused verification.

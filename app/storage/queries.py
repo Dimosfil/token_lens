@@ -267,11 +267,6 @@ def codex_summary(
         adjusted as (
             select aggregates.*,
                    coalesce(nullif(codex_threads.thread_name, ''), aggregates.thread_name) as display_thread_name,
-                   case
-                     when coalesce(codex_threads.tokens_used, 0) > coalesce(aggregates.log_total_tokens, 0)
-                       then codex_threads.tokens_used
-                     else aggregates.log_total_tokens
-                   end as adjusted_total_tokens,
                    codex_threads.tokens_used as state_tokens_used
             from aggregates
             left join codex_threads on codex_threads.thread_id = aggregates.thread_id
@@ -286,7 +281,7 @@ def codex_summary(
                coalesce(sum(output_tokens), 0) as output_tokens,
                coalesce(sum(cached_input_tokens), 0) as cached_input_tokens,
                coalesce(sum(reasoning_output_tokens), 0) as reasoning_output_tokens,
-               coalesce(sum(adjusted_total_tokens), 0) as total_tokens,
+               coalesce(sum(log_total_tokens), 0) as total_tokens,
                coalesce(sum(estimated_cost), 0) as estimated_cost,
                max(latest_turn) as latest_turn
         from adjusted
@@ -304,14 +299,14 @@ def codex_summary(
                null as response_id,
                statuses as status,
                models as model,
-               adjusted_total_tokens as total_tokens,
+               log_total_tokens as total_tokens,
                input_tokens,
                output_tokens,
                reasoning_output_tokens,
                state_tokens_used,
                log_total_tokens
         from adjusted
-        order by adjusted_total_tokens desc
+        order by log_total_tokens desc
         limit 10
         """,
         params,
@@ -485,11 +480,7 @@ def codex_tasks(
                aggregates.submission_ids,
                aggregates.response_ids,
                coalesce(nullif(aggregates.models, ''), codex_threads.model) as models,
-               case
-                 when coalesce(codex_threads.tokens_used, 0) > coalesce(aggregates.log_total_tokens, 0)
-                   then trim(coalesce(aggregates.statuses || ',', '') || 'codex-state')
-                 else aggregates.statuses
-               end as statuses,
+               aggregates.statuses,
                coalesce(nullif(aggregates.efforts, ''), codex_threads.reasoning_effort) as efforts,
                1 as has_usage,
                aggregates.model_calls,
@@ -499,19 +490,8 @@ def codex_tasks(
                aggregates.non_cached_input_tokens,
                aggregates.output_tokens,
                aggregates.reasoning_output_tokens,
-               case
-                 when coalesce(codex_threads.tokens_used, 0) > coalesce(aggregates.log_total_tokens, 0)
-                   then codex_threads.tokens_used
-                 else aggregates.log_total_tokens
-               end as total_tokens,
-               cast(round(
-                 (case
-                   when coalesce(codex_threads.tokens_used, 0) > coalesce(aggregates.log_total_tokens, 0)
-                     then codex_threads.tokens_used
-                   else aggregates.log_total_tokens
-                 end) * 1.0 / aggregates.model_calls,
-                 0
-               ) as integer) as total_tokens_per_call,
+               aggregates.log_total_tokens as total_tokens,
+               cast(round(aggregates.log_total_tokens * 1.0 / aggregates.model_calls, 0) as integer) as total_tokens_per_call,
                aggregates.estimated_cost,
                codex_threads.tokens_used as state_tokens_used,
                aggregates.log_total_tokens
@@ -714,13 +694,6 @@ def codex_task_buckets(
             from turns
             {where}
         ),
-        thread_totals as (
-            select thread_id,
-                   sum(total_tokens) as log_total_tokens,
-                   max(ts) as thread_latest_ts
-            from scoped
-            group by thread_id
-        ),
         thread_periods as (
             select period,
                    min(ts_iso) as started_at,
@@ -742,21 +715,6 @@ def codex_task_buckets(
                    sum(estimated_cost) as estimated_cost
             from scoped
             group by period, thread_id
-        ),
-        adjusted as (
-            select thread_periods.*,
-                   case
-                     when thread_periods.bucket_end_ts = thread_totals.thread_latest_ts
-                          and coalesce(codex_threads.tokens_used, 0) > coalesce(thread_totals.log_total_tokens, 0)
-                       then thread_periods.period_log_total_tokens
-                            + codex_threads.tokens_used
-                            - thread_totals.log_total_tokens
-                     else thread_periods.period_log_total_tokens
-                   end as adjusted_total_tokens,
-                   codex_threads.tokens_used as state_tokens_used
-            from thread_periods
-            join thread_totals on thread_totals.thread_id = thread_periods.thread_id
-            left join codex_threads on codex_threads.thread_id = thread_periods.thread_id
         )
         select period,
                min(started_at) as started_at,
@@ -774,10 +732,10 @@ def codex_task_buckets(
                sum(non_cached_input_tokens) as non_cached_input_tokens,
                sum(output_tokens) as output_tokens,
                sum(reasoning_output_tokens) as reasoning_output_tokens,
-               sum(adjusted_total_tokens) as total_tokens,
-               cast(round(sum(adjusted_total_tokens) * 1.0 / sum(model_calls), 0) as integer) as total_tokens_per_call,
+               sum(period_log_total_tokens) as total_tokens,
+               cast(round(sum(period_log_total_tokens) * 1.0 / sum(model_calls), 0) as integer) as total_tokens_per_call,
                sum(estimated_cost) as estimated_cost
-        from adjusted
+        from thread_periods
         group by period
         order by period desc
         """,
@@ -865,13 +823,6 @@ def codex_bucket_tasks(
             from turns
             {where}
         ),
-        thread_totals as (
-            select thread_id,
-                   sum(total_tokens) as log_total_tokens,
-                   max(ts) as thread_latest_ts
-            from scoped
-            group by thread_id
-        ),
         aggregates as (
             select min(ts_iso) as started_at,
                    max(ts_iso) as finished_at,
@@ -901,18 +852,8 @@ def codex_bucket_tasks(
         ),
         adjusted as (
             select aggregates.*,
-                   case
-                     when aggregates.latest_ts = thread_totals.thread_latest_ts
-                          and coalesce(codex_threads.tokens_used, 0) > coalesce(thread_totals.log_total_tokens, 0)
-                       then aggregates.period_log_total_tokens
-                            + codex_threads.tokens_used
-                            - thread_totals.log_total_tokens
-                     else aggregates.period_log_total_tokens
-                   end as adjusted_total_tokens,
-                   codex_threads.tokens_used as state_tokens_used,
-                   thread_totals.log_total_tokens as thread_log_total_tokens
+                   codex_threads.tokens_used as state_tokens_used
             from aggregates
-            join thread_totals on thread_totals.thread_id = aggregates.thread_id
             left join codex_threads on codex_threads.thread_id = aggregates.thread_id
         )
         select adjusted.started_at,
@@ -927,11 +868,7 @@ def codex_bucket_tasks(
                adjusted.submission_ids,
                adjusted.response_ids,
                coalesce(nullif(adjusted.models, ''), codex_threads.model) as models,
-               case
-                 when adjusted.adjusted_total_tokens > adjusted.period_log_total_tokens
-                   then trim(coalesce(adjusted.statuses || ',', '') || 'codex-state')
-                 else adjusted.statuses
-               end as statuses,
+               adjusted.statuses,
                coalesce(nullif(adjusted.efforts, ''), codex_threads.reasoning_effort) as efforts,
                adjusted.model_calls,
                adjusted.input_tokens,
@@ -939,8 +876,8 @@ def codex_bucket_tasks(
                adjusted.non_cached_input_tokens,
                adjusted.output_tokens,
                adjusted.reasoning_output_tokens,
-               adjusted.adjusted_total_tokens as total_tokens,
-               cast(round(adjusted.adjusted_total_tokens * 1.0 / adjusted.model_calls, 0) as integer) as total_tokens_per_call,
+               adjusted.period_log_total_tokens as total_tokens,
+               cast(round(adjusted.period_log_total_tokens * 1.0 / adjusted.model_calls, 0) as integer) as total_tokens_per_call,
                adjusted.estimated_cost,
                adjusted.state_tokens_used,
                adjusted.period_log_total_tokens as log_total_tokens
@@ -1114,12 +1051,9 @@ def task_detail(con: sqlite3.Connection, thread_id: str, turn_id: str):
         if state_row["thread_name"]:
             task["thread_name"] = state_row["thread_name"]
         state_tokens = int(state_row["tokens_used"] or 0)
-        if state_tokens > task["total_tokens"]:
-            task["log_total_tokens"] = task["total_tokens"]
+        if state_tokens:
             task["state_tokens_used"] = state_tokens
-            task["total_tokens"] = state_tokens
-            if "codex-state" not in task["statuses"]:
-                task["statuses"].append("codex-state")
+            task["log_total_tokens"] = task["total_tokens"]
         if state_row["model"]:
             task["models"] = sorted(set(task["models"]) | {state_row["model"]})
         if state_row["reasoning_effort"]:
