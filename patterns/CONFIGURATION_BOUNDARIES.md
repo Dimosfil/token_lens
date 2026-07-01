@@ -21,6 +21,12 @@ variables, service discovery, or deployment metadata.
   location for the stack.
 - Keep secrets out of committed config. Commit only redacted examples, secret
   reference names, or environment variable names.
+- Treat API keys, access tokens, service-account keys, webhook secrets, and
+  signing secrets as credential boundaries. Never place them in source code,
+  client-side bundles, public frontend environment variables, logs, traces, or
+  generated artifacts; use project-local secret stores, environment variables,
+  deployment secret managers, or secret references instead. Follow
+  `patterns/API_KEY_SECRET_SAFETY.md`.
 - Use service identifiers and config-service records for local development
   HTTP services instead of fixed ports, URLs, dashboard links, runbook examples,
   or stale task-manager records. A local dev port or URL is valid only after it

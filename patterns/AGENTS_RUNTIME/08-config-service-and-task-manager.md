@@ -59,7 +59,17 @@
   documented operation, move work through the documented lifecycle states, and
   submit completion through the manager contract. Stop with the exact blocker
   instead of falling back to generic `gi start`, local task notes, raw intake,
-  guessed endpoints, or filesystem task edits.
+  guessed endpoints, or filesystem task edits. If the manager/config-service
+  setup is missing, stop with the manager/config-service blocker and mention
+  `gi local sprint` as the explicit local alternative.
+- Treat `gi local sprint`, `gi sprint local`, `gi локальный спринт`,
+  `gi спринт локально`, and equivalent explicitly local sprint wording as
+  local-only sprint checklist work. Use sprint content from the current message,
+  current chat context, or a project-local checklist location documented by
+  local instructions. If no sprint content is available, ask one short question
+  for the sprint goal and task list. Do not resolve config-service, create raw
+  task-manager intake, edit task-manager internals, or claim that a visible
+  manager-backed Sprint/Cycle was created, started, completed, or synchronized.
 - Treat task-manager sync commands as routine execution steps, similar in
   certainty to `gi commit`, `gi push`, or FTP deploy commands after the user has
   supplied the content or selected workflow. A fast or weaker model may execute

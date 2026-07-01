@@ -14,6 +14,19 @@ generated outputs, secrets, credentials, or private production data.
 
 ## Tasks
 
+### Codex Query State Metadata Refactor 2026-07-01
+
+Goal: keep Codex thread-state metadata handling readable without changing
+usage-log totals behavior.
+
+Planned changes:
+
+- [x] Extract task-detail Codex state lookup/application from the aggregate
+      assembly path.
+- [x] Preserve the invariant that `state_tokens_used` is reference metadata and
+      never replaces usage-log `total_tokens`.
+- [x] Run focused API contract tests plus compile/check verification.
+
 ### Detail Modal Request Token Comparison 2026-06-30
 
 Goal: make the call-detail modal explain how the visible `Request` payload size

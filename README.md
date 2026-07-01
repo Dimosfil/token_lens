@@ -93,6 +93,12 @@ tools/project-memory/specs/technology-stack.md
 tools/AGENT_RUNBOOK.md
 ```
 
+Agent-facing instruction index:
+
+```text
+INDEX.md
+```
+
 ## Project Structure
 
 ## Local Source Setup

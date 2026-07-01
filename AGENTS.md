@@ -145,8 +145,8 @@ launchers for this project and must be ignored.
 - Startup, restore, project goal, bug evidence, PDF inspection, repository
   cleanup, filesystem boundaries, and first-message handling:
   `patterns/AGENTS_RUNTIME/07-startup-and-scope.md`
-- Config-service, service guide/contract lookup, task manager commands, sprint
-  commands, and web-service port registration:
+- Config-service, service guide/contract lookup, task manager commands,
+  manager-backed and local sprint commands, and web-service port registration:
   `patterns/AGENTS_RUNTIME/08-config-service-and-task-manager.md`
 - Dev/prod online service publication, FTP deploy, restart/reboot, first test,
   full test, default reset, installer packaging, SQL/vector inspection, and
@@ -457,6 +457,20 @@ Inspect logs:
   persistence, filesystem, external services, and configuration in separate
   layers with explicit contracts. Follow
   `patterns/ARCHITECTURE_AND_CODE_QUALITY.md`.
+- Treat API keys and external-service tokens as secret boundaries, not ordinary
+  config values. Keep them out of source, client bundles, public frontend env
+  vars, logs, traces, chat, generated artifacts, and project memory; prefer
+  per-person or per-service credentials, separate dev/staging/prod secrets,
+  managed production secret stores, scoped permissions, usage monitoring,
+  rotation, and network restrictions where supported. Follow
+  `patterns/API_KEY_SECRET_SAFETY.md`.
+- Treat senior agent behavior as a compact engineering execution standard, not
+  as a separate personality label. Before code changes, agents should load
+  relevant local context, preserve intended behavior, keep architecture and
+  configuration boundaries clear, work in coherent verified batches, update
+  durable project memory when behavior or architecture changes, and escalate
+  high-risk actions through the documented approval path. Follow
+  `patterns/SENIOR_AGENT_ENGINEERING_STANDARD.md`.
 - After meaningful implementation, refactor, migration, or configuration cleanup
   batches, follow `patterns/COHERENT_BATCH_VERIFICATION.md`: check
   source-of-truth consistency across touched layers, update durable
@@ -546,7 +560,17 @@ Inspect logs:
   next task through the documented operation, move work through documented
   lifecycle states, and submit completion through the manager contract. Stop
   with the exact blocker instead of falling back to generic `gi start`, local
-  task notes, raw intake, guessed endpoints, or filesystem task edits.
+  task notes, raw intake, guessed endpoints, or filesystem task edits. If the
+  manager/config-service setup is missing, stop with the manager/config-service
+  blocker and mention `gi local sprint` as the explicit local alternative.
+- Treat `gi local sprint`, `gi sprint local`, `gi локальный спринт`,
+  `gi спринт локально`, and equivalent explicitly local sprint wording as
+  local-only sprint checklist work. Use sprint content from the current message,
+  current chat context, or a project-local checklist location documented by
+  local instructions. If no sprint content is available, ask one short question
+  for the sprint goal and task list. Do not resolve config-service, create raw
+  task-manager intake, edit task-manager internals, or claim that a visible
+  manager-backed Sprint/Cycle was created, started, completed, or synchronized.
 - Treat task-manager sync commands as routine integration steps after the user
   has supplied sprint/task content or selected the workflow. Still follow
   config-service discovery, service guide, strict contract, documented payloads,
@@ -755,6 +779,12 @@ Inspect logs:
   wording as more specific than plain `gi start`: restore only the startup
   context required for task-manager work, then route through the configured
   manager workflow instead of generic startup restore.
+- Treat `gi local sprint`, `gi sprint local`, `gi локальный спринт`,
+  `gi спринт локально`, and equivalent explicitly local sprint wording as a
+  local execution workflow, not as a request to resolve or mutate task-manager
+  state. Read the routed sprint/task-manager module before acting, then use
+  only supplied chat context or project-local checklist content. If no sprint
+  content exists, ask one short question for the sprint goal and task list.
 - Treat short greetings, thanks, acknowledgements, and status-neutral messages
   as no-ops unless they include an explicit task, path, command, error, or
   project question. Do not run startup restore for those messages.

@@ -122,3 +122,189 @@ stability and extensibility around the new module boundaries.
 - [x] Introduce a source adapter interface only when the next non-Codex source
       or importer cleanup needs it, keeping the current Codex adapter behavior
       unchanged.
+
+## Current Refactor Plan 2026-07-01
+
+Status: planning only. Do not start broad implementation from this section
+until the current dirty working tree is accounted for.
+
+### Current Baseline
+
+- Backend and frontend are already modular enough for targeted batches.
+- `app/storage/queries.py` is the main refactor target at roughly 1100 lines:
+  it still owns shared SQL helpers, source-specific summaries, task lists,
+  bucket detail queries, task detail shaping, state metadata, models, data
+  state, and dashboard composition.
+- `app/api/handlers.py` still contains legacy compatibility instance methods
+  that call storage queries directly even though current request routing uses
+  `app.services.analytics_service`.
+- `app/services/codex_account_service.py` combines process lifecycle,
+  stdio protocol calls, cache policy, command resolution, process-tree cleanup,
+  and rate-limit normalization.
+- Frontend modules are mostly split, but `web/js/detail-modal.js` and
+  `web/js/table-resize.js` remain good candidates for small responsibility
+  splits after backend query boundaries are safer.
+- Existing uncommitted work touches `app/storage/queries.py` and
+  `tools/project-memory/pending-tasks.md`; preserve it and verify before
+  layering new refactor changes.
+
+### GI Engineering Rule Gate
+
+Apply these rules before and during every implementation batch. They come from
+the current GI patterns:
+
+- `patterns/SENIOR_AGENT_ENGINEERING_STANDARD.md`
+- `patterns/ARCHITECTURE_AND_CODE_QUALITY.md`
+- `patterns/PROJECT_TESTING_STRATEGY.md`
+- `patterns/COHERENT_BATCH_VERIFICATION.md`
+- `patterns/CONFIGURATION_BOUNDARIES.md`
+
+Execution standard:
+
+- [ ] Act as maintainer, not snippet generator: load only relevant current
+      context, separate source truth from old notes, keep scope deliberate, and
+      preserve user-visible behavior unless explicitly changed.
+- [ ] Keep each batch coherent: one architecture, behavior, configuration, or
+      verification goal per batch; no broad formatting churn, generated noise,
+      or opportunistic rewrites.
+- [ ] Use TDD/test-first where behavior moves or contracts change: first add or
+      identify a focused failing/guarding test for the behavior, then refactor,
+      then rerun the focused test and the wider suite justified by risk.
+- [ ] For pure mechanical moves with existing coverage, prove coverage first:
+      run the focused current tests before moving code, then rerun the same
+      tests after the move.
+- [ ] Prefer behavior and contract tests over implementation-detail tests.
+      Tests should protect API payloads, source-specific analytics semantics,
+      parser boundaries, config validation, and UI-visible workflows.
+- [ ] Apply SOLID pragmatically:
+      SRP means each module/function has one reason to change; OCP means new
+      sources or renderers can be added through adapters/facades where useful;
+      LSP/ISP mean protocols expose only what callers need; DIP means
+      infrastructure such as SQLite, filesystem, stdio process management, and
+      browser storage stays behind service/repository/client boundaries.
+- [ ] Apply DRY to shared knowledge, not shared-looking syntax. Duplicate local
+      code may remain when Codex and OpenCode semantics differ; shared helpers
+      are allowed only for truly source-neutral range, bucket, payload, or
+      formatting behavior.
+- [ ] Add abstractions only when they remove meaningful duplication, protect a
+      real boundary, simplify callers, or match an established local pattern.
+      Do not introduce speculative interfaces for a single implementation.
+- [ ] Keep clean architecture boundaries: HTTP handlers parse requests and send
+      responses; services orchestrate workflows; storage modules own SQLite
+      queries; source adapters parse/read external source metadata read-only;
+      frontend modules render and manage UI state without duplicating backend
+      domain rules.
+- [ ] Keep configuration boundaries clear. Runtime paths, commands, ports,
+      credentials, limits, provider choices, and operational policy belong in
+      config, documented resources, service discovery, adapters, or project
+      memory, not inline feature code.
+- [ ] Validate inputs at boundaries: API query parameters, JSON request bodies,
+      config paths, task modes, source IDs, bucket/range values, and external
+      process payloads should be normalized or rejected before core logic.
+- [ ] Update durable project memory when behavior, business rules, data shape,
+      integration contracts, or architecture boundaries change. A checklist or
+      chat summary is not a replacement for the relevant spec.
+
+Batch design checklist:
+
+- [ ] Name the authoritative source for any behavior, default, policy, workflow,
+      data shape, or contract changed by the batch.
+- [ ] Identify every consuming layer before editing: backend query, service,
+      API route, frontend renderer/state, desktop mini client, tests, README,
+      runbook, and project-memory specs.
+- [ ] Decide the smallest verification ladder: syntax/static check, focused
+      unit/contract test, integration/API check, runtime smoke, and manual UI
+      checklist only when the change needs it.
+- [ ] Define rollback scope: each batch should be reviewable and revertible
+      without undoing unrelated user work.
+- [ ] Stop and ask before destructive operations, data migrations, public API
+      or storage contract changes, secret handling, production/deploy actions,
+      dependency replacements, or broad filesystem scope.
+
+### Batch 0: Protect Current Work
+
+- [ ] Inspect the current diff for `app/storage/queries.py` and
+      `tools/project-memory/pending-tasks.md`.
+- [ ] Run the focused tests for the active Codex query-state metadata change.
+- [ ] Decide whether the active change should be completed before starting the
+      next refactor batch.
+
+### Batch 1: Split Storage Query Families
+
+- [ ] Before moving code, add or identify tests that lock current
+      `source-analytics-query-contract.md` behavior for Codex/OpenCode summary,
+      task rows, bucket detail, raw-only rows, state-token metadata, and invalid
+      Codex usage filtering.
+- [ ] Keep `app/storage/queries.py` as the public compatibility facade.
+- [ ] Move source-neutral SQL/range/bucket fill helpers into a dedicated query
+      support module, leaving `query_params.py` for normalization constants and
+      parsing rules.
+- [ ] Move summary, daily, model, and data-state query functions into a metrics
+      query module.
+- [ ] Move Codex/OpenCode task, bucket, and detail query functions into
+      source-specific task query modules.
+- [ ] Preserve the source analytics contract: Codex and OpenCode task identity,
+      raw fallback, invalid-usage filtering, and state-token metadata must stay
+      source-specific.
+- [ ] After each move, run the focused API/storage tests before moving the next
+      function family.
+
+### Batch 2: Remove Legacy API Handler Methods
+
+- [ ] Confirm tests and runtime routes use `analytics_service`, not handler
+      instance methods.
+- [ ] Remove unused `dashboard`, `summary`, `daily`, `turns`, `tasks`,
+      `models`, and `data_state` methods from `AnalyticsHandler`.
+- [ ] Keep request parsing helpers stable unless a focused test covers the
+      replacement.
+
+### Batch 3: Split Codex Account Limit Service
+
+- [ ] Before extraction, identify tests covering command resolution,
+      WindowsApps alias rejection, persistent client reuse, timeout/restart,
+      process-tree cleanup, cache behavior, and limit normalization.
+- [ ] Extract app-server stdio client/process lifecycle from
+      `codex_account_service.py`.
+- [ ] Extract rate-limit normalization into a pure helper module with existing
+      tests preserved.
+- [ ] Keep the public `read_usage_limits()` behavior and cache settings
+      unchanged.
+- [ ] Keep process, protocol, and normalization concerns separate: client module
+      owns stdio/process lifecycle, service module owns public cache/orchestration,
+      pure normalizer owns payload shaping.
+
+### Batch 4: Frontend Responsibility Splits
+
+- [ ] Before splitting, run `node --check` on the current modules and identify
+      existing UI/API contract tests or add minimal DOM-free helper tests where
+      helpers become pure enough to test.
+- [ ] Split detail modal payload rendering, copy-button/request-size labels,
+      and token comparison helpers while preserving the current modal API.
+- [ ] Split table resize storage, order, width, drag, and scroll-sync behavior
+      only if each step can keep `initResizableTables()` as the stable public
+      entry point.
+- [ ] Keep frontend state ownership explicit: `dashboard-state.js` owns query
+      state; render modules render data; modal modules own modal interactions;
+      table utilities own table behavior only.
+
+### Verification Per Batch
+
+- [ ] Reread edited files and compare them against the relevant GI pattern and
+      project-memory contract before running broad checks.
+- [ ] `python -m compileall app`
+- [ ] `python -m unittest discover -s tests`
+- [ ] `node --check` for changed web modules when JavaScript changes.
+- [ ] `git diff --check`
+- [ ] Restart with `.\start.ps1 -Restart` and smoke-check affected API/UI paths
+      only when backend/frontend runtime contracts change.
+- [ ] Report checked/not checked/risk explicitly, including any line-ending
+      warnings, skipped runtime restart, or deferred RAG rebuild.
+
+### Boundaries
+
+- Preserve user-visible behavior and current API response shapes unless the
+  user explicitly approves a contract change.
+- Do not inspect private Codex/OpenCode source contents for refactor
+  verification.
+- Do not run data migrations, delete local databases, or clean untracked
+  artifacts as part of this plan.

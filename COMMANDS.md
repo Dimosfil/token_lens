@@ -51,6 +51,7 @@ files, or executing any listed command.
 | `gi add sprint`, `gi create sprint` | Create a visible Sprint/Cycle through the configured task manager. |
 | `gi plan`, `gi план`, `gi post plan` | Send the current plan to the configured task manager. |
 | `gi start sprint`, `gi старт спринт` | Take the active Sprint/Cycle into work through the configured task manager. |
+| `gi local sprint`, `gi sprint local`, `gi локальный спринт`, `gi спринт локально` | Run a local sprint checklist without task manager or config-service sync. |
 | `gi test plan`, `gi тест-план` | Build a verification plan from current project contracts. |
 | `gi test task`, `ги тест таск` | Set the active release/full-system verification task for the current project. |
 | `gi test`, `ги тест`, `gi full test`, `gi release test`, `gi system test` | Run the documented live full-system verification flow against the active test task; dry-runs and mock-only checks are diagnostics only. |

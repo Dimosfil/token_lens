@@ -1039,7 +1039,14 @@ def task_detail(con: sqlite3.Connection, thread_id: str, turn_id: str):
         "total_tokens": sum(row["total_tokens"] for row in rows),
         "estimated_cost": sum(row["estimated_cost"] for row in rows),
     }
-    state_row = con.execute(
+    _apply_codex_thread_state(task, _codex_thread_state(con, thread_id), rows)
+    task["raw_event_captured"] = task["raw_event_calls"] == task["model_calls"]
+    task["total_tokens_per_call"] = round(task["total_tokens"] / task["model_calls"]) if task["model_calls"] else 0
+    return {"task": task, "calls": rows}
+
+
+def _codex_thread_state(con: sqlite3.Connection, thread_id: str):
+    return con.execute(
         """
         select thread_name, tokens_used, model, reasoning_effort
         from codex_threads
@@ -1047,23 +1054,28 @@ def task_detail(con: sqlite3.Connection, thread_id: str, turn_id: str):
         """,
         [thread_id],
     ).fetchone()
-    if state_row:
-        if state_row["thread_name"]:
-            task["thread_name"] = state_row["thread_name"]
-        state_tokens = int(state_row["tokens_used"] or 0)
-        if state_tokens:
-            task["state_tokens_used"] = state_tokens
-            task["log_total_tokens"] = task["total_tokens"]
-        if state_row["model"]:
-            task["models"] = sorted(set(task["models"]) | {state_row["model"]})
-        if state_row["reasoning_effort"]:
-            task["efforts"] = sorted(
-                set(row["reasoning_effort"] for row in rows if row["reasoning_effort"])
-                | {state_row["reasoning_effort"]}
-            )
-    task["raw_event_captured"] = task["raw_event_calls"] == task["model_calls"]
-    task["total_tokens_per_call"] = round(task["total_tokens"] / task["model_calls"]) if task["model_calls"] else 0
-    return {"task": task, "calls": rows}
+
+
+def _apply_codex_thread_state(task: dict, state_row, rows: list[dict]) -> None:
+    if not state_row:
+        return
+
+    if state_row["thread_name"]:
+        task["thread_name"] = state_row["thread_name"]
+
+    state_tokens = int(state_row["tokens_used"] or 0)
+    if state_tokens:
+        task["state_tokens_used"] = state_tokens
+        task["log_total_tokens"] = task["total_tokens"]
+
+    if state_row["model"]:
+        task["models"] = sorted(set(task["models"]) | {state_row["model"]})
+
+    if state_row["reasoning_effort"]:
+        task["efforts"] = sorted(
+            set(row["reasoning_effort"] for row in rows if row["reasoning_effort"])
+            | {state_row["reasoning_effort"]}
+        )
 
 
 def _request_payload_from_raw_logs(con: sqlite3.Connection, row: dict):
