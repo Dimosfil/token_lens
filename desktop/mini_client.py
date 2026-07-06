@@ -578,6 +578,12 @@ def usage_limits_text(snapshot: dict | None) -> str:
     return "\n".join(lines) if lines else "Limits: unavailable"
 
 
+def signal_row_value(row: dict) -> int | None:
+    if row.get("has_usage", 1) in (0, False):
+        return None
+    return parse_int(row.get("total_tokens_per_call"))
+
+
 def import_status_error_text(status: dict | None) -> str:
     if not isinstance(status, dict):
         return ""
@@ -666,8 +672,10 @@ class MiniClientApp:
         self.settings_after_id = None
         self.last_server_start_attempt = 0.0
         self.seen_signal_rows = set()
+        self.signal_row_values = {}
         self.signal_seen_initialized = False
         self.last_signal_key = None
+        self.last_signal_threshold = None
         self.default_limit = clamp(limit, 1, 50)
         self.default_signal_threshold = max(0, signal_threshold)
         self.default_signal_name = signal_name if signal_name in SIGNAL_CHOICES else "Exclamation"
@@ -999,8 +1007,10 @@ class MiniClientApp:
         self.active_source = source
         self.data_version = None
         self.seen_signal_rows = set()
+        self.signal_row_values = {}
         self.signal_seen_initialized = False
         self.last_signal_key = None
+        self.last_signal_threshold = None
         self.schedule_settings_save()
         self.refresh(import_first=False)
 
@@ -1376,34 +1386,56 @@ class MiniClientApp:
         )
 
     def maybe_signal(self, rows: list[dict], version, threshold: int):
+        visible_rows = rows[: self.current_limit()]
+        visible_values = {
+            self.signal_row_key(row): signal_row_value(row)
+            for row in visible_rows
+        }
+
         if threshold <= 0:
-            self.seen_signal_rows.update(
-                self.signal_row_key(row)
-                for row in rows[: self.current_limit()]
-            )
+            self.seen_signal_rows.update(visible_values.keys())
+            self.signal_row_values = visible_values
             self.signal_seen_initialized = True
+            self.last_signal_threshold = threshold
             return
 
-        visible_rows = rows[: self.current_limit()]
-        visible_keys = {self.signal_row_key(row) for row in visible_rows}
         new_over_limit_keys = []
         for row in visible_rows:
             row_key = self.signal_row_key(row)
-            if row_key in self.seen_signal_rows:
-                continue
-            if row.get("has_usage", 1) in (0, False):
-                continue
-            if parse_int(row.get("total_tokens_per_call")) > threshold:
+            value = visible_values.get(row_key)
+            previous_value = self.signal_row_values.get(row_key)
+            was_seen = row_key in self.seen_signal_rows
+            crossed_current_threshold = (
+                value is not None
+                and value > threshold
+                and (
+                    not was_seen
+                    or previous_value is None
+                    or previous_value <= threshold
+                )
+            )
+            crossed_previous_threshold = (
+                value is not None
+                and self.last_signal_threshold is not None
+                and threshold < self.last_signal_threshold
+                and value > threshold
+                and (previous_value is None or previous_value <= self.last_signal_threshold)
+            )
+            if crossed_current_threshold or crossed_previous_threshold:
                 new_over_limit_keys.append(row_key)
-        self.seen_signal_rows.update(visible_keys)
+        self.seen_signal_rows.update(visible_values.keys())
+        self.signal_row_values = visible_values
 
         if not self.signal_seen_initialized:
             self.signal_seen_initialized = True
+            self.last_signal_threshold = threshold
             return
         if not self.active_vars()["signal_enabled"].get() or not new_over_limit_keys:
+            self.last_signal_threshold = threshold
             return
 
         self.signal_seen_initialized = True
+        self.last_signal_threshold = threshold
         signal_key = (
             version,
             threshold,

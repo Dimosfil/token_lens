@@ -132,6 +132,41 @@ class MiniClientHelperTests(unittest.TestCase):
         self.assertEqual(mini_client.limit_bar_fill_color(25), "#c87900")
         self.assertEqual(mini_client.limit_bar_fill_color(5), "#b3261e")
 
+    def test_signal_fires_when_seen_row_crosses_threshold(self):
+        class Var:
+            def __init__(self, value):
+                self.value = value
+
+            def get(self):
+                return self.value
+
+        app = mini_client.MiniClientApp.__new__(mini_client.MiniClientApp)
+        app.current_limit = lambda: 4
+        app.active_vars = lambda: {
+            "signal_enabled": Var(True),
+            "signal_name": Var("Exclamation"),
+        }
+        app.seen_signal_rows = set()
+        app.signal_row_values = {}
+        app.signal_seen_initialized = False
+        app.last_signal_key = None
+        app.last_signal_threshold = None
+        app.play_signal = mock.Mock()
+        row = {
+            "thread_id": "thread-1",
+            "turn_id": "turn-1",
+            "has_usage": 1,
+            "total_tokens_per_call": 90000,
+        }
+
+        app.maybe_signal([row], version=1, threshold=100000)
+        app.play_signal.assert_not_called()
+
+        row["total_tokens_per_call"] = 120000
+        app.maybe_signal([row], version=2, threshold=100000)
+
+        app.play_signal.assert_called_once()
+
     def test_mini_settings_round_trip_uses_configured_path(self):
         with tempfile.TemporaryDirectory() as tmp:
             settings_path = Path(tmp) / "mini_settings.json"
