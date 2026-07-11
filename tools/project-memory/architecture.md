@@ -69,6 +69,24 @@ recoverable local-runtime failure. It starts `run_server.py`, waits for
 localhost-style URLs and rate-limited so remote or misconfigured API endpoints
 are not masked by spawning local processes repeatedly.
 
+Desktop HTTP polling and refresh work runs in daemon worker threads. Before a
+worker starts, the Tkinter main thread snapshots the selected source, row limit,
+and range into a plain request payload. Workers return render/status callbacks
+through a queue drained by the Tkinter event loop; they must not read widget
+variables, select tabs, schedule `root.after`, or otherwise call Tkinter APIs.
+Routine desktop polling keeps `/api/state` as the cheap fast path. If the state
+version has not changed, Codex account limits are refreshed once per configured
+Mini polling cycle, while other source context keeps the longer throttle
+interval. Manual refreshes and changed-version polls still refresh rows and
+source context immediately. Limit reads remain in the worker thread, so fresh
+account balances do not block Tkinter or force table reloads.
+
+`auto_import_seconds` controls server-owned imports: positive values wait that
+interval before the first background import and then repeat at the same cadence,
+`0` runs one delayed startup import only, and negative values disable automatic
+imports entirely. Manual refresh/import endpoints remain available in every
+mode.
+
 The desktop mini client stores user UI settings in
 `data/mini_settings.json` and keeps a matching
 `data/mini_settings.json.bak`. On startup it loads the primary settings file,

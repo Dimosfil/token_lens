@@ -22,14 +22,31 @@ def _run_initial_import_once() -> None:
         LOGGER.exception("initial import failed")
 
 
-def _delayed_auto_import_loop(interval: int) -> None:
-    time.sleep(2)
-    auto_import_loop(interval)
+def _delayed_auto_import_loop(
+    interval: int,
+    sleep=time.sleep,
+    loop=auto_import_loop,
+) -> None:
+    sleep(interval)
+    loop(interval)
 
 
 def _delayed_initial_import_once() -> None:
     time.sleep(2)
     _run_initial_import_once()
+
+
+def start_import_thread(interval: int) -> threading.Thread | None:
+    if interval > 0:
+        thread = threading.Thread(target=_delayed_auto_import_loop, args=(interval,), daemon=True)
+        thread.start()
+        return thread
+    if interval == 0:
+        thread = threading.Thread(target=_delayed_initial_import_once, daemon=True)
+        thread.start()
+        return thread
+    LOGGER.info("automatic imports disabled auto_import_seconds=%s", interval)
+    return None
 
 
 def main():
@@ -48,12 +65,7 @@ def main():
         log_path,
     )
 
-    if interval > 0:
-        thread = threading.Thread(target=_delayed_auto_import_loop, args=(interval,), daemon=True)
-        thread.start()
-    else:
-        thread = threading.Thread(target=_delayed_initial_import_once, daemon=True)
-        thread.start()
+    start_import_thread(interval)
 
     print(f"Token Lens: http://{config['host']}:{config['port']}", flush=True)
     try:

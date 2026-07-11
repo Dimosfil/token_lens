@@ -146,6 +146,26 @@ class CodexParserUnitTests(unittest.TestCase):
         self.assertEqual(row["response_id"], "codex-estimate:thread-1:turn-1:gpt-5.5")
         self.assertIn('"estimated_token_count":50203', row["event_json"])
 
+    def test_usage_parser_accepts_prefixed_post_sampling_usage_estimate(self):
+        body = (
+            "2026-07-11T17:12:28Z INFO "
+            "session_loop{thread_id=trace-thread}:submission_dispatch{otel.name=\"op.dispatch.user_input\" "
+            "submission.id=\"sub-1\"}:turn{otel.name=\"session_task.turn\" thread.id=trace-thread "
+            "turn.id=turn-1 model=gpt-5.6-terra codex.turn.reasoning_effort=medium}:"
+            "session_task.run:run_turn: post sampling token usage turn_id=turn-1 "
+            "total_usage_tokens=45007 auto_compact_scope_tokens=45007 "
+            "estimated_token_count=Some(50203) auto_compact_scope_limit=Some(244800)"
+        )
+
+        row = parse_usage_row(1, 1_700_000_000, "raw-thread", body, {"raw-thread": "Thread"}, {})
+
+        self.assertIsNotNone(row)
+        self.assertEqual(row["status"], "estimated")
+        self.assertEqual(row["thread_id"], "raw-thread")
+        self.assertEqual(row["model"], "gpt-5.6-terra")
+        self.assertEqual(row["total_tokens"], 45007)
+        self.assertEqual(row["response_id"], "codex-estimate:raw-thread:turn-1:gpt-5.6-terra")
+
     def test_usage_parser_rejects_token_usage_text_inside_response_output(self):
         body = (
             "session_loop{thread_id=thread-real}:submission_dispatch{otel.name=\"op.dispatch.user_input\"}:"

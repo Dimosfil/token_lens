@@ -11,6 +11,7 @@ from unittest import mock
 
 from app.api.handlers import first, parse_limit, parse_ts, read_json_body
 from app.api.responses import send_json
+from app.api import server as api_server
 from app.core import config as core_config
 from app.core.codex_discovery import discover_codex_command, discover_codex_paths, discover_opencode_paths
 from app.core.logging_config import configure_logging
@@ -669,6 +670,51 @@ class BackgroundImportTests(unittest.TestCase):
                 data_refresh.auto_import_loop(30, sleep=stop_after_first)
 
         self.assertEqual(calls, ["run"])
+
+    def test_server_import_thread_modes(self):
+        created = []
+
+        class ThreadStub:
+            def __init__(self, target, args=(), daemon=False):
+                self.target = target
+                self.args = args
+                self.daemon = daemon
+                self.started = False
+                created.append(self)
+
+            def start(self):
+                self.started = True
+
+        with mock.patch.object(api_server.threading, "Thread", ThreadStub):
+            loop_thread = api_server.start_import_thread(300)
+            once_thread = api_server.start_import_thread(0)
+            disabled_thread = api_server.start_import_thread(-1)
+
+        self.assertIs(loop_thread, created[0])
+        self.assertIs(loop_thread.target, api_server._delayed_auto_import_loop)
+        self.assertEqual(loop_thread.args, (300,))
+        self.assertTrue(loop_thread.daemon)
+        self.assertTrue(loop_thread.started)
+        self.assertIs(once_thread, created[1])
+        self.assertIs(once_thread.target, api_server._delayed_initial_import_once)
+        self.assertEqual(once_thread.args, ())
+        self.assertTrue(once_thread.daemon)
+        self.assertTrue(once_thread.started)
+        self.assertIsNone(disabled_thread)
+        self.assertEqual(len(created), 2)
+
+    def test_delayed_auto_import_loop_waits_interval_before_first_import(self):
+        calls = []
+
+        def sleep(interval):
+            calls.append(("sleep", interval))
+
+        def loop(interval):
+            calls.append(("loop", interval))
+
+        api_server._delayed_auto_import_loop(120, sleep=sleep, loop=loop)
+
+        self.assertEqual(calls, [("sleep", 120), ("loop", 120)])
 
     def test_background_module_keeps_compatibility_exports(self):
         self.assertIs(background.run_import, data_refresh.run_import)

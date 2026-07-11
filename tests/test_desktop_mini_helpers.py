@@ -91,6 +91,8 @@ class MiniClientHelperTests(unittest.TestCase):
     def test_usage_limit_helpers_group_and_format_windows(self):
         snapshot = {
             "ok": True,
+            "stale": True,
+            "fetched_at": "2026-07-01T14:45:12+00:00",
             "windows": [
                 {"limit_id": "spark", "display_name": "GPT-5.3-Codex-Spark", "label": "weekly", "remaining_percent": 100},
                 {"limit_id": "codex", "display_name": "Codex", "label": "5h", "remaining_percent": 25},
@@ -105,6 +107,11 @@ class MiniClientHelperTests(unittest.TestCase):
         self.assertEqual(mini_client.limit_remaining_percent({"remaining_percent": "150"}), 100)
         self.assertIn("Codex 5h: 25% left", text)
         self.assertIn("Spark week: 100% left", text)
+        self.assertTrue(mini_client.usage_limits_updated_text(snapshot).startswith("last updated "))
+        stale = mini_client.stale_usage_limits_snapshot(snapshot, "timed out")
+        self.assertTrue(stale["ok"])
+        self.assertTrue(stale["stale"])
+        self.assertEqual(stale["stale_error"], "timed out")
         self.assertEqual(mini_client.usage_limits_text({"ok": False, "error": "offline"}), "Limits: offline")
 
     def test_import_status_error_text_is_compact(self):
@@ -275,6 +282,127 @@ class MiniClientHelperTests(unittest.TestCase):
 
         self.assertFalse(recovered)
         start.assert_not_called()
+
+    def test_worker_ui_callbacks_wait_for_main_thread_queue_drain(self):
+        app = mini_client.MiniClientApp.__new__(mini_client.MiniClientApp)
+        app.closed = False
+        app.ui_after_id = None
+        app.ui_queue = mini_client.queue.Queue()
+        app.root = mock.Mock()
+        calls = []
+
+        app._ui(lambda: calls.append("rendered"))
+
+        self.assertEqual(calls, [])
+        app._drain_ui_queue()
+        self.assertEqual(calls, ["rendered"])
+        app.root.after.assert_called_once_with(mini_client.UI_QUEUE_POLL_MS, app._drain_ui_queue)
+
+    def test_request_snapshot_reads_widget_state_before_worker_starts(self):
+        app = mini_client.MiniClientApp.__new__(mini_client.MiniClientApp)
+        app.range_key = "24h"
+        app.current_source = mock.Mock(return_value="codex")
+        app.current_limit = mock.Mock(return_value=20)
+
+        snapshot = app.request_snapshot()
+
+        self.assertEqual(snapshot, {
+            "source": "codex",
+            "query": {"limit": 20, "range": "24h", "source": "codex"},
+            "source_query": {"range": "24h", "source": "codex"},
+        })
+        app.current_source.assert_called_once_with()
+        app.current_limit.assert_called_once_with()
+
+    def test_unchanged_poll_skips_source_context_until_throttle_expires(self):
+        app = mini_client.MiniClientApp.__new__(mini_client.MiniClientApp)
+        app.data_version = 7
+        app.refresh_ms = 5000
+        app.api = mock.Mock()
+        app.api.get_json.return_value = {"version": 7, "import_status": {"status": "succeeded"}}
+        app.load_source_context = mock.Mock()
+        app.load_rows = mock.Mock()
+        app.set_checked_status = mock.Mock()
+        app.render_source_context = mock.Mock()
+        app.render_rows = mock.Mock()
+        app._ui = lambda callback: callback()
+        app.last_source_context_refresh = {"codex": 100.0}
+        request = {"source": "codex", "query": {"limit": 20, "source": "codex"}}
+
+        with mock.patch.object(mini_client.time, "monotonic", return_value=104.0):
+            app.poll_once(request)
+
+        app.api.get_json.assert_called_once_with("/api/state")
+        app.load_source_context.assert_not_called()
+        app.load_rows.assert_not_called()
+        app.render_source_context.assert_not_called()
+        app.render_rows.assert_not_called()
+        app.set_checked_status.assert_called_once()
+
+    def test_unchanged_poll_refreshes_source_context_after_throttle(self):
+        app = mini_client.MiniClientApp.__new__(mini_client.MiniClientApp)
+        app.data_version = 7
+        app.refresh_ms = 5000
+        app.api = mock.Mock()
+        app.api.get_json.return_value = {"version": 7, "import_status": {"status": "succeeded"}}
+        app.load_source_context = mock.Mock(return_value={"source": "codex", "limits": {"ok": True}})
+        app.load_rows = mock.Mock()
+        app.set_checked_status = mock.Mock()
+        app.render_source_context = mock.Mock()
+        app.render_rows = mock.Mock()
+        app._ui = lambda callback: callback()
+        app.last_source_context_refresh = {"codex": 100.0}
+        request = {"source": "codex", "query": {"limit": 20, "source": "codex"}}
+
+        with mock.patch.object(mini_client.time, "monotonic", return_value=105.0):
+            app.poll_once(request)
+
+        app.load_source_context.assert_called_once_with(request)
+        app.load_rows.assert_not_called()
+        app.render_source_context.assert_called_once_with({"source": "codex", "limits": {"ok": True}})
+        app.set_checked_status.assert_called_once()
+        self.assertEqual(app.last_source_context_refresh["codex"], 105.0)
+
+    def test_changed_poll_refreshes_rows_and_source_context_immediately(self):
+        app = mini_client.MiniClientApp.__new__(mini_client.MiniClientApp)
+        app.data_version = 6
+        app.refresh_ms = 5000
+        app.api = mock.Mock()
+        app.api.get_json.return_value = {"version": 7, "import_status": {"status": "succeeded"}}
+        app.load_source_context = mock.Mock(return_value={"source": "codex", "limits": {"ok": True}})
+        app.load_rows = mock.Mock(return_value=[{"thread_id": "thread-1"}])
+        app.render_rows = mock.Mock()
+        app._ui = lambda callback: callback()
+        app.last_source_context_refresh = {"codex": 199.0}
+        request = {"source": "codex", "query": {"limit": 20, "source": "codex"}}
+
+        with mock.patch.object(mini_client.time, "monotonic", return_value=200.0):
+            app.poll_once(request)
+
+        app.load_source_context.assert_called_once_with(request)
+        app.load_rows.assert_called_once_with(request)
+        app.render_rows.assert_called_once_with(
+            [{"thread_id": "thread-1"}],
+            7,
+            {"source": "codex", "limits": {"ok": True}},
+            {"status": "succeeded"},
+            None,
+        )
+
+    def test_stale_usage_limit_fallback_uses_request_source(self):
+        snapshot = {
+            "ok": True,
+            "windows": [{"display_name": "Codex", "label": "5h", "remaining_percent": 93}],
+        }
+        app = mini_client.MiniClientApp.__new__(mini_client.MiniClientApp)
+        app.active_source = "opencode"
+        app.last_usage_limits = {"codex": snapshot}
+
+        stale = app.cached_usage_limits_or_error("timed out", source="codex")
+
+        self.assertTrue(stale["ok"])
+        self.assertTrue(stale["stale"])
+        self.assertEqual(stale["stale_error"], "timed out")
 
     def test_disabled_settings_save_does_not_overwrite(self):
         app = mini_client.MiniClientApp.__new__(mini_client.MiniClientApp)

@@ -18,7 +18,7 @@ RESPONSE_CREATE_REQUEST_MARKERS = (
 )
 USAGE_INSTRUMENT = 'instrument_name="codex.turn.token_usage"'
 POST_SAMPLING_USAGE_RE = re.compile(
-    r"^(?P<trace>(?:[A-Za-z0-9_.-]+\{[^{}]*\}:)*turn\{[^{}]*\})"
+    r"(?:^|\s)(?P<trace>(?:[A-Za-z0-9_.-]+\{[^{}]*\}:)*turn\{[^{}]*\})"
     r":session_task\.run:run_turn: post sampling token usage (?P<fields>[^\r\n]*)"
 )
 POST_SAMPLING_INT_RE = re.compile(
@@ -138,7 +138,7 @@ def parse_post_sampling_usage_row(
     thread_names: dict[str, str],
     prices: dict,
 ) -> dict | None:
-    match = POST_SAMPLING_USAGE_RE.match(body.lstrip())
+    match = POST_SAMPLING_USAGE_RE.search(body)
     if not match:
         return None
 
@@ -149,7 +149,7 @@ def parse_post_sampling_usage_row(
     if total_tokens <= 0:
         return None
 
-    resolved_thread_id = first_match(THREAD_RE, trace) or thread_id
+    resolved_thread_id = thread_id or first_match(THREAD_RE, trace)
     turn_id = first_match(TURN_RE, trace)
     model = first_match(MODEL_RE, trace)
     if not resolved_thread_id or not turn_id or not model:

@@ -6,6 +6,7 @@ from datetime import datetime
 import json
 import logging
 from pathlib import Path
+import queue
 import subprocess
 import sys
 import threading
@@ -36,6 +37,8 @@ SERVER_ERR_LOG_PATH = ROOT / "data" / "server.err.log"
 DEFAULT_BASE_URL = "http://127.0.0.1:8765"
 DEFAULT_LIMIT = 4
 DEFAULT_REFRESH_MS = 5000
+UI_QUEUE_POLL_MS = 50
+SOURCE_CONTEXT_REFRESH_SECONDS = 60
 DEFAULT_SIGNAL_THRESHOLD = 100000
 DEFAULT_SOURCE = "codex"
 SOURCE_CHOICES = (
@@ -475,6 +478,18 @@ def format_limit_reset(value) -> str:
     return local_reset.strftime("%d.%m %H:%M")
 
 
+def usage_limits_updated_text(snapshot: dict | None) -> str:
+    if not isinstance(snapshot, dict):
+        return ""
+    updated_at = snapshot.get("last_success_at") or snapshot.get("fetched_at")
+    updated = format_limit_reset(updated_at)
+    if not updated:
+        return ""
+    if snapshot.get("stale"):
+        return f"last updated {updated}"
+    return f"updated {updated}"
+
+
 def limit_period(row: dict) -> str:
     label = str(row.get("label") or row.get("key") or "").strip()
     if label == "weekly":
@@ -578,6 +593,16 @@ def usage_limits_text(snapshot: dict | None) -> str:
     return "\n".join(lines) if lines else "Limits: unavailable"
 
 
+def stale_usage_limits_snapshot(snapshot: dict, error: str) -> dict:
+    stale = dict(snapshot)
+    stale["ok"] = True
+    stale["cached"] = True
+    stale["stale"] = True
+    stale["stale_error"] = error
+    stale["last_success_at"] = stale.get("last_success_at") or stale.get("fetched_at")
+    return stale
+
+
 def signal_row_value(row: dict) -> int | None:
     if row.get("has_usage", 1) in (0, False):
         return None
@@ -669,6 +694,8 @@ class MiniClientApp:
         self.worker_running = False
         self.closed = False
         self.poll_after_id = None
+        self.ui_after_id = None
+        self.ui_queue: queue.Queue = queue.Queue()
         self.settings_after_id = None
         self.last_server_start_attempt = 0.0
         self.seen_signal_rows = set()
@@ -688,11 +715,14 @@ class MiniClientApp:
         self.tables: dict[str, ttk.Treeview] = {}
         self.limits_frames: dict[str, ttk.Frame] = {}
         self.limit_bar_canvases: dict[str, list[tuple[tk.Canvas, int | None]]] = {}
+        self.last_usage_limits: dict[str, dict] = {}
+        self.last_source_context_refresh: dict[str, float] = {}
         self.status_var = tk.StringVar(value=backend_status_text("busy", "Loading data"))
 
         self._build_ui()
         self._bind_settings_persistence()
         self.root.protocol("WM_DELETE_WINDOW", self.close)
+        self._schedule_ui_queue()
         self.refresh(import_first=False)
 
     def _make_agent_vars(self, source: str) -> dict:
@@ -890,6 +920,9 @@ class MiniClientApp:
         if self.poll_after_id is not None:
             self.root.after_cancel(self.poll_after_id)
             self.poll_after_id = None
+        if self.ui_after_id is not None:
+            self.root.after_cancel(self.ui_after_id)
+            self.ui_after_id = None
         if self.settings_after_id is not None:
             self.root.after_cancel(self.settings_after_id)
             self.settings_after_id = None
@@ -907,7 +940,8 @@ class MiniClientApp:
         if self.worker_running:
             self.schedule_poll()
             return
-        self._run_worker(self._poll_worker)
+        request = self.request_snapshot()
+        self._run_worker(lambda: self._poll_worker(request))
 
     def refresh(self, import_first: bool = False):
         if self.worker_running:
@@ -916,7 +950,8 @@ class MiniClientApp:
             self.root.after_cancel(self.poll_after_id)
             self.poll_after_id = None
         self.status_var.set(backend_status_text("busy", "Importing data" if import_first else "Loading data"))
-        self._run_worker(lambda: self._refresh_worker(import_first))
+        request = self.request_snapshot()
+        self._run_worker(lambda: self._refresh_worker(import_first, request))
 
     def schedule_settings_save(self):
         if self.closed or not self.settings_save_enabled or not self.settings_save_ready:
@@ -1026,49 +1061,57 @@ class MiniClientApp:
         thread = threading.Thread(target=target, daemon=True)
         thread.start()
 
-    def _poll_worker(self):
+    def _poll_worker(self, request: dict):
         try:
-            self.run_with_api_recovery(self.poll_once)
+            self.run_with_api_recovery(lambda: self.poll_once(request))
         except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError) as error:
             self._ui(lambda: self.set_error(error))
         finally:
             self._ui(self._finish_worker)
 
-    def _refresh_worker(self, import_first: bool):
+    def _refresh_worker(self, import_first: bool, request: dict):
         try:
-            self.run_with_api_recovery(lambda: self.refresh_once(import_first))
+            self.run_with_api_recovery(lambda: self.refresh_once(import_first, request))
         except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError) as error:
             self._ui(lambda: self.set_error(error))
         finally:
             self._ui(self._finish_worker)
 
-    def poll_once(self):
+    def poll_once(self, request: dict):
         state = self.api.get_json("/api/state")
         import_status = state.get("import_status") if isinstance(state, dict) else None
         source_warnings = state.get("source_warnings") if isinstance(state, dict) else None
-        source_context = self.load_source_context()
-        if self.data_version is None or state.get("version") != self.data_version:
-            rows = self.load_rows()
+        version_changed = self.data_version is None or state.get("version") != self.data_version
+        source_context = None
+        if version_changed or self.should_refresh_source_context(request["source"]):
+            source_context = self.load_source_context(request)
+            self.mark_source_context_refreshed(request["source"])
+        if version_changed:
+            rows = self.load_rows(request)
             self._ui(lambda: self.render_rows(rows, state.get("version"), source_context, import_status, source_warnings))
-        else:
+        elif source_context is not None:
             self._ui(lambda: self.render_source_context(source_context))
             self._ui(lambda: self.set_checked_status(import_status, source_warnings))
+        else:
+            self._ui(lambda: self.set_checked_status(import_status, source_warnings))
 
-    def refresh_once(self, import_first: bool):
+    def refresh_once(self, import_first: bool, request: dict):
         if import_first:
-            dashboard = self.api.post_json("/api/refresh", self.query())
+            dashboard = self.api.post_json("/api/refresh", request["query"])
             rows = dashboard.get("tasks", [])
             version = dashboard.get("state", {}).get("version")
             import_status = dashboard.get("import_status")
             source_warnings = dashboard.get("source_warnings")
-            source_context = self.source_context_from_dashboard(dashboard)
+            source_context = self.source_context_from_dashboard(dashboard, request["source"])
+            self.mark_source_context_refreshed(request["source"])
         else:
-            rows = self.load_rows()
+            rows = self.load_rows(request)
             state = self.api.get_json("/api/state")
             version = state.get("version")
             import_status = state.get("import_status")
             source_warnings = state.get("source_warnings")
-            source_context = self.load_source_context()
+            source_context = self.load_source_context(request)
+            self.mark_source_context_refreshed(request["source"])
         self._ui(lambda: self.render_rows(rows, version, source_context, import_status, source_warnings))
 
     def run_with_api_recovery(self, operation):
@@ -1107,7 +1150,29 @@ class MiniClientApp:
 
     def _ui(self, callback):
         if not self.closed:
-            self.root.after(0, callback)
+            self.ui_queue.put(callback)
+
+    def _schedule_ui_queue(self):
+        if not self.closed:
+            self.ui_after_id = self.root.after(UI_QUEUE_POLL_MS, self._drain_ui_queue)
+
+    def _drain_ui_queue(self):
+        self.ui_after_id = None
+        while not self.closed:
+            try:
+                callback = self.ui_queue.get_nowait()
+            except queue.Empty:
+                break
+            callback()
+        self._schedule_ui_queue()
+
+    def request_snapshot(self) -> dict:
+        source = self.current_source()
+        return {
+            "source": source,
+            "query": {"limit": self.current_limit(), "range": self.range_key, "source": source},
+            "source_query": {"range": self.range_key, "source": source},
+        }
 
     def query(self) -> dict:
         return {"limit": self.current_limit(), "range": self.range_key, "source": self.current_source()}
@@ -1115,22 +1180,21 @@ class MiniClientApp:
     def source_query(self) -> dict:
         return {"range": self.range_key, "source": self.current_source()}
 
-    def load_rows(self) -> list[dict]:
-        return self.api.get_json("/api/tasks", self.query())
+    def load_rows(self, request: dict) -> list[dict]:
+        return self.api.get_json("/api/tasks", request["query"])
 
-    def load_summary(self) -> dict:
-        payload = self.api.get_json("/api/summary", self.source_query())
+    def load_summary(self, request: dict) -> dict:
+        payload = self.api.get_json("/api/summary", request["source_query"])
         summary = payload.get("summary") if isinstance(payload, dict) else None
         return summary if isinstance(summary, dict) else {}
 
-    def load_source_context(self) -> dict:
-        source = self.current_source()
+    def load_source_context(self, request: dict) -> dict:
+        source = request["source"]
         if source == "opencode":
-            return {"source": source, "summary": self.load_summary()}
+            return {"source": source, "summary": self.load_summary(request)}
         return {"source": source, "limits": self.load_usage_limits()}
 
-    def source_context_from_dashboard(self, dashboard: dict) -> dict:
-        source = self.current_source()
+    def source_context_from_dashboard(self, dashboard: dict, source: str) -> dict:
         if source == "opencode":
             summary_payload = dashboard.get("summary") if isinstance(dashboard, dict) else None
             summary = summary_payload.get("summary") if isinstance(summary_payload, dict) else None
@@ -1138,11 +1202,29 @@ class MiniClientApp:
         limits = dashboard.get("usage_limits") if isinstance(dashboard, dict) else None
         return {"source": source, "limits": limits}
 
+    def should_refresh_source_context(self, source: str) -> bool:
+        last_refresh = self.last_source_context_refresh.get(source)
+        refresh_seconds = (
+            self.refresh_ms / 1000
+            if normalize_source(source) == "codex"
+            else SOURCE_CONTEXT_REFRESH_SECONDS
+        )
+        return last_refresh is None or time.monotonic() - last_refresh >= refresh_seconds
+
+    def mark_source_context_refreshed(self, source: str) -> None:
+        self.last_source_context_refresh[source] = time.monotonic()
+
     def load_usage_limits(self) -> dict:
         try:
             return self.api.get_json("/api/usage-limits")
         except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError) as error:
-            return {"ok": False, "error": str(error), "windows": []}
+            return self.cached_usage_limits_or_error(str(error), source="codex")
+
+    def cached_usage_limits_or_error(self, error: str, source: str | None = None) -> dict:
+        cached = self.last_usage_limits.get(normalize_source(source or self.active_source))
+        if isinstance(cached, dict) and usage_limit_groups(cached):
+            return stale_usage_limits_snapshot(cached, error)
+        return {"ok": False, "error": error, "windows": []}
 
     def current_limit(self) -> int:
         limit_var = self.active_vars()["limit"]
@@ -1199,6 +1281,10 @@ class MiniClientApp:
 
     def render_usage_limits(self, snapshot: dict | None):
         self.clear_source_frame()
+        if isinstance(snapshot, dict) and usage_limit_groups(snapshot):
+            self.last_usage_limits[self.active_source] = snapshot
+        elif isinstance(snapshot, dict) and not snapshot.get("ok"):
+            snapshot = self.cached_usage_limits_or_error(str(snapshot.get("error") or "unavailable"))
 
         groups = usage_limit_groups(snapshot)
         if not groups:
@@ -1224,6 +1310,13 @@ class MiniClientApp:
 
             for row_index, row in enumerate(group.get("windows", []), start=1):
                 self.add_limit_row(group_frame, row_index, row)
+        updated_text = usage_limits_updated_text(snapshot)
+        if updated_text:
+            ttk.Label(
+                limits_frame,
+                text=f"Limits {updated_text}",
+                anchor=tk.W,
+            ).grid(row=1, column=0, columnspan=max(1, len(groups)), sticky="w", pady=(2, 0))
         self.root.after_idle(self.draw_limit_bars)
 
     def add_limit_row(self, parent: ttk.Frame, row_index: int, row: dict):
