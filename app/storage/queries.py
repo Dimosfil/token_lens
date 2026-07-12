@@ -1134,7 +1134,7 @@ def models(con: sqlite3.Connection, range_key: str = "", start_ts: int | None = 
     ).fetchall())
 
 
-def data_state(con: sqlite3.Connection):
+def data_state(con: sqlite3.Connection, include_raw: bool = True):
     row = con.execute(
         """
         select count(*) as turns,
@@ -1164,6 +1164,8 @@ def data_state(con: sqlite3.Connection):
         "latest_ts",
         "total_tokens",
     ))
+    if not include_raw:
+        return state
     raw = con.execute(
         """
         select count(*) as raw_logs,

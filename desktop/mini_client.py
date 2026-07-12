@@ -1078,7 +1078,7 @@ class MiniClientApp:
             self._ui(self._finish_worker)
 
     def poll_once(self, request: dict):
-        state = self.api.get_json("/api/state")
+        state = self.api.get_json("/api/state", {"include_raw": 0})
         import_status = state.get("import_status") if isinstance(state, dict) else None
         source_warnings = state.get("source_warnings") if isinstance(state, dict) else None
         version_changed = self.data_version is None or state.get("version") != self.data_version

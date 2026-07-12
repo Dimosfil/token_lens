@@ -127,7 +127,7 @@ class AnalyticsHandler(BaseHTTPRequestHandler):
         elif path == "/api/summary":
             send_json(self, analytics_service.summary(range_key, start_ts, end_ts, first(query, "source")))
         elif path == "/api/state":
-            send_json(self, analytics_service.data_state())
+            send_json(self, analytics_service.data_state(include_raw=first(query, "include_raw", "1") != "0"))
         elif path == "/api/usage-limits":
             send_json(self, analytics_service.usage_limits())
         elif path == "/api/import-status":

@@ -135,6 +135,21 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(dashboard["time_mode"], "local")
         self.assertLessEqual({"requested", "active", "separate_available"}, set(dashboard["task_modes"]))
 
+    def test_lightweight_data_state_skips_raw_log_aggregate(self):
+        con = connect(self.db_path)
+        statements = []
+        con.set_trace_callback(statements.append)
+        try:
+            state = queries.data_state(con, include_raw=False)
+        finally:
+            con.close()
+
+        self.assertLessEqual({
+            "turns", "latest_source_log_id", "latest_ts", "total_tokens", "version",
+        }, set(state))
+        self.assertNotIn("raw_logs", state)
+        self.assertFalse(any("from raw_logs" in statement.lower() for statement in statements))
+
     def test_time_mode_defaults_to_local_and_keeps_utc_switch(self):
         self.assertEqual(normalize_time_mode(""), "local")
         self.assertEqual(normalize_time_mode("local"), "local")

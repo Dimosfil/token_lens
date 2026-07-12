@@ -74,11 +74,15 @@ worker starts, the Tkinter main thread snapshots the selected source, row limit,
 and range into a plain request payload. Workers return render/status callbacks
 through a queue drained by the Tkinter event loop; they must not read widget
 variables, select tabs, schedule `root.after`, or otherwise call Tkinter APIs.
-Routine desktop polling keeps `/api/state` as the cheap fast path. If the state
-version has not changed, Codex account limits are refreshed once per configured
-Mini polling cycle, while other source context keeps the longer throttle
-interval. Manual refreshes and changed-version polls still refresh rows and
-source context immediately. Limit reads remain in the worker thread, so fresh
+Routine desktop polling requests `/api/state` with `include_raw=0` as the cheap
+fast path. The lightweight response keeps the `turns`-derived version fields
+used for change detection but skips aggregate counts over the potentially large
+`raw_logs` archive. The default `/api/state` response remains full and backward
+compatible. If the state version has not changed, Codex account limits are
+refreshed once per configured Mini polling cycle, while other source context
+keeps the longer throttle interval. Manual refreshes and changed-version polls
+still refresh rows and source context immediately. Limit reads remain in the
+worker thread, so fresh
 account balances do not block Tkinter or force table reloads.
 
 `auto_import_seconds` controls server-owned imports: positive values wait that

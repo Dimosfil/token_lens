@@ -24,9 +24,9 @@ def summary(range_key: str = "", start_ts: int | None = None, end_ts: int | None
     return with_analytics_db(lambda con: queries.summary(con, range_key, start_ts, end_ts, source))
 
 
-def data_state():
+def data_state(include_raw: bool = True):
     config = load_config()
-    state = with_analytics_db(queries.data_state)
+    state = with_analytics_db(lambda con: queries.data_state(con, include_raw=include_raw))
     state["import_status"] = import_status()
     state["source_warnings"] = source_warnings(config)
     return state

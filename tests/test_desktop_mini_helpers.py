@@ -332,7 +332,7 @@ class MiniClientHelperTests(unittest.TestCase):
         with mock.patch.object(mini_client.time, "monotonic", return_value=104.0):
             app.poll_once(request)
 
-        app.api.get_json.assert_called_once_with("/api/state")
+        app.api.get_json.assert_called_once_with("/api/state", {"include_raw": 0})
         app.load_source_context.assert_not_called()
         app.load_rows.assert_not_called()
         app.render_source_context.assert_not_called()

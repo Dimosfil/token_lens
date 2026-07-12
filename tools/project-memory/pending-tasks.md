@@ -1286,3 +1286,15 @@ Planned changes:
 - [x] Preserve `state_tokens_used` as separate reference metadata when available.
 - [x] Update UI labels to make log total primary and state estimate secondary.
 - [x] Update regression tests and run focused verification.
+
+### Mini Lightweight Poll State 2026-07-12
+
+Goal: prevent Token Lens Mini from appearing permanently busy when the local
+raw-log archive is large.
+
+Planned changes:
+
+- [x] Reproduce the delay and isolate it to the full `/api/state` raw-log
+      aggregate.
+- [x] Add a backward-compatible lightweight state mode for Mini polling.
+- [x] Add focused regression coverage and verify endpoint latency after restart.
