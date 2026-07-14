@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/images/token-lens-readme-banner.png" alt="Token Lens" width="838">
+</p>
+
 # Token Lens
 
 Сбор аналитики потребления токенов в запросах.
