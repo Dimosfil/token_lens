@@ -4,185 +4,210 @@
 
 # Token Lens
 
-Сбор аналитики потребления токенов в запросах.
+Локальная аналитика расхода токенов для Codex и OpenCode.
 
-Локальное приложение для ответа на простой вопрос:
+Token Lens собирает usage metadata из локальных источников и помогает ответить
+на практический вопрос:
 
-> Сколько токенов потратил один запрос, задача или agent run?
+> Сколько токенов потратил отдельный model call, запрос, задача или agent run?
 
-Сейчас источники данных - Codex local logs и локальные OpenCode token sources.
-Дальше приложение можно расширить на другие агенты и LLM-провайдеры через новые
-source adapters.
+Приложение работает локально, читает исходные журналы в режиме read-only и
+сохраняет нормализованную аналитику в собственную SQLite-базу.
 
-## Current Sources
+## Возможности
 
-Token Lens читает Codex logs read-only из:
+- статистика `input`, `cached`, `non-cached`, `output`, `reasoning` и `total`;
+- расход токенов по model call и задаче целиком;
+- агрегация по часам, дням и месяцам;
+- фильтры по периоду, модели, источнику и режиму времени;
+- сравнение среднего расхода разных моделей;
+- список самых дорогих запросов и подробности отдельных вызовов;
+- отдельные представления Codex и OpenCode;
+- автоматический фоновый импорт новых usage records;
+- живые лимиты Codex `5h`, `weekly` и Spark, когда они доступны аккаунту;
+- web dashboard и компактный desktop Mini client.
 
-```text
-.codex\logs_2.sqlite
-```
+## Быстрый запуск
 
-Также поддерживаются локальные OpenCode sources, если они настроены и доступны:
-
-```text
-~/.local/share/opencode/opencode.db
-~/.config/opencode/logs/token-tracker/tokens.jsonl
-```
-
-Все источники импортируют usage metadata в свою БД:
-
-```text
-data\analytics.sqlite
-```
-
-## Запуск
+Проект ориентирован на локальный запуск в Windows с установленным Python.
+Отдельного dependency manifest сейчас нет.
 
 ```powershell
+git clone https://github.com/Dimosfil/token_lens.git
+cd token_lens
+.\tools\configure-local-sources.ps1
 .\start.ps1
 ```
 
-Скрипт запускает web/API server и desktop mini client.
+После запуска:
 
-Открой:
+- web dashboard: `http://127.0.0.1:8765`;
+- desktop Mini запускается автоматически;
+- локальная аналитическая БД создаётся в `data\analytics.sqlite`.
 
-```text
-http://127.0.0.1:8765
-```
-
-## Остановка
+Полезные команды:
 
 ```powershell
+# Перезапустить server и Mini
+.\start.ps1 -Restart
+
+# Запустить только web/API server
+.\start.ps1 -NoMini
+
+# Остановить приложение
 .\stop.ps1
 ```
 
-## Что показывает
-
-- токены по одному model call;
-- токены по задаче целиком, сгруппированные по `turn_id`;
-- input/output/cached/non-cached/reasoning/total tokens;
-- динамику по дням;
-- топ дорогих по токенам запросов;
-- фильтр по модели;
-- фильтр по source, если импортировано несколько источников;
-- имя thread из `session_index.jsonl`, если найдено.
-
-## Безопасность
-
-Импортируются только поля usage metadata: ids, timestamps, model, token counts,
-thread names. Prompts, responses, tool payloads, raw logs и secrets не
-сохраняются в analytics DB.
-
-## Настройки
-
-Файл:
-
-```text
-config.json
-```
-
-Цены необязательны. Если цена модели неизвестна, cost будет `0`, а source of
-truth остаются токены.
-
-## Стек и документация
-
-Канонический inventory текущего стека:
-
-```text
-tools/project-memory/specs/technology-stack.md
-```
-
-Операционные команды и troubleshooting notes:
-
-```text
-tools/AGENT_RUNBOOK.md
-```
-
-Agent-facing instruction index:
-
-```text
-INDEX.md
-```
-
-## Project Structure
-
 ## Local Source Setup
 
-Machine-specific source paths must live in ignored `config.local.json`, not in
-application code or committed defaults. On a new machine, run:
+Машинно-зависимые пути хранятся только в игнорируемом
+`config.local.json`. Коммитить локальные пути в `config.json` не нужно.
+
+Интерактивная настройка:
 
 ```powershell
 .\tools\configure-local-sources.ps1
 ```
 
-The script asks for the local Codex/OpenCode files and writes only
-`config.local.json`. Use `config.local.example.json` as the redacted shape.
-By default, Token Lens auto-discovers Codex sources from `CODEX_HOME`,
-`CODEX_CONFIG_HOME`, and the current user's `.codex` folder, and OpenCode
-sources from standard user data/config locations. When discovered source paths
-are blank or stale in the loaded config, Token Lens writes the fresh values to
-ignored `config.local.json` during startup. `codex_logs_db` must point to the
-active Codex SQLite file, commonly `~\.codex\sqlite\logs_2.sqlite` or
-`~\.codex\logs_2.sqlite`.
-`codex_session_index` may point to one JSONL file, a sessions folder, or a glob
-such as `~\.codex\sessions\2026\06\24\rollout-*.jsonl`. Existing readable
-values in `config.local.json` override auto-discovery. If Codex paths remain
-blank, missing, or unreadable, Token Lens still starts and keeps the analytics
-database available, but the Codex import is skipped until the local source is
-configured.
-For agents preparing a checkout: do not choose between
-`~\.codex\sqlite\logs_2.sqlite` and `~\.codex\logs_2.sqlite` by querying private
-log contents. The project contract is to follow `app/core/codex_discovery.py`:
-prefer `~\.codex\sqlite\logs_2.sqlite` unless safe file metadata shows
-`~\.codex\logs_2.sqlite` is the active updated source. To trigger discovery and
-write ignored `config.local.json` without starting the app, run:
+Автоматическое обнаружение без запуска приложения:
 
 ```powershell
 python -c "from app.core.config import load_config; print(load_config())"
 ```
 
-Live account limits use `codex app-server --stdio`; the Codex command is
-auto-discovered from `.codex\bin`, user npm bin folders, or PATH and persisted
-to ignored `config.local.json` when found. WindowsApps aliases are ignored
-because they can fail with access denied. Set `codex_app_server_command` in
-`config.local.json` only when a machine uses a custom command path. By default,
-Token Lens keeps one reusable app-server process for live limit reads, restarts
-it on timeout or pipe failure, and closes it after the configured idle timeout.
-These Codex 5h/weekly/Spark limits are not OpenAI API usage/costs/rate limits
-and do not use `OPENAI_API_KEY`. To verify them locally:
+`load_config()` загружает `config.json`, накладывает `config.local.json`, а
+затем обнаруживает отсутствующие или устаревшие локальные источники. Уже
+настроенные и доступные пути из `config.local.json` имеют приоритет.
+
+### Codex
+
+Token Lens проверяет `CODEX_HOME`, `CODEX_CONFIG_HOME` и папку `.codex`
+текущего пользователя. Поддерживаются обе раскладки:
+
+```text
+~\.codex\sqlite\logs_2.sqlite
+~\.codex\logs_2.sqlite
+```
+
+Если доступны оба файла, выбор активного источника выполняет
+`app/core/codex_discovery.py` по безопасным файловым метаданным. Для имён
+сессий используется `~\.codex\sessions`, а при его отсутствии — legacy-файл
+`~\.codex\session_index.jsonl`.
+
+### OpenCode
+
+Автообнаружение ищет стандартные пользовательские расположения для:
+
+```text
+opencode.db
+logs\token-tracker\tokens.jsonl
+```
+
+Если источник не найден, приложение всё равно запускается и продолжает работать
+с уже импортированными данными.
+
+## Живые лимиты Codex
+
+Лимиты аккаунта читаются через локальный Codex launcher:
+
+```text
+codex app-server --stdio
+```
+
+Это лимиты Codex `5h`, `weekly` и Spark, а не OpenAI API usage/costs. Для них
+не используется `OPENAI_API_KEY`.
+
+Проверить локальный endpoint после запуска:
 
 ```powershell
 Invoke-RestMethod -Uri "http://127.0.0.1:8765/api/usage-limits"
 ```
 
-A successful response has `ok: true`, `source: codex_app_server`, and non-empty
-`groups` or `windows`.
+Успешный ответ содержит `ok: true`, `source: codex_app_server` и непустые
+`groups` или `windows`.
 
-The app is split into small standard-library Python modules and static browser
-modules:
+## Приватность
+
+Исходные Codex/OpenCode-файлы находятся вне репозитория и открываются
+адаптерами только для чтения. В аналитическую БД импортируются usage metadata:
+
+- идентификаторы и timestamps;
+- модель и статус вызова;
+- thread/session metadata;
+- значения token usage.
+
+Prompts, responses, tool payloads, secrets и исходные приватные журналы не
+сохраняются в `data\analytics.sqlite`.
+
+## Конфигурация
+
+Переносимые настройки находятся в `config.json`, локальные overrides — в
+игнорируемом `config.local.json`.
+
+Основные параметры:
+
+| Параметр | Назначение |
+| --- | --- |
+| `analytics_db` | Собственная SQLite-база Token Lens |
+| `host`, `port` | Адрес локального web/API server |
+| `auto_import_seconds` | Интервал фонового импорта |
+| `codex_logs_db` | Активная Codex SQLite-база |
+| `codex_session_index` | Файл, папка или glob с Codex sessions |
+| `opencode_db` | Локальная OpenCode SQLite-база |
+| `opencode_tokens_jsonl` | OpenCode token-tracker JSONL |
+| `model_prices_per_million` | Необязательные цены моделей |
+
+Если цена модели не настроена, cost остаётся `0`, а source of truth — значения
+token usage.
+
+## API
+
+Основные локальные endpoints:
+
+| Endpoint | Назначение |
+| --- | --- |
+| `GET /api/state` | Текущее состояние приложения и импорта |
+| `GET /api/dashboard` | Сводные данные dashboard |
+| `GET /api/usage-limits` | Живые лимиты Codex account |
+| `GET /api/tasks` | Агрегированные или отдельные задачи |
+| `GET /api/task-detail` | Детализация выбранной задачи |
+| `GET /api/models` | Статистика по моделям |
+| `POST /api/refresh` | Обновление локальной аналитики |
+
+## Архитектура
+
+Token Lens использует Python standard library на backend, vanilla HTML/CSS/JS
+на frontend и SQLite для хранения аналитики.
 
 ```text
 app/
-  api/              HTTP handler, JSON responses, server bootstrap
-  core/             config, paths, shared types
-  services/         import orchestration, analytics facade, background jobs
-  sources/base.py   source adapter protocol
-  sources/codex/    read-only Codex source adapter and parsers
-  sources/opencode/ OpenCode DB/JSONL parsers and readers
-  storage/          SQLite connection, schema, repositories, analytics queries
-  config.py         compatibility shim
-  db.py             compatibility shim
-  importer.py       compatibility shim
-  server.py         compatibility shim used by python -m app.server
-web/
-  app.js            browser entrypoint
-  js/               static ES modules for API, formatting, renderers, status
-  index.html
-  styles.css
+  api/              HTTP handlers и JSON responses
+  core/             config, discovery, paths и shared types
+  services/         orchestration, analytics и background jobs
+  sources/          read-only adapters для Codex и OpenCode
+  storage/          schema, repositories и analytics queries
 desktop/
-  mini_client.py    desktop mini client launched by start.ps1
+  mini_client.py    компактный desktop client
+web/
+  index.html        dashboard shell
+  js/               API, state и render modules
+  styles.css        интерфейс dashboard
 tests/
-  test_*.py         API/query, parser, storage, OpenCode, and desktop smoke tests
+  test_*.py         API, parser, storage и desktop tests
 ```
 
-The compatibility shims keep existing commands working while the implementation
-lives in the modular packages.
+Новые источники можно добавлять через source adapter contract в
+`app/sources/base.py`.
+
+## Проверка
+
+```powershell
+python -m compileall app desktop
+python -m unittest discover -s tests
+```
+
+Дополнительная документация:
+
+- [`tools/AGENT_RUNBOOK.md`](tools/AGENT_RUNBOOK.md) — запуск и troubleshooting;
+- [`tools/project-memory/specs/technology-stack.md`](tools/project-memory/specs/technology-stack.md) — проверенный stack inventory;
+- [`INDEX.md`](INDEX.md) — индекс agent-facing инструкций.
