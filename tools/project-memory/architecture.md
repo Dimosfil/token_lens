@@ -67,7 +67,11 @@ The desktop mini client treats a refused connection to a local API URL as a
 recoverable local-runtime failure. It starts `run_server.py`, waits for
 `/api/state`, then retries the failed poll or refresh. Recovery is limited to
 localhost-style URLs and rate-limited so remote or misconfigured API endpoints
-are not masked by spawning local processes repeatedly.
+are not masked by spawning local processes repeatedly. A recovery child is
+single-flight: while that process is still alive, later recovery attempts reuse
+it instead of starting another server. On Windows, the HTTP server also claims
+the listening port with exclusive address use so parallel server processes
+cannot share one configured endpoint.
 
 Desktop HTTP polling and refresh work runs in daemon worker threads. Before a
 worker starts, the Tkinter main thread snapshots the selected source, row limit,

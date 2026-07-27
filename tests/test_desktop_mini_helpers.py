@@ -238,6 +238,19 @@ class MiniClientHelperTests(unittest.TestCase):
         self.assertTrue(mini_client.is_connection_refused(URLError(ConnectionRefusedError(10061, "refused"))))
         self.assertFalse(mini_client.is_connection_refused(URLError(TimeoutError("slow"))))
 
+    def test_server_start_reuses_live_recovery_process(self):
+        process = mock.Mock(pid=1234)
+        process.poll.return_value = None
+
+        with (
+            mock.patch.object(mini_client, "_server_process", process),
+            mock.patch.object(mini_client.subprocess, "Popen") as popen,
+        ):
+            result = mini_client.start_local_server_process()
+
+        self.assertIs(result, process)
+        popen.assert_not_called()
+
     def test_mini_client_recovers_local_refused_connection_once(self):
         class Status:
             def __init__(self):

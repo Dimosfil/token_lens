@@ -4,6 +4,8 @@ import threading
 import time
 from http.server import ThreadingHTTPServer
 import logging
+import os
+import socket
 
 from app.api.handlers import AnalyticsHandler
 from app.core.config import load_config
@@ -13,6 +15,15 @@ from app.storage.schema import init_db
 
 
 LOGGER = logging.getLogger("token_lens.server")
+
+
+class ExclusiveThreadingHTTPServer(ThreadingHTTPServer):
+    allow_reuse_address = False
+
+    def server_bind(self) -> None:
+        if os.name == "nt":
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
 
 
 def _run_initial_import_once() -> None:
@@ -55,7 +66,7 @@ def main():
     init_db(config["analytics_db"])
 
     interval = int(config.get("auto_import_seconds", 30))
-    httpd = ThreadingHTTPServer((config["host"], int(config["port"])), AnalyticsHandler)
+    httpd = ExclusiveThreadingHTTPServer((config["host"], int(config["port"])), AnalyticsHandler)
     LOGGER.info(
         "server starting host=%s port=%s analytics_db=%s auto_import_seconds=%s log_file=%s",
         config["host"],

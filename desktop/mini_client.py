@@ -65,6 +65,8 @@ SIGNAL_CHOICES = {
 LOCAL_API_HOSTS = {"127.0.0.1", "localhost", "::1"}
 SERVER_START_TIMEOUT_SECONDS = 15
 SERVER_START_RETRY_SECONDS = 20
+_SERVER_PROCESS_LOCK = threading.Lock()
+_server_process: subprocess.Popen | None = None
 LOGGER = logging.getLogger("token_lens.mini")
 TABLE_COLUMNS = (
     {"id": "date", "label": "Date", "width": 90, "minwidth": 82, "anchor": tk.W, "stretch": False},
@@ -314,28 +316,38 @@ def python_for_server() -> str:
 
 
 def start_local_server_process() -> subprocess.Popen:
+    global _server_process
     if not SERVER_SCRIPT_PATH.exists():
         raise FileNotFoundError(f"Cannot find {SERVER_SCRIPT_PATH}")
-    SERVER_PID_PATH.parent.mkdir(parents=True, exist_ok=True)
-    creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-    stdout = SERVER_OUT_LOG_PATH.open("ab")
-    stderr = SERVER_ERR_LOG_PATH.open("ab")
-    try:
-        process = subprocess.Popen(
-            [python_for_server(), str(SERVER_SCRIPT_PATH)],
-            cwd=str(ROOT),
-            stdout=stdout,
-            stderr=stderr,
-            stdin=subprocess.DEVNULL,
-            close_fds=False,
-            creationflags=creationflags,
-        )
-    finally:
-        stdout.close()
-        stderr.close()
-    SERVER_PID_PATH.write_text(str(process.pid), encoding="ascii")
-    LOGGER.info("local server process started pid=%s", process.pid)
-    return process
+    with _SERVER_PROCESS_LOCK:
+        if _server_process is not None and _server_process.poll() is None:
+            LOGGER.warning(
+                "local server process still starting or running pid=%s; reusing it",
+                _server_process.pid,
+            )
+            return _server_process
+
+        SERVER_PID_PATH.parent.mkdir(parents=True, exist_ok=True)
+        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        stdout = SERVER_OUT_LOG_PATH.open("ab")
+        stderr = SERVER_ERR_LOG_PATH.open("ab")
+        try:
+            process = subprocess.Popen(
+                [python_for_server(), str(SERVER_SCRIPT_PATH)],
+                cwd=str(ROOT),
+                stdout=stdout,
+                stderr=stderr,
+                stdin=subprocess.DEVNULL,
+                close_fds=False,
+                creationflags=creationflags,
+            )
+        finally:
+            stdout.close()
+            stderr.close()
+        _server_process = process
+        SERVER_PID_PATH.write_text(str(process.pid), encoding="ascii")
+        LOGGER.info("local server process started pid=%s", process.pid)
+        return process
 
 
 def wait_for_api(api: "ApiClient", timeout_seconds: int = SERVER_START_TIMEOUT_SECONDS) -> bool:
