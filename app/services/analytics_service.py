@@ -5,6 +5,7 @@ from collections.abc import Callable
 from app.core.config import load_config
 from app.services.codex_account_service import read_usage_limits
 from app.services.data_refresh import import_status, source_warnings
+from app.sources.codex.session_transcript import load_turn_payloads
 from app.storage.connection import connect
 from app.storage import queries
 from app.storage.schema import init_db
@@ -12,12 +13,7 @@ from app.storage.schema import init_db
 
 def with_analytics_db(callback: Callable):
     config = load_config()
-    init_db(config["analytics_db"])
-    con = connect(config["analytics_db"])
-    try:
-        return callback(con)
-    finally:
-        con.close()
+    return _with_configured_analytics_db(config, callback)
 
 
 def summary(range_key: str = "", start_ts: int | None = None, end_ts: int | None = None, source: str = ""):
@@ -68,7 +64,42 @@ def bucket_tasks(
 
 
 def task_detail(thread_id: str, turn_id: str):
-    return with_analytics_db(lambda con: queries.task_detail(con, thread_id, turn_id))
+    config = load_config()
+    detail = _with_configured_analytics_db(
+        config,
+        lambda con: queries.task_detail(con, thread_id, turn_id),
+    )
+    return _add_codex_session_payloads(detail, config.get("codex_session_index", ""), thread_id)
+
+
+def _with_configured_analytics_db(config: dict, callback: Callable):
+    init_db(config["analytics_db"])
+    con = connect(config["analytics_db"])
+    try:
+        return callback(con)
+    finally:
+        con.close()
+
+
+def _add_codex_session_payloads(detail: dict, session_path: str, thread_id: str) -> dict:
+    calls = detail.get("calls") if isinstance(detail, dict) else None
+    if not isinstance(calls, list):
+        return detail
+    missing_calls = [
+        call for call in calls
+        if call.get("source") == "codex" and (call.get("request") is None or call.get("response") is None)
+    ]
+    turn_ids = {call.get("turn_id") for call in missing_calls if call.get("turn_id")}
+    payloads = load_turn_payloads(session_path, thread_id, turn_ids)
+    for call in missing_calls:
+        payload = payloads.get(call.get("turn_id"), {})
+        if call.get("request") is None and payload.get("request") is not None:
+            call["request"] = payload["request"]
+            call["request_source"] = "codex_session_transcript"
+        if call.get("response") is None and payload.get("response") is not None:
+            call["response"] = payload["response"]
+            call["response_source"] = "codex_session_transcript"
+    return detail
 
 
 def models(range_key: str = "", start_ts: int | None = None, end_ts: int | None = None, source: str = ""):

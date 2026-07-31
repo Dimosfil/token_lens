@@ -324,6 +324,14 @@ main {
   line-height: 1.4;
 }
 
+.limit-widget-meta {
+  grid-column: 1 / -1;
+  margin: -4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
 .limit-track {
   grid-column: 1 / -1;
   height: 5px;
@@ -567,6 +575,23 @@ th {
 
 th:active {
   cursor: grabbing;
+}
+
+th[data-sort-key] {
+  cursor: pointer;
+}
+
+th[data-sort-key][aria-sort="ascending"],
+th[data-sort-key][aria-sort="descending"] {
+  color: var(--text);
+}
+
+.sort-indicator {
+  display: inline-block;
+  min-width: 1em;
+  margin-left: 5px;
+  color: var(--accent);
+  font-weight: 800;
 }
 
 table[data-reorderable] th.is-dragging-column {

@@ -8,6 +8,17 @@ current project's `AGENTS.md` loading contract and every routed
 `patterns/AGENTS_RUNTIME/` module for that command. If a routed module is
 missing, stop and report the missing path instead of acting from memory.
 
+For `gi restart`, `gi reboot`, `gi docker`, `ги рестарт`, `ги ребут`,
+`ги докер`, and equivalent aliases, read
+`patterns/AGENTS_RUNTIME/09-project-operation-commands.md` before any process
+inspection, Docker build, stop, start, or success report.
+
+Before any `gi` command writes files, verify that the active project root and
+target identity match the current request. If the request appears to target
+another product, repository, or absolute path outside the current root, stop and
+warn the user unless the current message explicitly authorizes that exact
+external path and action.
+
 `gi help`, `gi хелп`, `ги help`, `ги хелп`, `gi commands`, `gi команды`, and
 `ги команды` are read-only help requests. They show this command list without
 running startup restore, resuming old work, calling task managers, mutating
@@ -41,10 +52,11 @@ files, or executing any listed command.
 | `gi config service on`, `gi config service off` | Toggle this app's config-service self-registration flag. |
 | `gi prod`, `gi production`, `gi прод`, `ги прод` | Publish a development version to a documented production online service only when a production contract exists. |
 | `gi reboot`, `gi restart`, `ги ребут`, `ги рестарт` | Start or restart all documented Token Lens apps using project-local run instructions. |
+| `gi docker`, `ги докер` | Restart the current project's documented Docker/Compose runtime, rebuilding first when local Docker state requires it. |
 | `gi first test`, `gi первый тест` | Reset documented first-run state and verify first-launch behavior. |
 | `gi install`, `gi инсталл`, `ги инсталл` | Build/package the project and verify an installer artifact when packaging is configured. |
 | `gi ftp config`, `gi ftp service`, `gi ftp folder` | Inspect or configure FTP/SFTP deployment settings without uploading. |
-| `gi ftp`, `gi ftp push`, `gi deploy ftp`, `gi upload ftp` | Upload configured build output to the configured FTP/SFTP target. |
+| `gi ftp`, `gi ftp push`, `gi deploy ftp`, `gi upload ftp` | Upload configured build output to the configured FTP/SFTP target; if FTP/FTPS uploads stall or time out, prefer an authorized SFTP-over-SSH fallback before repeating FTP variants. |
 | `gi tm`, `gi manager` | Inspect the configured task manager through config-service. |
 | `gi manager test`, `gi tm test` | Test the configured task manager contract and operations. |
 | `gi active task`, `gi next task`, `gi get task` | Get executable work from the configured task manager. |

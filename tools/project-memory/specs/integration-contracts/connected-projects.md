@@ -77,7 +77,12 @@ access.
 - Data/API contract: successful responses have `ok: true`,
   `source: codex_app_server`, and non-empty `groups` or `windows`; windows may
   include labels such as `5h` and `weekly`, and Spark appears only when the
-  account reports a Spark bucket.
+  account reports a Spark bucket. After at least one successful account-limit
+  read, transient app-server failures or timeouts must not clear the UI; the
+  service returns the last successful `groups`/`windows` with `stale: true`,
+  `cached: true`, `stale_error`, and `last_success_at`. Desktop and browser
+  renderers should show the stale values plus the last successful update time
+  until a newer successful snapshot arrives.
 - Configuration: `codex_app_server_command` in ignored `config.local.json` may
   override launcher discovery when Windows resolves a blocked WindowsApps shim
   or another unusable command. `load_config()` auto-discovers and persists a
@@ -122,3 +127,33 @@ access.
 - Status: active.
 - Reason retained: broadens Token Lens beyond Codex-only usage analytics while
   preserving the same local/private data boundary.
+
+## ai_logger Remote Logging
+
+- Purpose: centralized receipt and backend routing of Token Lens runtime logs.
+- Role in Token Lens: optional native Python logging handler forwards the same
+  structured records while the existing rotating file log remains active.
+- Local folder: `D:\AI\ai_logger` is the installed editable client source on
+  the current development machine.
+- Canonical URL: `https://github.com/Dimosfil/ai_logger.git`.
+- Runtime endpoint: machine-local and secret-adjacent settings live only in
+  ignored `ai-logger-client.local.ps1`; no endpoint or bearer token belongs in
+  committed configuration.
+- Source of truth: ai_logger `docs/agent-install.md`,
+  `docs/adapter-manifest.json`, and the Token Lens integration in
+  `app/core/logging_config.py` plus the PowerShell launchers.
+- Data/API contract: `AiLoggerHttpHandler` sends normalized standard Python log
+  records to the configured `/ingest` endpoint. Delivery failures must not
+  escape into Token Lens; the ignored local configuration points them to
+  `data/ai_logger_fallback.jsonl`.
+- Setup/update command: install the client into the Token Lens Python runtime
+  with `python -m pip install -e D:\AI\ai_logger`, then restart through
+  `start.ps1` so the ignored environment file is loaded.
+- Privacy boundaries: keep the bearer token, private endpoint, fallback data,
+  and emitted runtime records uncommitted. The adapter redacts common secret
+  fields, but callers must still avoid logging raw prompts, responses, source
+  bodies, or credentials.
+- Status: active; remote health and an accepted client-check event were verified
+  after the ignored local endpoint was updated to the current LAN server.
+- Reason retained: provides centralized diagnostics while preserving local
+  logging and outage durability.

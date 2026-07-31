@@ -122,9 +122,10 @@ launchers for this project and must be ignored.
   test, install, reset, update, commit, push, or manage task-manager state, do
   not execute from memory, old chat examples, or the command name alone. If the
   command's routed module is unavailable, stop and report the missing path.
-- For `gi restart`, `gi reboot`, `ги рестарт`, `ги ребут`, and equivalent
-  aliases, `patterns/AGENTS_RUNTIME/09-project-operation-commands.md` is
-  mandatory context before any process inspection, stop, start, or success
+- For `gi restart`, `gi reboot`, `gi docker`, `ги рестарт`, `ги ребут`,
+  `ги докер`, and equivalent aliases,
+  `patterns/AGENTS_RUNTIME/09-project-operation-commands.md` is mandatory
+  context before any process inspection, Docker build, stop, start, or success
   report.
 - Prefer project-local instructions, runbooks, contracts, project memory, and
   service guides over shared defaults when they are more specific.
@@ -148,9 +149,9 @@ launchers for this project and must be ignored.
 - Config-service, service guide/contract lookup, task manager commands,
   manager-backed and local sprint commands, and web-service port registration:
   `patterns/AGENTS_RUNTIME/08-config-service-and-task-manager.md`
-- Dev/prod online service publication, FTP deploy, restart/reboot, first test,
-  full test, default reset, installer packaging, SQL/vector inspection, and
-  project/RAG rebuild commands:
+- Dev/prod online service publication, FTP deploy, restart/reboot,
+  Docker/Compose restart, first test, full test, default reset, installer
+  packaging, SQL/vector inspection, and project/RAG rebuild commands:
   `patterns/AGENTS_RUNTIME/09-project-operation-commands.md`
 - Nested repositories, private local app data, product-plan intent signals, and
   missing required entities: `patterns/AGENTS_RUNTIME/10-private-scope-and-missing-context.md`
@@ -411,6 +412,13 @@ Inspect logs:
   or arbitrary external folder unless the user gives an explicit concrete path
   and action. Use APIs, connectors, or task-manager endpoints for cross-project
   communication.
+- Before filesystem writes, verify that the active working directory, local
+  project identity, and target path match the user's current request. Use local
+  identity signals such as `AGENTS.md`, README title, manifests, service id, git
+  remote, documented working areas, and project memory. If those signals point
+  to another product, repository, or absolute path outside this root, stop and
+  report the mismatch unless the current message explicitly authorizes that
+  exact external path and action.
 - Do not hard-code deployment, user, runtime, host-machine, service,
   credential, filesystem-layout, feature-flag, or operational-policy values in
   source code, committed examples, or shared instructions. Keep project-local
@@ -607,6 +615,13 @@ Inspect logs:
   history. Prefer `tools/deploy/ftp.local.example.json` only as a redacted
   shape. Do not commit hostnames, usernames, passwords, tokens, private keys, or
   private remote paths unless project policy explicitly marks them non-secret.
+- If FTP/FTPS upload stalls, hangs, repeatedly times out, or cannot open the
+  upload stream, treat that transfer as failed. When project-local config,
+  selected service contracts, or current user-provided deployment details define
+  an authorized SFTP-over-SSH route to the same remote folder, switch to SFTP
+  before retrying more FTP/FTPS variants. If SFTP details are incomplete, report
+  the exact missing fields; do not invent credentials, private-key paths, remote
+  paths, or disable FTPS certificate validation as a routine fallback.
 - Treat `gi reboot`, `ги ребут`, `gi restart`, and `ги рестарт` as requests to
   start or restart all documented applications in the current project using
   project-local run instructions. If local instructions define a preferred
@@ -625,6 +640,14 @@ Inspect logs:
   any app exits, no expected window or health signal appears, or a new startup
   traceback is present, report the reboot as failed or partially unverified with
   concrete evidence.
+- Treat `gi docker`, `ги докер`, and equivalent Docker restart wording as a
+  request to restart the current project's documented Docker or Docker Compose
+  runtime. Read project-local Docker/run instructions, compose files,
+  Dockerfile or Containerfile, scripts, manifests, service records, and
+  health-check contracts first. If no Docker/Compose config or documented
+  Docker run contract exists, report that Docker is not configured for this
+  project and stop. Do not prune Docker state, remove volumes/images, or stop
+  unrelated containers.
 - Treat `gi prod`, `gi production`, `gi прод`, and `ги прод` as production
   service publication commands only for online services connected to live remote
   APIs, webhooks, chats, marketplaces, payment providers, or similar external
@@ -687,6 +710,14 @@ Inspect logs:
   batches, preserve user-visible behavior unless explicitly changed, update
   durable project-memory specs for meaningful architecture or behavior changes,
   and report remaining risks or continuation batches.
+- Classify refactoring as structural work that preserves user-visible behavior
+  and documented API, storage, workflow, and UI contracts. Treat new behavior,
+  validation, observability, integrations, runtime flows, persistence shape
+  changes, and tests that define new contracts as development work; treat
+  endpoint discovery, lifecycle actions, smoke tasks, restarts, deploys, and
+  release checks as verification or operations. For mixed batches, name each
+  part explicitly and apply the stricter rules for behavior, public contracts,
+  data, secrets, production systems, or external services.
 - Treat nested checkouts, vendored repositories, cloned examples, and
   third-party source trees as separate scope. Do not inspect them as part of the
   main project unless the user explicitly asks, the task is about that nested

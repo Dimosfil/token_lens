@@ -1077,7 +1077,7 @@ class MiniClientApp:
         try:
             self.run_with_api_recovery(lambda: self.poll_once(request))
         except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError) as error:
-            self._ui(lambda: self.set_error(error))
+            self._ui(lambda error=error: self.set_error(error))
         finally:
             self._ui(self._finish_worker)
 
@@ -1085,7 +1085,7 @@ class MiniClientApp:
         try:
             self.run_with_api_recovery(lambda: self.refresh_once(import_first, request))
         except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError) as error:
-            self._ui(lambda: self.set_error(error))
+            self._ui(lambda error=error: self.set_error(error))
         finally:
             self._ui(self._finish_worker)
 
@@ -1175,7 +1175,10 @@ class MiniClientApp:
                 callback = self.ui_queue.get_nowait()
             except queue.Empty:
                 break
-            callback()
+            try:
+                callback()
+            except Exception:
+                LOGGER.exception("mini UI callback failed")
         self._schedule_ui_queue()
 
     def request_snapshot(self) -> dict:

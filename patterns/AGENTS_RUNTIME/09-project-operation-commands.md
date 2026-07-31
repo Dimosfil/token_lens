@@ -48,6 +48,15 @@
   commit hostnames, usernames, passwords, tokens, private keys, or private
   remote paths unless project policy explicitly marks them non-secret. Follow
   `patterns/PROJECT_FTP_DEPLOY.md`.
+- Treat FTP/FTPS upload stalls, hangs, repeated timeouts, and failed stream
+  opens as failed transfers. When project-local FTP config, selected service
+  contracts, or current user-provided deployment details define an authorized
+  SFTP-over-SSH route to the same remote deploy folder, switch to SFTP over SSH
+  before more FTP/FTPS upload variants and report that fallback. If required
+  SSH host, port, user, credential reference, or remote folder details are
+  missing, report the exact missing SFTP details instead of inventing
+  credentials, retrying the same failing transfer, disabling TLS certificate
+  validation, or accepting invalid FTPS certificates as a routine fallback.
 - Treat `gi reboot`, `ги ребут`, `gi restart`, and `ги рестарт` as requests to
   start or restart all documented applications in the current project using
   project-local run instructions. Before starting anything, identify the full
@@ -80,6 +89,21 @@
   their hosting or production deploy contract and are not restarted by local
   `gi reboot` unless project-local production instructions explicitly define
   that behavior.
+- Treat `gi docker`, `ги докер`, and equivalent Docker restart wording as a
+  request to restart the current project's documented Docker or Docker Compose
+  runtime. First read project-local Docker/run instructions, Dockerfile or
+  Containerfile, `compose.yaml`, `compose.yml`, `docker-compose*.yml`, container
+  scripts, manifests, service records, health-check contracts, and project
+  memory that define Docker ownership. If no Docker/Compose config or
+  documented Docker run contract exists, report that Docker is not configured
+  for this project and stop. If Docker CLI, Docker Compose, or the Docker engine
+  is missing or unavailable, report that blocker instead of claiming a restart.
+  Rebuild before restart when the image is missing, build inputs changed, the
+  local contract requires rebuild, or image freshness cannot be confidently
+  proven. Scope operations to the current project only: do not prune Docker
+  state, remove volumes/images, or stop unrelated containers. Verify container
+  status, health checks, mapped URLs, and relevant recent logs before reporting
+  rebuilt/restarted/not-configured/blocked status.
 - Treat `gi first test`, `gi первый тест`, and `ги первый тест` as requests to
   verify the current application's first-launch experience by resetting only
   documented project-owned app cache, generated state, temporary first-run

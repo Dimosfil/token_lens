@@ -38,6 +38,13 @@
   commits unless project rules say otherwise, and report remaining risks or
   follow-up batches. If the project is too large to complete safely in one turn,
   complete the first coherent batch and leave an executable continuation plan.
+  Keep pure structural refactor work separate from development work: new
+  behavior, validation, observability, integrations, runtime flows, persistence
+  shape changes, and tests that define new contracts are development, while
+  endpoint discovery, lifecycle actions, smoke tasks, restarts, deploys, and
+  release checks are verification or operations. For mixed batches, name the
+  parts explicitly and apply the stricter rule set for behavior, public
+  contracts, data, secrets, production systems, or external services.
 - Treat `gi stack` and `ги стек` as requests to find or build the current
   project's technology stack inventory. First search project-local instructions,
   README, docs indexes, runbooks, and

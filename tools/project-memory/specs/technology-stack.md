@@ -21,7 +21,7 @@ Last reviewed: 2026-06-24
 | Backend/API | Python standard library `http.server.ThreadingHTTPServer` and `BaseHTTPRequestHandler` | `tools/project-memory/architecture.md`, `app/api/` | Primary surface is served from `app.server` compatibility entry points. |
 | Data/storage | SQLite via Python `sqlite3` | `README.md`, `tools/project-memory/architecture.md`, `app/storage/` | Product DB is `data/analytics.sqlite`; generated/private runtime data is not committed. |
 | Source adapters | Codex local log adapter and OpenCode DB/JSONL adapters | `README.md`, `config.json`, `app/sources/codex/`, `app/sources/opencode/`, `app/services/import_service.py` | Reads usage metadata from configured local sources; private user-home sources require explicit user path/action before manual inspection. |
-| Desktop client | Python desktop mini client | `tools/AGENT_RUNBOOK.md`, `desktop/` | Started with the server by `start.ps1` unless intentionally skipped. |
+| Desktop client | Python desktop mini client | `tools/AGENT_RUNBOOK.md`, `desktop/`, `start-mini.ps1` | Started with the server by `start.ps1` unless intentionally skipped; can be started alone with `start-mini.ps1`. |
 | Configuration | JSON config files | `config.json`, `config.local.json`, `app/core/config.py` | Local/private overrides belong in local config, not source constants. |
 | Build/package | No separate build step currently defined | `AGENTS.md`, `tools/AGENT_RUNBOOK.md` | `gi install` must stop if installer/versioning contract is missing. |
 | Test/quality | `python -m compileall app`; unittest discovery when tests are relevant | `AGENTS.md`, `tests/` | No dedicated external test runner is documented. |
@@ -35,6 +35,8 @@ Last reviewed: 2026-06-24
 | Install | No project dependency manifest currently present | `AGENTS.md` |
 | Run | `.\start.ps1` | `AGENTS.md`, `README.md`, `tools/AGENT_RUNBOOK.md` |
 | Restart | `.\start.ps1 -Restart` | `tools/AGENT_RUNBOOK.md`, latest handoff summary |
+| Run mini only | `.\start-mini.ps1` | `tools/AGENT_RUNBOOK.md`, project root scripts |
+| Restart mini only | `.\start-mini.ps1 -Restart` | `tools/AGENT_RUNBOOK.md`, project root scripts |
 | Stop | `.\stop.ps1` | `README.md`, project root scripts |
 | Test | `python -m compileall app` | `AGENTS.md` |
 | Unit tests | `python -m unittest discover -s tests` | `tests/`, API/parser/storage/OpenCode/desktop helper test files |

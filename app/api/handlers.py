@@ -10,7 +10,6 @@ from app.services import analytics_service
 from app.services.data_refresh import refresh_dashboard, run_import
 from app.services.opencode_ingest import ingest_event
 from app.static_server import serve_static
-from app.storage import queries
 
 
 LOGGER = logging.getLogger("token_lens.api")
@@ -158,37 +157,6 @@ class AnalyticsHandler(BaseHTTPRequestHandler):
             send_json(self, analytics_service.models(range_key, start_ts, end_ts, first(query, "source")))
         else:
             self.send_error(404)
-
-    def dashboard(self, con, query: dict):
-        return queries.dashboard(
-            con,
-            first(query, "model"),
-            first(query, "range"),
-            first(query, "bucket", "day"),
-            first(query, "task_mode"),
-            parse_ts(query, "start_ts"),
-            parse_ts(query, "end_ts"),
-            first(query, "source"),
-            first(query, "time_mode"),
-        )
-
-    def summary(self, con):
-        return queries.summary(con)
-
-    def daily(self, con):
-        return queries.daily(con)
-
-    def turns(self, con, limit: int, model: str = ""):
-        return queries.turns(con, limit, model)
-
-    def tasks(self, con, limit: int):
-        return queries.tasks(con, limit)
-
-    def models(self, con):
-        return queries.models(con)
-
-    def data_state(self, con):
-        return queries.data_state(con)
 
     def log_message(self, format, *args):
         LOGGER.debug(

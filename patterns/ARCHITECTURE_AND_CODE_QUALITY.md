@@ -39,6 +39,14 @@ across stacks.
   contracts.
 - Preserve user-visible behavior during refactors unless the user explicitly
   changes the agreement.
+- Treat refactoring as structural work that preserves user-visible behavior and
+  documented API, storage, workflow, and UI contracts. Treat new behavior,
+  validation, observability, integrations, runtime flows, persistence shape
+  changes, and tests that define new contracts as development work, not pure
+  refactoring.
+- When extracting or replacing modules, name the public contract: caller,
+  callee, input shape, output shape, error and empty-state behavior, side-effect
+  ownership, and invariants that must not leak across layers.
 
 ## Abstraction Guidance
 

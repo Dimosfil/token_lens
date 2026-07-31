@@ -36,6 +36,10 @@ state and make the next batch obvious without hiding unfinished risks.
 - Treat `git diff --check` as a whitespace/error check, not as a substitute for
   tests or behavior verification. If it reports warnings, distinguish harmless
   line-ending warnings from actual whitespace errors.
+- Classify the batch as refactor, development, verification, operation,
+  migration, configuration cleanup, or a named mix. Do not hide behavior
+  changes, public-contract changes, service operations, or data migrations
+  inside a "refactor" label.
 - Report remaining risks at the same abstraction level as the batch, such as
   "frontend still has an independent default source" or "architecture spec still
   needs a migration note", instead of only naming files.

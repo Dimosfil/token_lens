@@ -14,7 +14,7 @@ from app.api.responses import send_json
 from app.api import server as api_server
 from app.core import config as core_config
 from app.core.codex_discovery import discover_codex_command, discover_codex_paths, discover_opencode_paths
-from app.core.logging_config import configure_logging
+from app.core.logging_config import _build_ai_logger_handler, configure_logging
 from app.core.types import ImportStats
 from app.services import background
 from app.services import data_refresh
@@ -322,6 +322,14 @@ class ConfigAndPayloadTests(unittest.TestCase):
 
         logging.basicConfig(level=original_level, handlers=original_handlers, force=True)
         self.assertIn("hello logging", content)
+        self.assertRegex(content, r"\[pid=\d+ thread=MainThread\]")
+
+    def test_ai_logger_handler_is_disabled_without_server_url(self):
+        with mock.patch.dict("os.environ", {}, clear=True):
+            handler, error = _build_ai_logger_handler(logging.INFO)
+
+        self.assertIsNone(handler)
+        self.assertIsNone(error)
 
     def test_payload_helpers_decode_and_compact_response_events(self):
         self.assertEqual(decode_json('{"a":1}'), {"a": 1})
@@ -565,6 +573,20 @@ class CodexSourceHelperTests(unittest.TestCase):
 
 
 class BackgroundImportTests(unittest.TestCase):
+    def test_run_import_logs_per_source_cpu_diagnostics(self):
+        with (
+            mock.patch.object(data_refresh, "source_warnings", return_value=[]),
+            mock.patch.object(data_refresh, "import_codex_logs", return_value=ImportStats(scanned=2, imported=1)),
+            mock.patch.object(data_refresh, "import_opencode_sources", return_value=ImportStats(scanned=3, imported=2)),
+            mock.patch.object(data_refresh, "LOGGER") as logger,
+        ):
+            data_refresh.run_import()
+
+        messages = [str(call.args[0]) for call in logger.info.call_args_list]
+        self.assertTrue(any("import started run_id=%s" in message for message in messages))
+        self.assertTrue(any("source import completed" in message and "cpu_seconds=%s" in message for message in messages))
+        self.assertTrue(any("import succeeded" in message and "one_core_percent=%s" in message for message in messages))
+
     def test_import_status_returns_current_state(self):
         with (
             mock.patch.object(data_refresh, "source_warnings", return_value=[]),

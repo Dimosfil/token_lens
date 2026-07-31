@@ -154,8 +154,21 @@ Use `.\start.ps1 -Restart` for `gi reboot` / `gi restart`. Use
 `.\start.ps1 -NoMini` only when deliberately running the web/API server without
 the desktop mini client.
 
+Use `.\start-mini.ps1` to start or reuse only the desktop mini client, and
+`.\start-mini.ps1 -Restart` to restart only that mini client. The hidden
+double-click launcher is `start-mini.vbs`.
+
 The desktop mini client should open as a single GUI window. `start.ps1` uses
 `pythonw.exe` when available so an extra Python console window is not expected.
+
+The full launcher validates the lightweight API state route
+`/api/state?include_raw=0`, groups PyManager parent/child processes as one app
+tree, repairs stale PID files, and requires a verified Mini window before it
+reports success. Startup timeouts come from `launcher_api_timeout_seconds` and
+`launcher_mini_timeout_seconds` in project config. If a component started by the
+current invocation fails verification, the launcher rolls back only the new
+processes from that invocation and prints bounded tails from the relevant error
+logs. Existing healthy components reused by a non-restart launch are preserved.
 
 For `gi reboot` / `gi restart`, report each documented app separately:
 web/API server and desktop mini client. Include whether each app was started,
@@ -193,10 +206,27 @@ desktop mini client, and writes data/mini_client.pid.
 ## Logs
 
 ```powershell
-# No dedicated log file is currently defined.
-# Check process state with: Get-Content data\server.pid
-# Check mini-client process state with: Get-Content data\mini_client.pid
+# Runtime events, import phase timings, CPU diagnostics, and errors:
+Get-Content data\token-lens.log -Tail 100
+
+# Startup process discovery and lifecycle decisions:
+Get-Content data\launcher.log -Tail 100
+
+# Captured process output and uncaught stderr:
+Get-Content data\server.out.log -Tail 100
+Get-Content data\server.err.log -Tail 100
 ```
+
+Runtime lines include PID/thread context. Import lines include a process-scoped
+`run_id`, per-source wall/CPU timings, row counts, and final one-core-equivalent
+CPU utilization. Logs must not include prompt/response bodies or arbitrary
+private source content.
+
+Optional remote forwarding uses the locally installed `ai_logger` package and
+ignored `ai-logger-client.local.ps1`. The normal launchers load that file before
+starting Python. Keep `AI_LOGGER_SERVER_TOKEN` only in the ignored local file;
+configure `AI_LOGGER_FALLBACK_JSONL_PATH` under `data/` so a remote outage does
+not discard records or interrupt Token Lens.
 
 ## Environment Notes
 

@@ -2,6 +2,160 @@ import { getJson } from "../api.js";
 import { duration, number, time } from "../format.js";
 import { detailsTitle, escapeHtml as sharedEscapeHtml, taskName as sharedTaskName, value as sharedValue } from "./html.js";
 
+const TEXT_COLLATOR = new Intl.Collator("ru", { numeric: true, sensitivity: "base" });
+const TASK_TABLES = {
+  taskAggregateTable: {
+    targetId: "taskBuckets",
+    defaultSort: { key: "period", direction: "desc" },
+    columns: [
+      ["period", "text"], ["started_at", "date"], ["finished_at", "date"],
+      ["elapsed_seconds", "number"], ["tasks", "number"], ["models", "text"],
+      ["model_calls", "number"], ["total_tokens_per_call", "number"],
+      ["total_tokens", "number"], ["input_tokens", "number"],
+      ["cached_input_tokens", "number"], ["non_cached_input_tokens", "number"],
+      ["output_tokens", "number"], ["reasoning_output_tokens", "number"],
+      ["efforts", "text"], ["statuses", "text"],
+    ],
+  },
+  taskSeparateTable: {
+    targetId: "taskRows",
+    defaultSort: { key: "finished_at", direction: "desc" },
+    columns: [
+      ["finished_at", "date"], ["started_at", "date"], ["elapsed_seconds", "number"],
+      ["task_name", "text"], ["models", "text"], ["model_calls", "number"],
+      ["total_tokens_per_call", "number"], ["total_tokens", "number"],
+      ["input_tokens", "number"], ["cached_input_tokens", "number"],
+      ["non_cached_input_tokens", "number"], ["output_tokens", "number"],
+      ["reasoning_output_tokens", "number"], ["efforts", "text"], ["statuses", "text"],
+    ],
+  },
+  bucketTasksTable: {
+    targetId: "bucketTasks",
+    defaultSort: { key: "finished_at", direction: "desc" },
+    columns: [
+      ["finished_at", "date"], ["started_at", "date"], ["elapsed_seconds", "number"],
+      ["task_name", "text"], ["models", "text"], ["model_calls", "number"],
+      ["total_tokens_per_call", "number"], ["total_tokens", "number"],
+      ["input_tokens", "number"], ["cached_input_tokens", "number"],
+      ["non_cached_input_tokens", "number"], ["output_tokens", "number"],
+      ["reasoning_output_tokens", "number"], ["efforts", "text"], ["statuses", "text"],
+    ],
+  },
+};
+const taskSortState = Object.fromEntries(
+  Object.entries(TASK_TABLES).map(([tableId, config]) => [tableId, { ...config.defaultSort }]),
+);
+const taskRowsCache = {
+  taskAggregateTable: [],
+  taskSeparateTable: [],
+  bucketTasksTable: [],
+};
+
+function sortValue(row, key, type) {
+  if (key === "task_name") return sharedTaskName(row);
+  if (type === "number" && !hasUsage(row) && key !== "elapsed_seconds") return null;
+  const value = row[key];
+  if (value == null || value === "") return null;
+  if (Array.isArray(value)) return value.join(", ");
+  if (type === "date") {
+    const timestamp = Date.parse(value);
+    return Number.isFinite(timestamp) ? timestamp : null;
+  }
+  if (type === "number") {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : null;
+  }
+  return String(value);
+}
+
+function compareValues(left, right, type) {
+  if (type === "text") return TEXT_COLLATOR.compare(String(left), String(right));
+  return left - right;
+}
+
+export function sortTaskRows(rows, sort, columns) {
+  const type = columns.find(([key]) => key === sort.key)?.[1] || "text";
+  const multiplier = sort.direction === "asc" ? 1 : -1;
+  return rows
+    .map((row, index) => ({ row, index, value: sortValue(row, sort.key, type) }))
+    .sort((left, right) => {
+      const leftMissing = left.value == null || left.value === "";
+      const rightMissing = right.value == null || right.value === "";
+      if (leftMissing !== rightMissing) return leftMissing ? 1 : -1;
+      if (leftMissing) return left.index - right.index;
+      const compared = compareValues(left.value, right.value, type) * multiplier;
+      return compared || left.index - right.index;
+    })
+    .map(item => item.row);
+}
+
+function sortedRows(tableId) {
+  const config = TASK_TABLES[tableId];
+  return sortTaskRows(taskRowsCache[tableId], taskSortState[tableId], config.columns);
+}
+
+function updateSortHeaders(tableId) {
+  const table = document.getElementById(tableId);
+  const active = taskSortState[tableId];
+  table.querySelectorAll("thead th[data-sort-key]").forEach(th => {
+    const selected = th.dataset.sortKey === active.key;
+    th.setAttribute("aria-sort", selected ? (active.direction === "asc" ? "ascending" : "descending") : "none");
+    const indicator = th.querySelector(":scope > .sort-indicator");
+    if (indicator) indicator.textContent = selected ? (active.direction === "asc" ? "↑" : "↓") : "";
+  });
+}
+
+function renderSortedTable(tableId) {
+  if (tableId === "taskAggregateTable") renderAggregateTasks(sortedRows(tableId));
+  else renderTaskRows(sortedRows(tableId), TASK_TABLES[tableId].targetId);
+  updateSortHeaders(tableId);
+}
+
+function changeSort(tableId, key) {
+  const config = TASK_TABLES[tableId];
+  const type = config.columns.find(([columnKey]) => columnKey === key)?.[1] || "text";
+  const current = taskSortState[tableId];
+  taskSortState[tableId] = current.key === key
+    ? { key, direction: current.direction === "desc" ? "asc" : "desc" }
+    : { key, direction: type === "text" ? "asc" : "desc" };
+  renderSortedTable(tableId);
+}
+
+function activateSort(event, tableId) {
+  if (event.target.closest(".col-resizer")) return;
+  const th = event.target.closest("th[data-sort-key]");
+  if (!th) return;
+  changeSort(tableId, th.dataset.sortKey);
+}
+
+export function initTaskSorting() {
+  Object.entries(TASK_TABLES).forEach(([tableId, config]) => {
+    const table = document.getElementById(tableId);
+    if (!table || table.dataset.sortReady) return;
+    table.dataset.sortReady = "true";
+    const headers = Array.from(table.querySelectorAll("thead th"));
+    config.columns.forEach(([key], index) => {
+      const th = headers[index];
+      if (!th) return;
+      th.dataset.sortKey = key;
+      th.tabIndex = 0;
+      th.title = "Sort column; drag to reorder";
+      const indicator = document.createElement("span");
+      indicator.className = "sort-indicator";
+      indicator.setAttribute("aria-hidden", "true");
+      th.appendChild(indicator);
+    });
+    table.addEventListener("click", event => activateSort(event, tableId));
+    table.addEventListener("keydown", event => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      if (!event.target.matches("th[data-sort-key]")) return;
+      event.preventDefault();
+      changeSort(tableId, event.target.dataset.sortKey);
+    });
+    updateSortHeaders(tableId);
+  });
+}
+
 function taskDetails(row) {
   return detailsTitle([
     `Thread ID: ${sharedValue(row.thread_id)}`,
@@ -90,11 +244,13 @@ export function renderTasks(rows, mode = "aggregate") {
   separateTable.hidden = !separate;
   if (separate) {
     document.getElementById("taskBuckets").innerHTML = "";
-    renderTaskRows(rows, "taskRows");
+    taskRowsCache.taskSeparateTable = [...rows];
+    renderSortedTable("taskSeparateTable");
     return;
   }
   document.getElementById("taskRows").innerHTML = "";
-  renderAggregateTasks(rows);
+  taskRowsCache.taskAggregateTable = [...rows];
+  renderSortedTable("taskAggregateTable");
 }
 
 export async function openBucketDetail(period, query) {
@@ -108,7 +264,8 @@ export async function openBucketDetail(period, query) {
   try {
     const separator = query ? "&" : "?";
     const rows = await getJson(`/api/bucket-tasks${query}${separator}period=${encodeURIComponent(period)}`);
-    renderTaskRows(rows, "bucketTasks");
+    taskRowsCache.bucketTasksTable = [...rows];
+    renderSortedTable("bucketTasksTable");
   } catch (err) {
     error.textContent = err.message;
   }

@@ -25,13 +25,24 @@ enough for per-call token-waste analysis.
 
 ## Maintenance Rule
 
-When the user asks to periodically trim old raw bodies, keep the analytics rows
-and clear only `raw_logs.feedback_log_body` in `data/analytics.sqlite` for days
-outside the current calendar month. Do not delete `raw_logs` rows, do not touch
-`turns`, and do not alter token/model/day analytics.
+Token Lens automatically retains full `raw_logs.feedback_log_body` values only
+for the configured current calendar-month window. The default
+`raw_log_body_retention_months` value is `1`. At the first Codex import for a
+new cutoff month, the retention service clears older bodies in bounded batches
+and records the applied cutoff in `raw_log_retention_state`. Any delayed older
+source row imported later is archived with an empty body immediately.
 
-After the update transaction commits, run `VACUUM` so SQLite returns the freed
-pages to disk. Verify:
+Retention must not delete `raw_logs` rows, touch `turns`, or alter
+token/model/day analytics. Repair flows must treat an empty retained body as
+unavailable evidence, not as proof that an existing analytics row is invalid.
+
+For manual bulk maintenance, clear only `raw_logs.feedback_log_body` in
+`data/analytics.sqlite` for days outside the retained calendar-month window.
+
+After a manual bulk update transaction commits, run `VACUUM` so SQLite returns
+the freed pages to disk. Automatic monthly passes avoid a blocking full-file
+rewrite; their freed pages remain reusable by SQLite until the next controlled
+manual compaction. Verify:
 
 - rows outside the current month with non-empty `feedback_log_body`: `0`;
 - current-month rows still have non-empty `feedback_log_body`;

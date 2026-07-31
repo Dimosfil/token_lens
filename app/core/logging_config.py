@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from logging.handlers import RotatingFileHandler
+import os
 from pathlib import Path
 import sys
 
@@ -27,7 +28,7 @@ def configure_logging(config: dict | None = None, *, force: bool = False) -> Pat
 
     log_path.parent.mkdir(parents=True, exist_ok=True)
     formatter = logging.Formatter(
-        "%(asctime)s %(levelname)s [%(name)s] %(message)s",
+        "%(asctime)s %(levelname)s [%(name)s] [pid=%(process)d thread=%(threadName)s] %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S%z",
     )
 
@@ -47,15 +48,42 @@ def configure_logging(config: dict | None = None, *, force: bool = False) -> Pat
         stream_handler.setLevel(logging.WARNING)
         handlers.append(stream_handler)
 
+    remote_handler, remote_error = _build_ai_logger_handler(level)
+    if remote_handler is not None:
+        handlers.append(remote_handler)
+
     logging.basicConfig(level=level, handlers=handlers, force=force)
-    logging.getLogger("token_lens").info(
+    logger = logging.getLogger("token_lens")
+    logger.info(
         "logging configured path=%s level=%s max_bytes=%s backup_count=%s",
         log_path,
         logging.getLevelName(level),
         max_bytes,
         backup_count,
     )
+    if remote_error:
+        logger.warning("ai_logger client disabled reason=%s", remote_error)
+    elif remote_handler is not None:
+        logger.info(
+            "ai_logger client enabled project=%s service=%s environment=%s",
+            os.environ.get("AI_LOGGER_PROJECT"),
+            os.environ.get("AI_LOGGER_SERVICE"),
+            os.environ.get("AI_LOGGER_ENVIRONMENT"),
+        )
     return log_path
+
+
+def _build_ai_logger_handler(level: int) -> tuple[logging.Handler | None, str | None]:
+    if not str(os.environ.get("AI_LOGGER_SERVER_URL") or "").strip():
+        return None, None
+    try:
+        from ai_logger import configured_logging_handler
+
+        handler = configured_logging_handler()
+        handler.setLevel(level)
+        return handler, None
+    except Exception as exc:
+        return None, f"{type(exc).__name__}: {exc}"
 
 
 def _resolve_path(value) -> Path:

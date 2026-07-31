@@ -311,6 +311,39 @@ class MiniClientHelperTests(unittest.TestCase):
         self.assertEqual(calls, ["rendered"])
         app.root.after.assert_called_once_with(mini_client.UI_QUEUE_POLL_MS, app._drain_ui_queue)
 
+    def test_ui_queue_continues_after_callback_failure(self):
+        app = mini_client.MiniClientApp.__new__(mini_client.MiniClientApp)
+        app.closed = False
+        app.ui_after_id = None
+        app.ui_queue = mini_client.queue.Queue()
+        app.root = mock.Mock()
+        calls = []
+        app.ui_queue.put(lambda: 1 / 0)
+        app.ui_queue.put(lambda: calls.append("rendered"))
+
+        with mock.patch.object(mini_client.LOGGER, "exception") as log_exception:
+            app._drain_ui_queue()
+
+        self.assertEqual(calls, ["rendered"])
+        log_exception.assert_called_once_with("mini UI callback failed")
+        app.root.after.assert_called_once_with(mini_client.UI_QUEUE_POLL_MS, app._drain_ui_queue)
+
+    def test_worker_error_callback_keeps_exception_after_except_scope(self):
+        app = mini_client.MiniClientApp.__new__(mini_client.MiniClientApp)
+        error = URLError("offline")
+        callbacks = []
+        app.run_with_api_recovery = mock.Mock(side_effect=error)
+        app.set_error = mock.Mock()
+        app._finish_worker = mock.Mock()
+        app._ui = callbacks.append
+
+        app._poll_worker({"source": "codex"})
+
+        callbacks[0]()
+        callbacks[1]()
+        app.set_error.assert_called_once_with(error)
+        app._finish_worker.assert_called_once_with()
+
     def test_request_snapshot_reads_widget_state_before_worker_starts(self):
         app = mini_client.MiniClientApp.__new__(mini_client.MiniClientApp)
         app.range_key = "24h"

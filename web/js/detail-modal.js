@@ -44,6 +44,11 @@ function eventLabel(call) {
   return isTokenUsageEvent(call) ? "Usage only" : "Captured";
 }
 
+function breakdownNumber(call, key) {
+  if (call?.token_breakdown_available === false || isTokenUsageEvent(call)) return "—";
+  return number(call?.[key]);
+}
+
 function emptyPayloadMessage(kind, call) {
   if (isTokenUsageEvent(call)) {
     return `No ${kind} payload: this row is a token-usage event only.`;
@@ -129,7 +134,7 @@ function renderMeta(task) {
   const stateTokens = Number(task.state_tokens_used || 0);
   const totalTokens = Number(task.total_tokens || 0);
   const stateMetric = stateTokens > 0 && stateTokens !== totalTokens
-    ? metric("State estimate", number(stateTokens))
+    ? metric("Session state estimate", number(stateTokens))
     : "";
   el.innerHTML = [
     metric("Start", time(task.started_at)),
@@ -155,10 +160,10 @@ function renderCalls(calls) {
       <td>${escapeHtml(call.model)}</td>
       <td>${escapeHtml(call.status)}</td>
       <td>${number(call.total_tokens)}</td>
-      <td>${number(call.input_tokens)}</td>
-      <td>${number(call.cached_input_tokens)}</td>
-      <td>${number(call.output_tokens)}</td>
-      <td>${number(call.reasoning_output_tokens)}</td>
+      <td>${breakdownNumber(call, "input_tokens")}</td>
+      <td>${breakdownNumber(call, "cached_input_tokens")}</td>
+      <td>${breakdownNumber(call, "output_tokens")}</td>
+      <td>${breakdownNumber(call, "reasoning_output_tokens")}</td>
       <td><span class="raw-event raw-event-${call.raw_event_captured ? "captured" : "missing"}">${eventLabel(call)}</span></td>
       <td class="mono">${escapeHtml(call.response_id || call.source_log_id)}</td>
     </tr>
@@ -176,6 +181,7 @@ function renderPayload(call) {
     response.textContent = "";
     event.textContent = "";
     renderRequestStats(null);
+    setPayloadCopyAvailability(null);
     return;
   }
   title.textContent = `${call.model} · ${call.status} · ${number(call.total_tokens)} tokens`;
@@ -183,6 +189,26 @@ function renderPayload(call) {
   response.textContent = pretty(call.response, emptyPayloadMessage("response", call));
   event.textContent = pretty(call.event);
   renderRequestStats(call);
+  setPayloadCopyAvailability(call);
+}
+
+function setPayloadCopyAvailability(call) {
+  const values = {
+    detailRequest: call?.request,
+    detailResponse: call?.response,
+    detailEvent: call?.event,
+  };
+  for (const [targetId, value] of Object.entries(values)) {
+    const button = document.querySelector(`[data-copy-target="${targetId}"]`);
+    if (!button) continue;
+    const available = value != null && value !== "";
+    button.disabled = !available;
+    if (!available) {
+      setCopyButtonBaseLabel(button, "Unavailable");
+    } else if (button.dataset.copyLabel === "Unavailable") {
+      setCopyButtonBaseLabel(button, "Copy");
+    }
+  }
 }
 
 async function writeClipboardText(text) {

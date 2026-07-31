@@ -18,6 +18,8 @@ from app.services.import_service import import_codex_logs, import_opencode_sourc
 LOGGER = logging.getLogger("token_lens.import")
 IMPORT_LOCK = threading.Lock()
 STATE_LOCK = threading.Lock()
+RUN_SEQUENCE_LOCK = threading.Lock()
+RUN_SEQUENCE = 0
 
 
 @dataclass
@@ -63,9 +65,11 @@ def source_warnings(config: dict | None = None, discovered: dict | None = None) 
 
 def run_import() -> ImportStats:
     with IMPORT_LOCK:
+        run_id = _next_run_id()
         start = time.monotonic()
+        cpu_start = time.process_time()
         warnings = source_warnings()
-        LOGGER.info("import started")
+        LOGGER.info("import started run_id=%s", run_id)
         with STATE_LOCK:
             IMPORT_STATE.status = "running"
             IMPORT_STATE.started_at = _utc_now()
@@ -78,17 +82,35 @@ def run_import() -> ImportStats:
         errors = []
         codex_stats = ImportStats()
         opencode_stats = ImportStats()
+        codex_start = time.monotonic()
+        codex_cpu_start = time.process_time()
         try:
             codex_stats = import_codex_logs()
         except Exception as exc:
             errors.append(f"codex: {type(exc).__name__}: {exc}")
-            LOGGER.exception("codex import failed")
+            LOGGER.exception(
+                "source import failed run_id=%s source=codex duration_seconds=%s cpu_seconds=%s",
+                run_id,
+                _elapsed(codex_start),
+                _elapsed(codex_cpu_start, clock=time.process_time),
+            )
+        else:
+            _log_source_completed(run_id, "codex", codex_start, codex_cpu_start, codex_stats)
 
+        opencode_start = time.monotonic()
+        opencode_cpu_start = time.process_time()
         try:
             opencode_stats = import_opencode_sources()
         except Exception as exc:
             errors.append(f"opencode: {type(exc).__name__}: {exc}")
-            LOGGER.exception("opencode import failed")
+            LOGGER.exception(
+                "source import failed run_id=%s source=opencode duration_seconds=%s cpu_seconds=%s",
+                run_id,
+                _elapsed(opencode_start),
+                _elapsed(opencode_cpu_start, clock=time.process_time),
+            )
+        else:
+            _log_source_completed(run_id, "opencode", opencode_start, opencode_cpu_start, opencode_stats)
 
         stats = ImportStats(
             scanned=codex_stats.scanned + opencode_stats.scanned,
@@ -97,6 +119,8 @@ def run_import() -> ImportStats:
             archived=codex_stats.archived + opencode_stats.archived,
         )
         duration = round(time.monotonic() - start, 3)
+        cpu_seconds = round(time.process_time() - cpu_start, 3)
+        one_core_percent = _one_core_percent(cpu_seconds, duration)
         with STATE_LOCK:
             IMPORT_STATE.status = "failed" if errors else "succeeded"
             IMPORT_STATE.completed_at = _utc_now()
@@ -106,8 +130,12 @@ def run_import() -> ImportStats:
             IMPORT_STATE.warnings = warnings
         if errors:
             LOGGER.error(
-                "import failed duration_seconds=%s scanned=%s imported=%s skipped=%s archived=%s warnings=%s errors=%s",
+                "import failed run_id=%s duration_seconds=%s cpu_seconds=%s one_core_percent=%s "
+                "scanned=%s imported=%s skipped=%s archived=%s warnings=%s errors=%s",
+                run_id,
                 duration,
+                cpu_seconds,
+                one_core_percent,
                 stats.scanned,
                 stats.imported,
                 stats.skipped,
@@ -117,8 +145,12 @@ def run_import() -> ImportStats:
             )
             raise RuntimeError("; ".join(errors))
         LOGGER.info(
-            "import succeeded duration_seconds=%s scanned=%s imported=%s skipped=%s archived=%s warnings=%s",
+            "import succeeded run_id=%s duration_seconds=%s cpu_seconds=%s one_core_percent=%s "
+            "scanned=%s imported=%s skipped=%s archived=%s warnings=%s",
+            run_id,
             duration,
+            cpu_seconds,
+            one_core_percent,
             stats.scanned,
             stats.imported,
             stats.skipped,
@@ -146,6 +178,44 @@ def refresh_dashboard(load_dashboard: Callable[[], dict]) -> dict:
     if isinstance(state, dict):
         state["import_status"] = result["status"]
     return payload
+
+
+def _next_run_id() -> str:
+    global RUN_SEQUENCE
+    with RUN_SEQUENCE_LOCK:
+        RUN_SEQUENCE += 1
+        return f"{os.getpid()}-{RUN_SEQUENCE}"
+
+
+def _elapsed(start: float, *, clock: Callable[[], float] = time.monotonic) -> float:
+    return round(clock() - start, 3)
+
+
+def _one_core_percent(cpu_seconds: float, duration_seconds: float) -> float:
+    if duration_seconds <= 0:
+        return 0.0
+    return round(cpu_seconds * 100 / duration_seconds, 1)
+
+
+def _log_source_completed(
+    run_id: str,
+    source: str,
+    start: float,
+    cpu_start: float,
+    stats: ImportStats,
+) -> None:
+    LOGGER.info(
+        "source import completed run_id=%s source=%s duration_seconds=%s cpu_seconds=%s "
+        "scanned=%s imported=%s skipped=%s archived=%s",
+        run_id,
+        source,
+        _elapsed(start),
+        _elapsed(cpu_start, clock=time.process_time),
+        stats.scanned,
+        stats.imported,
+        stats.skipped,
+        stats.archived,
+    )
 
 
 def auto_import_loop(interval: int, sleep: Callable[[float], None] = time.sleep) -> None:

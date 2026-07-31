@@ -139,6 +139,12 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8765/api/usage-limits"
 Prompts, responses, tool payloads, secrets и исходные приватные журналы не
 сохраняются в `data\analytics.sqlite`.
 
+При открытии `Call details` для Codex приложение может в режиме read-only
+прочитать Request/Response из точного файла в настроенном
+`codex_session_index`, если имя файла содержит выбранный `thread_id`.
+Сообщения возвращаются только локальным detail API, не записываются в SQLite и
+не выводятся в журналы Token Lens.
+
 ## Конфигурация
 
 Переносимые настройки находятся в `config.json`, локальные overrides — в

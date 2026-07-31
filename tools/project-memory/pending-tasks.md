@@ -14,6 +14,160 @@ generated outputs, secrets, credentials, or private production data.
 
 ## Tasks
 
+### Mini Client Server Process Leak 2026-07-27
+
+Goal: prevent desktop recovery from accumulating parallel Token Lens servers.
+
+Planned changes:
+
+- [x] Stop only the leaked Token Lens Python process trees.
+- [x] Reuse a still-running recovery child instead of spawning another server.
+- [x] Require exclusive Windows ownership of the HTTP listening port.
+- [x] Run focused tests and restart the full app set.
+
+### Remote ai_logger Client 2026-07-15
+
+Goal: forward Token Lens Python logging to the remote ai_logger ingest server
+while preserving the existing rotating file log and local outage durability.
+
+Planned changes:
+
+- [x] Install the local editable ai_logger Python client package.
+- [x] Load ignored project-local client environment configuration from the
+      documented launchers.
+- [x] Attach the optional native Python logging handler without replacing the
+      existing file/stream handlers.
+- [x] Configure a local fallback JSONL file and verify that a remote outage does
+      not interrupt Token Lens or discard the attempted event.
+- [x] Verify an accepted test event after the remote server exposes `/ingest`
+      to this LAN client.
+- [x] Run regression checks, restart the app set, and update the runtime
+      integration contract.
+
+### Import CPU and Launcher Diagnostics 2026-07-15
+
+Goal: preserve enough local evidence to distinguish a CPU-heavy import from
+concurrent Token Lens runtimes without logging private source contents.
+
+Planned changes:
+
+- [x] Add PID/thread context and per-source wall/CPU timings to runtime logs.
+- [x] Record launcher process discovery and lifecycle decisions in a bounded
+      project-local log.
+- [x] Add focused regression coverage and document the observability contract.
+- [x] Restart and verify one clean runtime through a real automatic import.
+
+### Mini Stale Display Recovery 2026-07-13
+
+Goal: prevent a transient limit/API error from freezing Mini on an old account
+limit snapshot.
+
+Planned changes:
+
+- [x] Trace the stale visible values to the failed Tkinter callback queue.
+- [x] Preserve worker exceptions until their main-thread callback executes.
+- [x] Isolate failed UI callbacks so queue processing and scheduling continue.
+- [x] Run focused tests, restart Mini, and verify current live limits.
+
+### Mini Codex Limit Freshness 2026-07-11
+
+Goal: keep Mini's Codex and Spark remaining limits aligned with the live Codex
+account source during active agent usage.
+
+Planned changes:
+
+- [x] Confirm the backend returns the same live limits as the official balance.
+- [x] Refresh Codex limits once per configured Mini polling cycle without
+      reloading unchanged task rows.
+- [x] Add focused regression coverage, restart Mini, and verify live values.
+
+### Mini Client UI Thread Safety 2026-07-11
+
+Goal: prevent intermittent Token Lens Mini freezes by keeping every Tkinter
+operation on the main UI thread.
+
+Planned changes:
+
+- [x] Snapshot widget-backed request settings before starting HTTP workers.
+- [x] Deliver worker results through a main-thread callback queue.
+- [x] Add focused regression coverage for the thread boundary.
+- [x] Run verification, restart only Mini, and confirm its window responds.
+
+### Mini Client Poll Throttling 2026-07-11
+
+Goal: prevent Mini from repeatedly blocking on Codex limit reads and rebuilding
+limit widgets during unchanged 5-second poll cycles.
+
+Planned changes:
+
+- [x] Make unchanged-state polls skip source context refresh until a separate
+      throttle interval elapses.
+- [x] Keep manual refresh and changed data refresh behavior immediate.
+- [x] Avoid worker-thread reads of active Tk/source state in stale-limit
+      fallback.
+- [x] Add a delayed auto-import mode so startup does not launch a heavy import
+      automatically while records still update in the background.
+- [x] Add focused regression coverage and restart the app set.
+
+### Codex Terra Post-Sampling Usage 2026-07-11
+
+Goal: show token usage for `gpt-5.6-terra` rows whose Codex logs record
+post-sampling usage with a prefixed trace segment.
+
+Planned changes:
+
+- [x] Diagnose that Mini raw-only rows have `codex_threads` metadata but no
+      matching `turns` usage rows.
+- [x] Extend the Codex post-sampling parser to accept prefixed trace lines
+      without parsing quoted response-output snippets.
+- [x] Backfill already archived raw post-sampling usage rows into `turns`
+      where parseable; current 2026-07-11 raw-only terra rows have no
+      `total_usage_tokens` or parseable response usage markers in archived
+      raw logs.
+- [x] Run focused/full verification and restart the app set.
+
+### API Handler Service Boundary Refactor 2026-07-01
+
+Goal: enforce the API-to-service contract by removing legacy handler methods
+that bypass the service layer and call storage queries directly.
+
+Planned changes:
+
+- [x] Confirm current routes use `analytics_service`.
+- [x] Remove unused `AnalyticsHandler` storage-query compatibility methods.
+- [x] Add a contract guard so the handler does not expose those legacy methods.
+- [x] Run focused API contract tests plus compile/check verification.
+
+### Codex Account Limit Normalizer Boundary 2026-07-01
+
+Goal: separate Codex account-limit payload normalization and app-server process
+lifecycle from cache and command-resolution orchestration.
+
+Planned changes:
+
+- [x] Move rate-limit payload normalization into a pure service helper module.
+- [x] Keep `read_usage_limits()` behavior and existing service-level config
+      controls unchanged.
+- [x] Point focused normalization tests at the new module contract.
+- [x] Move reusable app-server stdio client/process lifecycle into its own
+      module contract.
+- [x] Point process lifecycle tests at the new client module.
+- [x] Run focused account/API tests plus compile/check verification.
+
+### Codex Account Limit Stale Fallback 2026-07-01
+
+Goal: keep visible Codex account limits stable when the local app-server
+temporarily times out or returns no fresh data.
+
+Planned changes:
+
+- [x] Return the last successful account-limit snapshot as `stale` on transient
+      read failures instead of clearing `groups`/`windows`.
+- [x] Add desktop mini in-memory fallback for HTTP/backend read failures.
+- [x] Show the last successful update time in desktop and browser limit widgets.
+- [x] Add regression coverage for stale backend fallback and desktop helpers.
+- [x] Run focused tests, syntax checks, and full test discovery.
+
 ### Codex Query State Metadata Refactor 2026-07-01
 
 Goal: keep Codex thread-state metadata handling readable without changing
@@ -37,6 +191,47 @@ Planned changes:
 - [x] Add an approximate request-token estimate derived from the request payload.
 - [x] Compare that estimate with the row `Total` directly in the modal.
 - [x] Surface short token-count labels near the payload copy buttons.
+
+### Usage-Only Detail Accuracy 2026-07-17
+
+Goal: make Codex post-sampling usage-only rows distinguish unavailable payloads
+and token breakdowns from real zero values.
+
+Planned changes:
+
+- [x] Recover matching request and response payloads from archived raw events when available.
+- [x] Mark usage-only rows as lacking a reliable input/cached/output/reasoning breakdown.
+- [x] Render unavailable payloads and breakdown fields explicitly in the detail modal.
+- [x] Clarify that Codex thread-state tokens are a session-level estimate.
+- [x] Add focused regression coverage and run coherent-batch verification.
+
+### Task Table Column Sorting 2026-07-17
+
+Goal: let users sort task tables by any visible column while keeping the newest
+task time first by default.
+
+Planned changes:
+
+- [x] Add stable typed sorting for task, bucket, text, time, and token columns.
+- [x] Make task headers keyboard-accessible and show the active direction.
+- [x] Keep the default separate-task and bucket order on finish time descending.
+- [x] Preserve sorting across automatic dashboard refreshes.
+- [x] Add focused verification, restart the app set, and verify the live API/UI assets.
+
+### On-Demand Codex Transcript Payloads 2026-07-17
+
+Goal: show Request and Response for usage-only Codex calls by reading the exact
+selected local session transcript without persisting private message text in the
+analytics database.
+
+Planned changes:
+
+- [x] Resolve only the transcript filename matching the selected analytics thread ID.
+- [x] Parse user and assistant messages inside exact `task_started` turn boundaries.
+- [x] Fill only missing detail payloads and keep SQLite rows unchanged.
+- [x] Reject unsafe thread IDs and tolerate unknown/malformed transcript records.
+- [x] Add privacy documentation and focused parser/service regression coverage.
+- [x] Verify the current chat end to end, restart the app set, and inspect live API metadata without logging payload text.
 
 ### Source-Specific Analytics Separation 2026-06-30
 
@@ -1298,3 +1493,35 @@ Planned changes:
       aggregate.
 - [x] Add a backward-compatible lightweight state mode for Mini polling.
 - [x] Add focused regression coverage and verify endpoint latency after restart.
+
+### Raw Log Current-Month Retention 2026-07-17
+
+Goal: enforce the agreed policy that full `raw_logs.feedback_log_body` values
+are retained only for the current calendar month while analytics rows and token
+aggregates remain intact.
+
+- [x] Stop Token Lens and record pre-maintenance row counts and file size.
+- [x] Clear only non-empty raw bodies before the current month in bounded
+      transactions, then compact the SQLite file.
+- [x] Verify old bodies are empty, current-month bodies remain, and `turns` and
+      `raw_logs` row counts are unchanged.
+- [x] Add configured automatic current-month retention for future imports and
+      month transitions.
+- [x] Add focused tests, update the durable retention contract, restart the app,
+      and verify live health/import status.
+
+### Full Launcher Failure Recovery 2026-07-17
+
+Goal: make `start.ps1` the reliable single entry point for the complete Token
+Lens app set on Windows.
+
+- [x] Use the lightweight API state route for startup health so a large raw-log
+      archive cannot cause a false timeout.
+- [x] Treat PyManager parent/child processes as one application tree and repair
+      missing or stale PID files without creating duplicate trees.
+- [x] Roll back only processes started by the current launcher invocation when
+      API or Mini verification fails.
+- [x] Require a live API response and a verified Mini window before reporting
+      the full app set ready; include bounded error-log diagnostics on failure.
+- [x] Add launcher contract checks, update the runbook, and verify a complete
+      restart through `start.ps1 -Restart`.

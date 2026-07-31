@@ -17,7 +17,7 @@ import { renderDaily } from "./js/render/daily.js";
 import { renderUsageLimits } from "./js/render/limits.js";
 import { renderMetrics } from "./js/render/metrics.js";
 import { renderModelAverages, renderModels } from "./js/render/models.js";
-import { initBucketModal, openBucketDetail, renderTasks } from "./js/render/tasks.js";
+import { initBucketModal, initTaskSorting, openBucketDetail, renderTasks } from "./js/render/tasks.js?v=20260717-1";
 import { renderTop } from "./js/render/turns.js";
 import { setAutoStatus } from "./js/status.js";
 import { initResizableTables } from "./js/table-resize.js";
@@ -186,6 +186,7 @@ syncChartModeOptions();
 savePageSettings();
 initDetailModal();
 initBucketModal();
+initTaskSorting();
 initResizableTables();
 refresh(false).catch(err => {
   setAutoStatus(`Refresh error: ${err.message}`, true, "offline");

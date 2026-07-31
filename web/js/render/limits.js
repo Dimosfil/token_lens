@@ -11,6 +11,15 @@ function resetLabel(row) {
   return resetAt.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
 }
 
+function updatedLabel(snapshot) {
+  const value = snapshot?.last_success_at || snapshot?.fetched_at;
+  if (!value) return "";
+  const updatedAt = new Date(value);
+  if (Number.isNaN(updatedAt.getTime())) return "";
+  const time = updatedAt.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  return snapshot?.stale ? `last updated ${time}` : `updated ${time}`;
+}
+
 function percentLabel(row) {
   if (row?.remaining_percent === null || row?.remaining_percent === undefined) {
     return "-";
@@ -76,6 +85,7 @@ function windowTitle(row) {
 
 function stateLabel(snapshot) {
   if (!snapshot?.ok) return "Unavailable";
+  if (snapshot.stale) return "Stale";
   if (snapshot.cached) return "Cached";
   return snapshot.plan_type || "Live";
 }
@@ -115,6 +125,7 @@ export function renderUsageLimits(snapshot, source = "codex", summary = {}) {
   }
   const limits = Array.isArray(snapshot?.windows) ? snapshot.windows : [];
   const groups = normalizedLimitGroups(snapshot, limits);
+  const updated = updatedLabel(snapshot);
   if (!groups.length) {
     el.hidden = false;
     el.innerHTML = `
@@ -123,6 +134,7 @@ export function renderUsageLimits(snapshot, source = "codex", summary = {}) {
         <span class="limit-widget-state">${escapeHtml(stateLabel(snapshot))}</span>
       </div>
       <p class="limit-widget-error">${escapeHtml(snapshot?.error || "Codex app-server limits are unavailable")}</p>
+      ${updated ? `<p class="limit-widget-meta">${escapeHtml(updated)}</p>` : ""}
     `;
     return;
   }
@@ -133,6 +145,7 @@ export function renderUsageLimits(snapshot, source = "codex", summary = {}) {
       <span class="limit-widget-state">${escapeHtml(stateLabel(snapshot))}</span>
     </div>
     <div class="limit-widget-rows">
+      ${updated ? `<p class="limit-widget-meta">${escapeHtml(updated)}</p>` : ""}
       ${groups.map(group => `
         <div class="limit-group">
           <div class="limit-group-name" title="${escapeHtml(limitDisplayName(group))}">

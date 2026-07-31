@@ -174,9 +174,17 @@ def set_codex_import_state(con: sqlite3.Connection, source_log_id: int) -> None:
     )
 
 
-def insert_raw_log(con: sqlite3.Connection, row: dict) -> bool:
+def insert_raw_log(
+    con: sqlite3.Connection,
+    row: dict,
+    raw_body_cutoff_day: str | None = None,
+) -> bool:
     ts = int(row["ts"])
     dt = datetime.fromtimestamp(ts, timezone.utc)
+    day = dt.date().isoformat()
+    feedback_log_body = row["feedback_log_body"] or ""
+    if raw_body_cutoff_day and day < raw_body_cutoff_day:
+        feedback_log_body = ""
     cursor = con.execute(
         """
         insert or ignore into raw_logs (
@@ -189,11 +197,11 @@ def insert_raw_log(con: sqlite3.Connection, row: dict) -> bool:
             "source_log_id": row["id"],
             "ts": ts,
             "ts_iso": dt.isoformat(),
-            "day": dt.date().isoformat(),
+            "day": day,
             "thread_id": row["thread_id"],
             "thread_name": _row_get(row, "thread_name"),
             "model": _row_get(row, "model"),
-            "feedback_log_body": row["feedback_log_body"] or "",
+            "feedback_log_body": feedback_log_body,
             "archived_at": datetime.now(timezone.utc).isoformat(),
         },
     )

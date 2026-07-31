@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 import sqlite3
 import time
 
-from app.sources.codex.parser import parse_response_create_request
+from app.sources.codex.parser import parse_response_create_request, parse_response_event
 from app.storage.payloads import compact_event_payload, decode_json
 from app.storage.query_params import (
     BUCKETS,
@@ -1014,8 +1014,14 @@ def task_detail(con: sqlite3.Connection, thread_id: str, turn_id: str):
         row["request"] = decode_json(row.pop("request_json"))
         row["response"] = decode_json(row.pop("response_json"))
         row["event"] = compact_event_payload(decode_json(row.pop("event_json")))
-        if row["request"] is None and row.get("source") == "codex":
-            row["request"] = _request_payload_from_raw_logs(con, row)
+        row["usage_only"] = _is_usage_only_event(row["event"])
+        row["token_breakdown_available"] = not row["usage_only"]
+        if row.get("source") == "codex" and (row["request"] is None or row["response"] is None):
+            archived_payloads = _payloads_from_raw_logs(con, row)
+            if row["request"] is None:
+                row["request"] = archived_payloads["request"]
+            if row["response"] is None:
+                row["response"] = archived_payloads["response"]
         row["raw_event_captured"] = row["event"] is not None
 
     task = {
@@ -1078,7 +1084,11 @@ def _apply_codex_thread_state(task: dict, state_row, rows: list[dict]) -> None:
         )
 
 
-def _request_payload_from_raw_logs(con: sqlite3.Connection, row: dict):
+def _is_usage_only_event(event) -> bool:
+    return isinstance(event, dict) and event.get("type") == "codex.post_sampling_token_usage"
+
+
+def _payloads_from_raw_logs(con: sqlite3.Connection, row: dict) -> dict:
     candidates = con.execute(
         """
         select source_log_id, ts, feedback_log_body
@@ -1088,22 +1098,43 @@ def _request_payload_from_raw_logs(con: sqlite3.Connection, row: dict):
           and (
             feedback_log_body like '%websocket request: {"type":"response.create"%'
             or feedback_log_body like '%websocket request: {"type": "response.create"%'
+            or feedback_log_body like '%{"type":"response.created"%'
+            or feedback_log_body like '%{"type":"response.in_progress"%'
+            or feedback_log_body like '%{"type":"response.completed"%'
           )
         order by source_log_id desc
-        limit 10
+        limit 20
         """,
         [row["thread_id"], f"%turn.id={row['turn_id']}%"],
     ).fetchall()
+    payloads = {"request": None, "response": None}
     for candidate in candidates:
-        payload = parse_response_create_request(
+        body = candidate["feedback_log_body"] or ""
+        request_payload = parse_response_create_request(
             candidate["source_log_id"],
             candidate["ts"],
             row["thread_id"],
-            candidate["feedback_log_body"] or "",
+            body,
         )
-        if payload and payload.get("model") == row.get("model"):
-            return decode_json(payload.get("request_json"))
-    return None
+        if request_payload and request_payload.get("model") == row.get("model"):
+            payloads["request"] = decode_json(request_payload.get("request_json"))
+
+        response_payload = parse_response_event(
+            candidate["source_log_id"],
+            candidate["ts"],
+            row["thread_id"],
+            body,
+            {},
+            {},
+        )
+        if response_payload and response_payload.get("model") == row.get("model"):
+            if payloads["request"] is None:
+                payloads["request"] = decode_json(response_payload.get("request_json"))
+            payloads["response"] = decode_json(response_payload.get("response_json"))
+
+        if payloads["request"] is not None and payloads["response"] is not None:
+            break
+    return payloads
 
 
 def models(con: sqlite3.Connection, range_key: str = "", start_ts: int | None = None, end_ts: int | None = None, source: str = ""):

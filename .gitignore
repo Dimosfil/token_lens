@@ -5,6 +5,7 @@ __pycache__/
 *.log
 .env
 config.local.json
+ai-logger-client.local.ps1
 .venv/
 venv/
 

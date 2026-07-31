@@ -9,8 +9,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest import mock
 
+from app.api import handlers
 from app.api.handlers import parse_limit
-from app.services import analytics_service, codex_account_service, import_service
+from app.services import analytics_service, codex_account_service, codex_app_server_client, codex_rate_limits, import_service
 from app.services.import_service import import_usage_source
 from app.sources.opencode.parser import parse_opencode_event
 from app.sources.codex.parser import parse_response_create_request, parse_response_event, parse_usage_row
@@ -80,6 +81,9 @@ class ApiContractTests(unittest.TestCase):
 
     def tearDown(self):
         codex_account_service.close_codex_account_client()
+        codex_account_service._CACHE = None
+        codex_account_service._CACHE_TS = 0.0
+        codex_account_service._CACHE_COMMAND = None
         self.tmp.cleanup()
 
     def test_query_response_shapes(self):
@@ -105,6 +109,7 @@ class ApiContractTests(unittest.TestCase):
             "turns", "latest_source_log_id", "latest_ts", "total_tokens", "version",
             "raw_logs", "latest_raw_log_id", "latest_raw_log_ts",
         }, set(state))
+
         self.assertLessEqual({
             "period", "day", "turns", "input_tokens", "output_tokens",
             "cached_input_tokens", "reasoning_output_tokens", "total_tokens",
@@ -149,6 +154,11 @@ class ApiContractTests(unittest.TestCase):
         }, set(state))
         self.assertNotIn("raw_logs", state)
         self.assertFalse(any("from raw_logs" in statement.lower() for statement in statements))
+
+    def test_api_handler_routes_through_service_boundary(self):
+        self.assertFalse(hasattr(handlers, "queries"))
+        for name in ("dashboard", "summary", "daily", "turns", "tasks", "models", "data_state"):
+            self.assertFalse(hasattr(handlers.AnalyticsHandler, name))
 
     def test_time_mode_defaults_to_local_and_keeps_utc_switch(self):
         self.assertEqual(normalize_time_mode(""), "local")
@@ -203,7 +213,7 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(rows, ["2026-05", "2026-06", "2026-07"])
 
     def test_codex_account_rate_limits_are_normalized(self):
-        payload = codex_account_service._normalize_rate_limits({
+        payload = codex_rate_limits.normalize_rate_limits({
             "rateLimits": {
                 "limitId": "codex",
                 "planType": "prolite",
@@ -233,6 +243,8 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(payload["limit_id"], "codex")
         self.assertEqual(payload["plan_type"], "prolite")
         self.assertEqual(payload["limit_ids"], ["codex", "codex_bengalfox"])
+        self.assertFalse(payload["stale"])
+        self.assertEqual(payload["last_success_at"], payload["fetched_at"])
         self.assertEqual(len(payload["groups"]), 2)
         self.assertEqual(len(payload["windows"]), 4)
         self.assertEqual(payload["windows"][0]["label"], "5h")
@@ -272,8 +284,8 @@ class ApiContractTests(unittest.TestCase):
             }
 
             with (
-                mock.patch.object(codex_account_service.subprocess, "Popen", fake_popen),
-                mock.patch.object(codex_account_service.subprocess, "run"),
+                mock.patch.object(codex_app_server_client.subprocess, "Popen", fake_popen),
+                mock.patch.object(codex_app_server_client.subprocess, "run"),
             ):
                 first = codex_account_service.read_usage_limits(config)
                 second = codex_account_service.read_usage_limits(config)
@@ -285,13 +297,53 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(fake_popen.processes[0].read_requests, 2)
         self.assertEqual(fake_popen.processes[0].initialize_requests, 1)
 
+    def test_codex_account_timeout_returns_last_successful_limits(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            command = Path(tmp) / "codex.cmd"
+            command.write_text("", encoding="utf-8")
+            config = {
+                "codex_app_server_command": str(command),
+                "codex_rate_limits_cache_seconds": 0,
+                "codex_rate_limits_persistent": False,
+            }
+
+            with mock.patch.object(
+                codex_account_service,
+                "_request_rate_limits_once",
+                return_value={
+                    "result": {
+                        "rateLimits": {
+                            "limitId": "codex",
+                            "planType": "prolite",
+                            "primary": {"usedPercent": 20, "windowDurationMins": 300},
+                        }
+                    }
+                },
+            ):
+                first = codex_account_service.read_usage_limits(config)
+
+            with mock.patch.object(
+                codex_account_service,
+                "_request_rate_limits_once",
+                side_effect=TimeoutError("timed out"),
+            ):
+                stale = codex_account_service.read_usage_limits(config)
+
+        self.assertTrue(first["ok"])
+        self.assertTrue(stale["ok"])
+        self.assertTrue(stale["cached"])
+        self.assertTrue(stale["stale"])
+        self.assertEqual(stale["stale_error"], "timed out")
+        self.assertEqual(stale["last_success_at"], first["last_success_at"])
+        self.assertEqual(stale["windows"][0]["remaining_percent"], 80)
+
     def test_codex_account_persistent_client_restarts_exited_process(self):
         fake_popen = FakeCodexPopen()
-        client = codex_account_service.CodexAppServerClient("codex.cmd")
+        client = codex_app_server_client.CodexAppServerClient("codex.cmd")
 
         with (
-            mock.patch.object(codex_account_service.subprocess, "Popen", fake_popen),
-            mock.patch.object(codex_account_service.subprocess, "run"),
+            mock.patch.object(codex_app_server_client.subprocess, "Popen", fake_popen),
+            mock.patch.object(codex_app_server_client.subprocess, "run"),
         ):
             first = client.request_rate_limits(3)
             fake_popen.processes[0].returncode = 1
@@ -313,8 +365,8 @@ class ApiContractTests(unittest.TestCase):
             }
 
             with (
-                mock.patch.object(codex_account_service.subprocess, "Popen", fake_popen),
-                mock.patch.object(codex_account_service.subprocess, "run"),
+                mock.patch.object(codex_app_server_client.subprocess, "Popen", fake_popen),
+                mock.patch.object(codex_app_server_client.subprocess, "run"),
             ):
                 payload = codex_account_service.read_usage_limits(config)
                 codex_account_service.close_codex_account_client()
@@ -334,10 +386,10 @@ class ApiContractTests(unittest.TestCase):
                 raise AssertionError("taskkill should handle the Windows process tree")
 
         with (
-            mock.patch.object(codex_account_service.os, "name", "nt"),
-            mock.patch.object(codex_account_service.subprocess, "run") as run,
+            mock.patch.object(codex_app_server_client.os, "name", "nt"),
+            mock.patch.object(codex_app_server_client.subprocess, "run") as run,
         ):
-            codex_account_service._stop_process(FakeProcess())
+            codex_app_server_client.stop_process(FakeProcess())
 
         run.assert_called_once()
         self.assertEqual(run.call_args.args[0], ["taskkill", "/F", "/T", "/PID", "1234"])
@@ -1127,6 +1179,65 @@ class ApiContractTests(unittest.TestCase):
 
         self.assertEqual(detail["calls"][0]["request"]["input"][0]["content"], "show payload")
         self.assertIsNone(detail["calls"][0]["response"])
+        self.assertTrue(detail["calls"][0]["usage_only"])
+        self.assertFalse(detail["calls"][0]["token_breakdown_available"])
+
+    def test_task_detail_loads_response_payload_from_archived_response_event(self):
+        con = connect(self.db_path)
+        try:
+            upsert_turn(con, sample_turn(
+                source_log_id=50,
+                response_id="codex-estimate:thread-response:turn-response:gpt-5.5",
+                status="estimated",
+                thread_id="thread-response",
+                thread_name="Response payload chat",
+                turn_id="turn-response",
+                model="gpt-5.5",
+                input_tokens=150,
+                cached_input_tokens=0,
+                non_cached_input_tokens=150,
+                output_tokens=0,
+                reasoning_output_tokens=0,
+                total_tokens=150,
+                event_json='{"type":"codex.post_sampling_token_usage","total_usage_tokens":150}',
+            ))
+            con.execute(
+                """
+                insert into raw_logs (
+                  source_log_id, ts, ts_iso, day, thread_id, thread_name, model,
+                  feedback_log_body, archived_at
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    49,
+                    int(time.time()) - 61,
+                    "2026-07-17T07:00:00+00:00",
+                    "2026-07-17",
+                    "thread-response",
+                    "Response payload chat",
+                    "gpt-5.5",
+                    (
+                        'thread.id=thread-response turn.id=turn-response '
+                        '{"type":"response.completed","response":{"id":"resp-response",'
+                        '"status":"completed","model":"gpt-5.5",'
+                        '"input":[{"role":"user","content":"inspect"}],'
+                        '"output":[{"type":"message","content":[{"type":"output_text","text":"done"}]}],'
+                        '"usage":{"input_tokens":100,"output_tokens":50,"total_tokens":150}}}'
+                    ),
+                    "2026-07-17T07:00:01+00:00",
+                ],
+            )
+            con.commit()
+
+            detail = queries.task_detail(con, "thread-response", "chat:thread-response")
+        finally:
+            con.close()
+
+        call = detail["calls"][0]
+        self.assertIn("inspect", str(call["request"]))
+        self.assertIn("done", str(call["response"]))
+        self.assertTrue(call["usage_only"])
+        self.assertFalse(call["token_breakdown_available"])
 
 
 class ImportConfigurationTests(unittest.TestCase):

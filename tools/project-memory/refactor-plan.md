@@ -209,6 +209,9 @@ Batch design checklist:
 
 - [ ] Name the authoritative source for any behavior, default, policy, workflow,
       data shape, or contract changed by the batch.
+- [ ] Name the module contract being created or preserved: caller, callee,
+      input shape, output shape, error/empty-state behavior, ownership of side
+      effects, and invariants that must not leak across the boundary.
 - [ ] Identify every consuming layer before editing: backend query, service,
       API route, frontend renderer/state, desktop mini client, tests, README,
       runbook, and project-memory specs.
@@ -220,6 +223,49 @@ Batch design checklist:
 - [ ] Stop and ask before destructive operations, data migrations, public API
       or storage contract changes, secret handling, production/deploy actions,
       dependency replacements, or broad filesystem scope.
+
+### Contract-First Module Boundaries
+
+The refactor goal is explicit contracts between modules, not only smaller files.
+Every extracted module should make its boundary obvious through names, function
+signatures, docstrings or tests where useful, and stable public entry points.
+
+- [ ] API contract: `app/api/handlers.py` owns HTTP parsing, status codes, and
+      JSON response sending. It must call `analytics_service` and refresh/ingest
+      services instead of reaching into storage query internals.
+- [ ] Service contract: `app/services/*` owns workflow orchestration, caching,
+      refresh/import status, and external process coordination. Services should
+      depend on storage/source/client contracts, not SQL strings or UI details.
+- [ ] Storage contract: `app/storage/*` owns SQLite schema, repositories, and
+      query functions. Query modules return plain dictionaries/lists with stable
+      API-facing field names and keep SQL/private helper details inside storage.
+- [ ] Source adapter contract: `app/sources/base.py` defines what a usage source
+      yields. Codex and OpenCode adapters may share that protocol while keeping
+      source-specific parsing, identity, raw fallback, and invalid-row rules
+      separate.
+- [ ] Parser/reader contract: readers perform read-only source access and return
+      raw records; parsers transform records into normalized usage metadata
+      without reading files, opening SQLite connections, or mutating analytics
+      storage.
+- [ ] Codex account contract: public limit reads go through
+      `read_usage_limits()`. Process/stdin/stdout lifecycle, command discovery,
+      and rate-limit normalization should be separated so each can be tested
+      without spawning real private/runtime processes.
+- [ ] Frontend module contract: `dashboard-state.js` owns query/page state;
+      render modules accept data and update DOM; modal modules own modal
+      interactions; table utilities expose stable initialization functions and
+      keep storage/drag/scroll details private.
+- [ ] Compatibility contract: shims such as `app.server`, `app.config`,
+      `app.db`, and `app.importer` stay as thin compatibility entry points until
+      a documented removal decision exists.
+- [ ] Contract tests: each boundary should have focused tests or smoke checks
+      that prove behavior through the public module/API entry point rather than
+      through private helper internals.
+- [ ] No leakage rule: API handlers should not know SQL, storage should not know
+      DOM/UI labels, parsers should not know analytics DB writes, frontend
+      renderers should not recreate backend aggregation rules, and source
+      adapters should not inspect or mutate private data beyond the documented
+      read-only metadata boundary.
 
 ### Batch 0: Protect Current Work
 
@@ -251,25 +297,25 @@ Batch design checklist:
 
 ### Batch 2: Remove Legacy API Handler Methods
 
-- [ ] Confirm tests and runtime routes use `analytics_service`, not handler
+- [x] Confirm tests and runtime routes use `analytics_service`, not handler
       instance methods.
-- [ ] Remove unused `dashboard`, `summary`, `daily`, `turns`, `tasks`,
+- [x] Remove unused `dashboard`, `summary`, `daily`, `turns`, `tasks`,
       `models`, and `data_state` methods from `AnalyticsHandler`.
-- [ ] Keep request parsing helpers stable unless a focused test covers the
+- [x] Keep request parsing helpers stable unless a focused test covers the
       replacement.
 
 ### Batch 3: Split Codex Account Limit Service
 
-- [ ] Before extraction, identify tests covering command resolution,
+- [x] Before extraction, identify tests covering command resolution,
       WindowsApps alias rejection, persistent client reuse, timeout/restart,
       process-tree cleanup, cache behavior, and limit normalization.
-- [ ] Extract app-server stdio client/process lifecycle from
+- [x] Extract app-server stdio client/process lifecycle from
       `codex_account_service.py`.
-- [ ] Extract rate-limit normalization into a pure helper module with existing
+- [x] Extract rate-limit normalization into a pure helper module with existing
       tests preserved.
-- [ ] Keep the public `read_usage_limits()` behavior and cache settings
+- [x] Keep the public `read_usage_limits()` behavior and cache settings
       unchanged.
-- [ ] Keep process, protocol, and normalization concerns separate: client module
+- [x] Keep process, protocol, and normalization concerns separate: client module
       owns stdio/process lifecycle, service module owns public cache/orchestration,
       pure normalizer owns payload shaping.
 

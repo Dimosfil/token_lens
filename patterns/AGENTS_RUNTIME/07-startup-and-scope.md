@@ -95,6 +95,13 @@
   or arbitrary external folder unless the user gives an explicit concrete path
   and action. Communicate with other projects through documented APIs,
   connectors, or task-manager endpoints.
+- Before filesystem writes, verify that the active project root, local project
+  identity, and target path match the user's current request. Use local identity
+  signals such as `AGENTS.md`, README title, manifests, service id, git remote,
+  documented working areas, and project memory. If those signals point to a
+  different product, repository, or absolute path outside this root, stop and
+  report the mismatch unless the current message explicitly authorizes that
+  exact external path and action.
 - Treat `.\others\` under the current workspace parent, or another
   project-local relative path named by local instructions, as the standard local
   parent folder for third-party projects, cloned external repositories, and

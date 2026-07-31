@@ -49,7 +49,14 @@ for summaries, daily trends, model calls, and grouped tasks.
 `start.ps1` launches the web/API server and desktop mini client as separate
 processes and records their PIDs under `data/`. Server stdout and stderr are
 captured in `data/server.out.log` and `data/server.err.log` so future unexpected
-exits have local diagnostic evidence.
+exits have local diagnostic evidence. PyManager launcher and worker PIDs belong
+to one application tree and must not be treated as duplicate runtimes. Startup
+health uses `/api/state?include_raw=0` so raw-archive size cannot create a false
+timeout. A full launch succeeds only after one server tree answers that route
+and one Mini tree exposes a window handle. If either check fails, `start.ps1`
+prints bounded error-log tails and stops only the processes created by that
+launcher invocation; a healthy pre-existing component reused without
+`-Restart` remains running.
 Runtime stop/restart paths must stop the full process tree for the web/API
 server and mini client. The web/API server may own a persistent child
 `codex app-server --stdio` process for account-limit reads, so stopping only
@@ -62,6 +69,29 @@ By default it writes `data/token-lens.log`, keeps five backups, and rotates at
 records server startup and shutdown, import start/success/failure stats, HTTP
 warnings/errors, client disconnects, and desktop mini self-heal attempts. Set
 `log_level` to `DEBUG` to include routine HTTP access lines.
+
+Every runtime log line includes the emitting process ID and thread name. Import
+runs also carry a process-scoped `run_id`; Codex and OpenCode phases record
+their own wall duration, process CPU time, and row statistics, while the final
+run line records total wall duration, process CPU time, and one-core-equivalent
+CPU utilization. These diagnostics must not contain prompts, responses, raw log
+bodies, or other private source content.
+
+`start.ps1` writes its process discovery and lifecycle decisions to the bounded
+`data/launcher.log`, rotating the previous file to `launcher.log.1` after 1 MB.
+This log records PID-file state and matching project process IDs so an orphaned
+runtime or duplicate launch can be reconstructed after the console closes.
+
+Token Lens may also forward the same standard Python logging records to an
+external ai_logger ingest server. The optional adapter is installed as the
+native `AiLoggerHttpHandler`; it supplements rather than replaces the rotating
+file and stderr handlers. `start.ps1` and `start-mini.ps1` load machine-local
+settings from ignored `ai-logger-client.local.ps1` when present. The file owns
+the remote URL, optional bearer token, project/service/environment context,
+timeout, and fallback JSONL path. When the URL is absent or the package cannot
+be loaded, local logging remains available. Delivery failures must not escape
+into application code and are written to the configured project-local fallback
+file.
 
 The desktop mini client treats a refused connection to a local API URL as a
 recoverable local-runtime failure. It starts `run_server.py`, waits for
@@ -78,6 +108,9 @@ worker starts, the Tkinter main thread snapshots the selected source, row limit,
 and range into a plain request payload. Workers return render/status callbacks
 through a queue drained by the Tkinter event loop; they must not read widget
 variables, select tabs, schedule `root.after`, or otherwise call Tkinter APIs.
+Worker exceptions are captured into callback defaults before Python clears the
+exception scope. A failed UI callback is logged and isolated so later callbacks
+and the queue timer continue instead of leaving Mini frozen on stale data.
 Routine desktop polling requests `/api/state` with `include_raw=0` as the cheap
 fast path. The lightweight response keeps the `turns`-derived version fields
 used for change detection but skips aggregate counts over the potentially large
@@ -86,8 +119,8 @@ compatible. If the state version has not changed, Codex account limits are
 refreshed once per configured Mini polling cycle, while other source context
 keeps the longer throttle interval. Manual refreshes and changed-version polls
 still refresh rows and source context immediately. Limit reads remain in the
-worker thread, so fresh
-account balances do not block Tkinter or force table reloads.
+worker thread, so fresh account balances do not block Tkinter or force table
+reloads.
 
 `auto_import_seconds` controls server-owned imports: positive values wait that
 interval before the first background import and then repeat at the same cadence,
@@ -147,6 +180,13 @@ empty import stats instead of crashing startup or hard-coding a fallback path.
 - `app/services/analytics_service.py`: API-facing analytics facade.
 - `app/services/background.py`: compatibility exports for the data refresh
   runtime.
+- `app/services/codex_account_service.py`: public Codex account-limit service,
+  cache policy, Codex app-server command resolution, and stdio process
+  orchestration.
+- `app/services/codex_app_server_client.py`: reusable Codex app-server stdio
+  client and process-tree cleanup boundary.
+- `app/services/codex_rate_limits.py`: pure normalization helpers for Codex
+  app-server `account/rateLimits/read` payloads.
 - `app/api/handlers.py`: HTTP request handler and route dispatch.
 - `app/api/server.py`: server startup.
 - `web/app.js`: browser entrypoint and refresh orchestration.
@@ -187,16 +227,22 @@ separate from the SQLite analytics data used by tables and charts. The Codex
 command is resolved from `codex_app_server_command` when configured, then from
 standard user-local locations such as `.codex\bin`, user npm bin folders, and
 PATH.
+After the first successful account-limit read, transient Codex app-server
+timeouts or error payloads return the last successful snapshot marked as
+`stale: true`, with `last_success_at` and `stale_error`. Limit widgets must keep
+showing that snapshot and only replace it when a newer successful response is
+available.
 `app.services.codex_account_service` keeps one reusable
-`codex app-server --stdio` stdio process by default. It initializes the Codex
-app-server once, serializes account-limit requests through that process, caches
-successful snapshots for `codex_rate_limits_cache_seconds`, and closes the
-client after `codex_rate_limits_idle_seconds` of inactivity. If the process
-exits, breaks its pipe, or times out, the client closes the process tree and the
-next request starts a fresh app-server. On Windows, cleanup must stop the full
-process tree because npm `.cmd` launchers create a
+`codex app-server --stdio` stdio process by default and owns public cache,
+configuration, and command-resolution policy. `app.services.codex_app_server_client`
+owns the stdio process lifecycle: it initializes the Codex app-server once,
+serializes account-limit requests through that process, closes idle clients,
+and restarts after process exit, broken pipes, or timeout. On Windows, cleanup
+must stop the full process tree because npm `.cmd` launchers create a
 `cmd.exe -> node.exe -> codex.exe` chain, and killing only the wrapper can leave
-orphaned Node/Codex processes that accumulate memory.
+orphaned Node/Codex processes that accumulate memory. Rate-limit payload
+normalization is a separate pure contract in `app.services.codex_rate_limits`,
+so process lifecycle tests and payload-shape tests can evolve independently.
 
 ## Data Flow
 
@@ -214,7 +260,9 @@ orphaned Node/Codex processes that accumulate memory.
 5. `app.services.analytics_service` exposes query results from
    `app.storage.queries` and attaches import status/source warnings to state and
    dashboard payloads.
-6. `app.api.handlers` serves JSON API responses and static web files.
+6. `app.api.handlers` serves JSON API responses and static web files. API
+   handlers own HTTP parsing/status/response sending and call service-layer
+   contracts instead of reaching into storage query internals.
 7. `web/app.js` and `web/js/*` render the returned JSON in the browser.
 
 ## Boundaries

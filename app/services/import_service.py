@@ -11,6 +11,7 @@ from app.sources.codex.adapter import CodexUsageSource
 from app.sources.codex.parser import MODEL_RE, first_match, parse_response_create_request, parse_response_event, parse_usage_row
 from app.sources.opencode.parser import parse_opencode_db_message, parse_opencode_jsonl_record
 from app.sources.opencode.reader import iter_messages_after, jsonl_file_size, max_message_rowid, read_jsonl_after
+from app.services.raw_log_retention import apply_raw_log_retention
 from app.storage.connection import connect
 from app.storage.repositories import (
     get_opencode_import_state,
@@ -45,6 +46,7 @@ def repair_codex_usage_rows(target, thread_names: dict[str, str], prices: dict) 
         from turns
         join raw_logs on raw_logs.source_log_id = turns.source_log_id
         where turns.source = 'codex'
+          and length(raw_logs.feedback_log_body) > 0
           and (
             turns.response_id like 'codex-usage:%'
             or turns.response_id like 'codex-estimate:%'
@@ -77,7 +79,12 @@ def repair_codex_usage_rows(target, thread_names: dict[str, str], prices: dict) 
     return len(invalid_response_ids)
 
 
-def archive_raw_logs(source: UsageSource, target, thread_names: dict[str, str] | None = None) -> int:
+def archive_raw_logs(
+    source: UsageSource,
+    target,
+    thread_names: dict[str, str] | None = None,
+    raw_body_cutoff_day: str | None = None,
+) -> int:
     iter_rows_after = getattr(source, "iter_rows_after", None)
     if not iter_rows_after:
         return 0
@@ -97,12 +104,17 @@ def archive_raw_logs(source: UsageSource, target, thread_names: dict[str, str] |
         body = row.get("feedback_log_body") or ""
         row["thread_name"] = thread_names.get(thread_id)
         row["model"] = first_match(MODEL_RE, body)
-        if insert_raw_log(target, row):
+        if insert_raw_log(target, row, raw_body_cutoff_day=raw_body_cutoff_day):
             archived += 1
     return archived
 
 
-def import_usage_source(source: UsageSource, analytics_db: str, prices: dict) -> ImportStats:
+def import_usage_source(
+    source: UsageSource,
+    analytics_db: str,
+    prices: dict,
+    raw_body_cutoff_day: str | None = None,
+) -> ImportStats:
     init_db(analytics_db)
     thread_names = source.load_thread_names()
     load_thread_metadata = getattr(source, "load_thread_metadata", None)
@@ -113,7 +125,12 @@ def import_usage_source(source: UsageSource, analytics_db: str, prices: dict) ->
     try:
         if thread_metadata:
             upsert_codex_threads(target, thread_metadata)
-        stats.archived = archive_raw_logs(source, target, thread_names)
+        stats.archived = archive_raw_logs(
+            source,
+            target,
+            thread_names,
+            raw_body_cutoff_day=raw_body_cutoff_day,
+        )
         repair_codex_usage_rows(target, thread_names, prices)
         backfill_raw_log_display_fields(target, thread_names)
         backfill_turn_thread_names(target, thread_names, "codex")
@@ -161,6 +178,20 @@ def import_usage_source(source: UsageSource, analytics_db: str, prices: dict) ->
 
 def import_codex_logs() -> ImportStats:
     config = load_config()
+    init_db(config["analytics_db"])
+    retention_months = int(config.get("raw_log_body_retention_months", 1))
+    retention_batch_size = int(config.get("raw_log_retention_batch_size", 100_000))
+    retention = apply_raw_log_retention(
+        config["analytics_db"],
+        months=retention_months,
+        batch_size=retention_batch_size,
+    )
+    if retention.applied:
+        LOGGER.info(
+            "raw log retention applied cutoff_day=%s cleared_rows=%s",
+            retention.cutoff_day,
+            retention.cleared_rows,
+        )
     issues = validate_codex_source_config(config)
     if issues:
         LOGGER.warning(
@@ -170,7 +201,12 @@ def import_codex_logs() -> ImportStats:
         return ImportStats()
     source = CodexUsageSource(config["codex_logs_db"], config["codex_session_index"])
     prices = config.get("model_prices_per_million", {})
-    return import_usage_source(source, config["analytics_db"], prices)
+    return import_usage_source(
+        source,
+        config["analytics_db"],
+        prices,
+        raw_body_cutoff_day=retention.cutoff_day,
+    )
 
 
 def import_opencode_sources() -> ImportStats:

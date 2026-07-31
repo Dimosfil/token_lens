@@ -59,6 +59,12 @@ create table if not exists raw_log_archive_state (
   updated_at text not null
 );
 
+create table if not exists raw_log_retention_state (
+  id integer primary key check (id = 1),
+  last_cutoff_day text not null,
+  updated_at text not null
+);
+
 create table if not exists codex_import_state (
   id integer primary key check (id = 1),
   last_scanned_source_log_id integer not null default 0,

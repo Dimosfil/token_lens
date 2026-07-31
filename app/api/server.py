@@ -68,7 +68,10 @@ def main():
     interval = int(config.get("auto_import_seconds", 30))
     httpd = ExclusiveThreadingHTTPServer((config["host"], int(config["port"])), AnalyticsHandler)
     LOGGER.info(
-        "server starting host=%s port=%s analytics_db=%s auto_import_seconds=%s log_file=%s",
+        "server starting pid=%s parent_pid=%s host=%s port=%s analytics_db=%s "
+        "auto_import_seconds=%s log_file=%s",
+        os.getpid(),
+        os.getppid(),
         config["host"],
         config["port"],
         config["analytics_db"],

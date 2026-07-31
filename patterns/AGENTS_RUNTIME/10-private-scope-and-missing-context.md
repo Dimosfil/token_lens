@@ -11,6 +11,11 @@
   prefer mock or sample data, or ask for permission to inspect a specific file.
 - Treat product plans, `apps.txt`, summaries, and task-manager notes as intent
   signals only. They are not permission to read private local data sources.
+- A path or product name from old chat, a screenshot, task-manager metadata, a
+  summary, or a stale plan is not permission to edit another project. Before
+  filesystem writes, compare the active project root and local project identity
+  with the user's current target; if they differ, stop and report the mismatch
+  unless the current message explicitly names the external path and action.
 - If a required file, skill, config, script, endpoint, task, or other entity is
   missing or not found, first reread the relevant local instructions, runbook,
   project memory, and accepted instruction-kit artifacts for the current scope.

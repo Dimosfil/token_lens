@@ -72,6 +72,11 @@ For each new feature or behavior change, cover:
 - migration, rollback, or fallback behavior when relevant;
 - observability, logs, metrics, or user-visible errors when relevant.
 
+For pure mechanical refactors, prove existing focused coverage before the move
+when practical, preserve behavior and public contracts during the move, and
+rerun the same checks afterward. For behavior or contract changes, add or
+identify a focused guarding test before implementation when practical.
+
 For frontend, backend, API, or full-stack features, verify against a fresh
 runtime:
 
