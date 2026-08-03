@@ -214,6 +214,19 @@ function Stop-TokenLensProcess($Process, [string]$Name) {
   return $true
 }
 
+function Stop-TokenLensAppTrees(
+  [string]$Name,
+  [string]$PidFile,
+  [string[]]$Markers
+) {
+  $matchingProcesses = @(Find-TokenLensPythonProcesses $Markers)
+  $rootProcesses = @(Get-TokenLensProcessRoots $matchingProcesses)
+  foreach ($process in $rootProcesses) {
+    [void](Stop-TokenLensProcess $process $Name)
+  }
+  Remove-Item -LiteralPath $PidFile -Force -ErrorAction SilentlyContinue
+}
+
 function Start-TokenLensApp(
   [string]$Name,
   [string]$PidFile,
@@ -407,6 +420,12 @@ try {
   $script:pythonw = Resolve-ProjectPythonw $script:python
   Write-Status "startup requested root=$root url=$url restart=$Restart no_mini=$NoMini python=$script:python pythonw=$script:pythonw api_timeout_seconds=$($runtimeSettings.ApiTimeoutSeconds) mini_timeout_seconds=$($runtimeSettings.MiniTimeoutSeconds)"
 
+  $miniMarkers = @("desktop\mini_client.py", "desktop/mini_client.py")
+  if ($Restart) {
+    Write-Status "quiescing Token Lens mini before server restart"
+    Stop-TokenLensAppTrees -Name "Token Lens mini pre-restart" -PidFile $miniPidFile -Markers $miniMarkers
+  }
+
   $serverMarkers = @("run_server.py")
   $server = Start-TokenLensApp `
     -Name "Token Lens server" `
@@ -430,7 +449,6 @@ try {
   Write-Status "Token Lens API ready. URL: $url root_pid=$($serverRoot.Id)"
 
   if (-not $NoMini) {
-    $miniMarkers = @("desktop\mini_client.py", "desktop/mini_client.py")
     $mini = Start-TokenLensApp `
       -Name "Token Lens mini" `
       -PidFile $miniPidFile `

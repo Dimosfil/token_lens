@@ -14,6 +14,31 @@ generated outputs, secrets, credentials, or private production data.
 
 ## Tasks
 
+### Atomic Full App Restart 2026-08-03
+
+Goal: prevent Mini self-heal from starting a competing backend while the full
+launcher is intentionally restarting the Token Lens app set.
+
+Planned changes:
+
+- [x] Stop every existing Mini process tree before restarting the backend.
+- [x] Add launcher contract coverage for the pre-restart ordering.
+- [x] Restart the full app set and verify one backend tree, one Mini tree, a
+      responsive API, and no fresh Mini connection errors.
+
+### Mini Local API Proxy Bypass 2026-07-31
+
+Goal: keep the desktop Mini connected to the loopback API even when the
+launching environment configures an unavailable HTTP proxy.
+
+Planned changes:
+
+- [x] Make Mini bypass proxy discovery for localhost-style API URLs only.
+- [x] Add focused regression coverage while preserving proxy support for
+      remote API URLs.
+- [x] Run verification, restart the full app set, and confirm Mini connects
+      directly to the configured loopback port.
+
 ### Mini Client Server Process Leak 2026-07-27
 
 Goal: prevent desktop recovery from accumulating parallel Token Lens servers.

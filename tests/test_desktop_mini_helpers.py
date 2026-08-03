@@ -238,6 +238,22 @@ class MiniClientHelperTests(unittest.TestCase):
         self.assertTrue(mini_client.is_connection_refused(URLError(ConnectionRefusedError(10061, "refused"))))
         self.assertFalse(mini_client.is_connection_refused(URLError(TimeoutError("slow"))))
 
+    def test_local_api_client_disables_environment_proxies(self):
+        local_opener = mock.Mock()
+        with mock.patch.object(mini_client, "build_opener", return_value=local_opener) as build:
+            client = mini_client.ApiClient("http://127.0.0.1:8765")
+
+        handler = build.call_args.args[0]
+        self.assertEqual(handler.proxies, {})
+        self.assertIs(client._local_opener, local_opener)
+
+    def test_remote_api_client_preserves_default_proxy_handling(self):
+        with mock.patch.object(mini_client, "build_opener") as build:
+            client = mini_client.ApiClient("https://example.com")
+
+        build.assert_not_called()
+        self.assertIsNone(client._local_opener)
+
     def test_server_start_reuses_live_recovery_process(self):
         process = mock.Mock(pid=1234)
         process.poll.return_value = None

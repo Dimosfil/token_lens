@@ -103,6 +103,17 @@ it instead of starting another server. On Windows, the HTTP server also claims
 the listening port with exclusive address use so parallel server processes
 cannot share one configured endpoint.
 
+Mini bypasses operating-system and environment proxy discovery for
+localhost-style API URLs. Loopback traffic must connect directly to Token Lens
+even when the launcher inherits an HTTP proxy configuration; non-local API URLs
+continue to use Python's normal proxy handling.
+
+During a full `start.ps1 -Restart`, the launcher stops all existing Mini
+process trees before it restarts the backend. This temporarily disables Mini's
+local-server self-heal so it cannot create a competing backend process while
+the launcher owns the intentional restart. The launcher then verifies one
+backend tree before starting and verifying one fresh Mini tree.
+
 Desktop HTTP polling and refresh work runs in daemon worker threads. Before a
 worker starts, the Tkinter main thread snapshots the selected source, row limit,
 and range into a plain request payload. Workers return render/status callbacks

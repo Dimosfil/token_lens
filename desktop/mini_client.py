@@ -19,7 +19,7 @@ except ImportError:
     winsound = None
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlparse
-from urllib.request import Request, urlopen
+from urllib.request import ProxyHandler, Request, build_opener, urlopen
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -656,15 +656,25 @@ class ApiClient:
     def __init__(self, base_url: str, timeout: float = 4.0):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
+        self._local_opener = (
+            build_opener(ProxyHandler({}))
+            if is_local_api_url(self.base_url)
+            else None
+        )
+
+    def _open(self, request):
+        if self._local_opener is not None:
+            return self._local_opener.open(request, timeout=self.timeout)
+        return urlopen(request, timeout=self.timeout)
 
     def get_json(self, path: str, query: dict | None = None):
         url = self._url(path, query)
-        with urlopen(url, timeout=self.timeout) as response:
+        with self._open(url) as response:
             return json.loads(response.read().decode("utf-8"))
 
     def post_json(self, path: str, query: dict | None = None):
         request = Request(self._url(path, query), method="POST")
-        with urlopen(request, timeout=self.timeout) as response:
+        with self._open(request) as response:
             return json.loads(response.read().decode("utf-8"))
 
     def _url(self, path: str, query: dict | None = None) -> str:

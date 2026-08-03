@@ -21,6 +21,13 @@ class FullLauncherContractTests(unittest.TestCase):
         self.assertIn("multiple independent process trees", self.script)
         self.assertIn("adopted existing process tree root", self.script)
 
+    def test_restart_quiesces_mini_before_restarting_server(self):
+        quiesce = self.script.index("quiescing Token Lens mini before server restart")
+        server_start = self.script.index("$server = Start-TokenLensApp")
+
+        self.assertLess(quiesce, server_start)
+        self.assertIn("Stop-TokenLensAppTrees", self.script)
+
     def test_partial_startup_rolls_back_current_invocation(self):
         self.assertIn("function Undo-StartedApps", self.script)
         self.assertIn("Undo-StartedApps", self.script.rsplit("catch {", 1)[1])
