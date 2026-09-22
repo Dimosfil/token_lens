@@ -1,6 +1,6 @@
 # Source Analytics Query Contract
 
-Updated: 2026-06-30
+Updated: 2026-09-22
 
 Token Lens stores normalized usage rows from multiple local sources in the
 shared `turns` table, but user-facing analytics must treat each source as a
@@ -27,7 +27,10 @@ Codex task lists and bucket detail views must aggregate by `thread_id`, not by
 Codex chat names come from Codex session metadata plus the local Codex
 `state_5.sqlite` `threads.title` field when available. The state title should
 win over first-message-derived names because it matches the Codex sidebar more
-closely. If no usable title exists, UI surfaces may show a stable short
+closely. When Codex wraps a request with attachment metadata, the visible chat
+name must be derived from the `My request:` section (including the legacy
+`My request for Codex:` form), not from file paths or the attachment safety
+notice. If no usable title exists, UI surfaces may show a stable short
 `Chat <thread-id-suffix>` fallback instead of pretending the row has a task
 topic.
 

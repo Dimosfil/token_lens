@@ -100,7 +100,9 @@ def _load_state_thread_titles(state_path: Path, names: dict[str, str]) -> None:
 
     for thread_id, title in rows:
         if isinstance(thread_id, str) and isinstance(title, str) and title.strip():
-            names[thread_id] = title.strip()
+            normalized_title = _normalized_thread_name(title)
+            if normalized_title:
+                names[thread_id] = normalized_title
 
 
 def _load_state_thread_metadata(state_path: Path, metadata: dict[str, dict]) -> None:
@@ -127,7 +129,7 @@ def _load_state_thread_metadata(state_path: Path, metadata: dict[str, dict]) -> 
             continue
         metadata[thread_id] = {
             "thread_id": thread_id,
-            "thread_name": _text_or_none(row[1]),
+            "thread_name": _normalized_thread_name(row[1]),
             "preview": _text_or_none(row[2]),
             "tokens_used": _int_or_zero(row[3]),
             "model": _text_or_none(row[4]),
@@ -181,7 +183,9 @@ def _load_thread_names_file(index_path: Path, names: dict[str, str]) -> None:
             if not thread_name:
                 thread_name = _first_text(payload, ("thread_name", "title", "name", "conversation_title"))
             if thread_id and thread_name:
-                names[thread_id] = thread_name
+                normalized_thread_name = _normalized_thread_name(thread_name)
+                if normalized_thread_name:
+                    names[thread_id] = normalized_thread_name
             if not file_thread_id:
                 file_thread_id = thread_id
             if not derived_thread_name:
@@ -238,6 +242,10 @@ def _clean_title(value: str | None) -> str | None:
     return text[: MAX_DERIVED_THREAD_NAME_LENGTH - 3].rstrip() + "..."
 
 
+def _normalized_thread_name(value: str | None) -> str | None:
+    return _clean_title(_extract_codex_request(value))
+
+
 def _is_bootstrap_user_message(value: str | None) -> bool:
     text = (value or "").lstrip()
     return (
@@ -249,8 +257,11 @@ def _is_bootstrap_user_message(value: str | None) -> bool:
 
 def _extract_codex_request(value: str | None) -> str | None:
     text = value or ""
-    marker = "My request for Codex:"
-    if marker in text:
-        text = text.split(marker, 1)[1]
+    request_marker = re.search(
+        r"(?im)^[ \t]*(?:#{1,6}[ \t]*)?My request(?: for Codex)?:[ \t]*",
+        text,
+    )
+    if request_marker:
+        text = text[request_marker.end():]
     text = re.sub(r"<image\b.*", "", text, flags=re.IGNORECASE | re.DOTALL)
     return text

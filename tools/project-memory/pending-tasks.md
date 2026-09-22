@@ -1550,3 +1550,16 @@ Lens app set on Windows.
       the full app set ready; include bounded error-log diagnostics on failure.
 - [x] Add launcher contract checks, update the runbook, and verify a complete
       restart through `start.ps1 -Restart`.
+
+### Codex Attachment Chat Title Cleanup 2026-09-22
+
+Goal: show the actual user request as the Codex chat name when the first
+message includes attachment metadata.
+
+- [x] Accept both current `My request:` and legacy `My request for Codex:`
+      wrappers when deriving a chat title.
+- [x] Prevent attachment paths and the document-instruction safety notice from
+      becoming visible chat names.
+- [x] Add focused regression coverage and refresh existing imported names.
+- [x] Restart the app and verify the affected live row shows the real chat
+      request instead of attachment metadata.
